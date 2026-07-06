@@ -1070,6 +1070,10 @@ function copiarProspeccao(){
         <input type="radio" name="api" id="api2" value="opencnpj" onchange="selectAPI('opencnpj')">
         <label for="api2"><strong>OpenCNPJ</strong><small>Receita Federal direto</small></label>
       </div>
+      <div class="api-option">
+        <input type="radio" name="api" id="api3" value="arcom" onchange="selectAPI('arcom')">
+        <label for="api3"><strong>Consulta CNPJ Arcom</strong><small>API própria (JWT)</small></label>
+      </div>
     </div>
 
     <div class="sidebar-label" style="margin-top:8px">Histórico recente</div>
@@ -1751,6 +1755,79 @@ async function consultarOpenCNPJ(cnpj) {
     socios:d.qsa||[], api:'OpenCNPJ', municipio:d.municipio||'' };
 }
 
+// ── CONSULTA CNPJ ARCOM (JWT) ───────────────────────────────────────────────
+// TODO: cole sua api_key real aqui antes de usar.
+const ARCOM_API_BASE_URL = 'http://consultacnpj.arcom.com.br:8080';
+const ARCOM_API_KEY = 'fd4152b9-6b34-43b7-85f2-93f901809ac6.t6bad8Z6ooOfBuvTt0lqI7SLQ0nqbCq2X-E3qAqmAe8';
+
+let arcomToken = localStorage.getItem('arcomToken') || null;
+let arcomTokenExp = parseInt(localStorage.getItem('arcomTokenExp') || '0', 10);
+
+async function obterArcomToken(forcar) {
+  if (ARCOM_API_KEY === 'COLOQUE_SUA_API_KEY_AQUI') {
+    throw new Error('Consulta CNPJ Arcom: cole sua api_key real na constante ARCOM_API_KEY antes de usar.');
+  }
+  if (!forcar && arcomToken && Date.now() < arcomTokenExp) return arcomToken;
+  const r = await fetch(ARCOM_API_BASE_URL + '/v1/auth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ api_key: ARCOM_API_KEY })
+  });
+  if (!r.ok) throw new Error('Falha ao autenticar na Consulta CNPJ Arcom (HTTP ' + r.status + ')');
+  const data = await r.json();
+  arcomToken = data.token;
+  // token vale 90 dias; guardamos com 1 dia de folga
+  arcomTokenExp = Date.now() + (89 * 24 * 60 * 60 * 1000);
+  localStorage.setItem('arcomToken', arcomToken);
+  localStorage.setItem('arcomTokenExp', String(arcomTokenExp));
+  return arcomToken;
+}
+
+async function consultarNovaAPI(cnpj) {
+  if (!isValidCNPJ(cnpj)) throw new Error('CNPJ inválido');
+  let token = await obterArcomToken(false);
+  let r = await fetch(ARCOM_API_BASE_URL + '/v1/cnpj/' + cnpj, {
+    headers: { 'Authorization': 'Bearer ' + token }
+  });
+  if (r.status === 401) {
+    token = await obterArcomToken(true);
+    r = await fetch(ARCOM_API_BASE_URL + '/v1/cnpj/' + cnpj, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+  }
+  if (!r.ok) {
+    if (r.status === 404) throw new Error('CNPJ não encontrado');
+    if (r.status === 422) throw new Error('CNPJ inválido');
+    throw new Error('Erro na Consulta CNPJ Arcom (HTTP ' + r.status + ')');
+  }
+  const d = await r.json();
+  const sit = ((d.situacao_cadastral && d.situacao_cadastral.descricao) || 'INDEFINIDA').toUpperCase();
+  const nomeMunicipio = (d.municipio && d.municipio.descricao) || '';
+  const enderecoInicio = [d.logradouro, d.numero].filter(Boolean).join(', ');
+  const enderecoFim = [d.bairro, nomeMunicipio, d.uf].filter(Boolean).join(', ');
+  const endereco = (enderecoInicio || enderecoFim)
+    ? (enderecoInicio + (enderecoFim ? ' - ' + enderecoFim : ''))
+    : '—';
+  return {
+    situacao: sit,
+    razao: (d.empresa && d.empresa.razao_social) || '—',
+    porte: (d.empresa && d.empresa.porte_empresa && d.empresa.porte_empresa.descricao) || '—',
+    natureza: (d.empresa && d.empresa.natureza_juridica && d.empresa.natureza_juridica.descricao) || '—',
+    atividade: (d.cnae_fiscal_principal && d.cnae_fiscal_principal.descricao) || '—',
+    uf: (d.uf || '—').substring(0, 2),
+    nomeFantasia: d.nome_fantasia || '—',
+    dataInicio: d.data_inicio_atividade || '—',
+    capitalSocial: d.capital_social ? 'R$ ' + Number(d.capital_social).toLocaleString('pt-BR') : '—',
+    endereco: endereco,
+    cep: d.cep || '—',
+    telefone: d.telefone || d.ddd_telefone_1 || '—',
+    email: d.email || '—',
+    socios: d.socios || [],
+    api: 'Consulta CNPJ Arcom',
+    municipio: nomeMunicipio
+  };
+}
+
 // ── VERIFICATION ──────────────────────────────────────────────────────────────
 function updateStats(t,b,i,s,e) {
   document.getElementById('statTotal').textContent=t;
@@ -1783,7 +1860,7 @@ async function startVerification() {
       continue;
     }
     try {
-      const result = selectedAPI==='brasilapi'?await consultarBrasilAPI(cnpj):await consultarOpenCNPJ(cnpj);
+      const result = selectedAPI==='brasilapi'?await consultarBrasilAPI(cnpj):selectedAPI==='opencnpj'?await consultarOpenCNPJ(cnpj):await consultarNovaAPI(cnpj);
       allData[cnpj]=result; total++;
       if (result.situacao.includes('INAPTA')) inap++;
       else if (result.situacao.includes('BAIXADA')) baix++;
