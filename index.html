@@ -44,6 +44,26 @@
       --glow:      0 0 0 1px rgba(0,120,64,.15), 0 8px 24px rgba(31,64,51,.10);
     }
 
+    /* ── DARK MODE ── */
+    [data-theme="dark"] {
+      color-scheme: dark;
+      --bg:        #14181A;
+      --surface:   #1E2426;
+      --surface2:  #262D2F;
+      --border:    #333B3D;
+      --border-lit:#454F51;
+      --text:      #E8EDEA;
+      --muted:     #9AA6A3;
+      --glow:      0 0 0 1px rgba(0,120,64,.25), 0 8px 24px rgba(0,0,0,.35);
+    }
+    [data-theme="dark"] .topbar { background: rgba(20,24,26,.85); }
+    [data-theme="dark"] .modal-overlay { background: rgba(0,0,0,.8); }
+    [data-theme="dark"] input[type="color"] { border-color: var(--border); }
+    [data-theme="dark"] .tech-pill { background: rgba(186,230,79,.12); border-color: rgba(186,230,79,.3); color: var(--lima); }
+    body, .topbar, .sidebar, .table-card, .chart-panel, .modal-box, .login-box, .stat-card, #chatPanel, .progress-card {
+      transition: background-color .2s ease, border-color .2s ease, color .2s ease;
+    }
+
     body {
       font-family: var(--font);
       background: var(--bg);
@@ -580,13 +600,7 @@
     }
     .export-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,120,64,.06); }
 
-    /* ── REGIONAL TAB ── */
-    .regional-search-bar {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 24px;
-      max-width: 520px;
-    }
+    /* ── Campos de busca (usado na Prospecção) ── */
     .regional-input {
       flex: 1;
       background: var(--surface);
@@ -601,95 +615,6 @@
     }
     .regional-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,120,64,.1); }
     .regional-input::placeholder { font-family: var(--font); color: var(--muted); font-size: 13px; }
-
-    .origem-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 18px 20px;
-      margin-bottom: 16px;
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 16px;
-    }
-    .origem-nome { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
-    .origem-meta { font-size: 12px; color: var(--muted); font-family: var(--mono); }
-
-    .cidade-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: rgba(0,120,64,.1);
-      border: 1px solid rgba(0,120,64,.2);
-      border-radius: 99px;
-      padding: 6px 14px;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--accent);
-      margin-bottom: 20px;
-    }
-
-    .filter-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
-    .filter-chip {
-      padding: 5px 14px;
-      border-radius: 99px;
-      border: 1px solid var(--border);
-      background: transparent;
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      font-family: var(--font);
-      transition: all .2s;
-    }
-    .filter-chip:hover { border-color: var(--accent); color: var(--accent); }
-    .filter-chip.active { background: rgba(0,120,64,.12); border-color: rgba(0,120,64,.3); color: var(--accent); }
-    .count-pill {
-      margin-left: auto;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 99px;
-      padding: 3px 12px;
-      font-size: 12px;
-      color: var(--muted);
-      font-weight: 600;
-    }
-
-    .regional-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-    .reg-empresa-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 14px 16px;
-      transition: all .2s;
-    }
-    .reg-empresa-card:hover { border-color: var(--accent); box-shadow: var(--glow); }
-    .reg-cnpj { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-bottom: 5px; }
-    .reg-razao { font-size: 13px; font-weight: 600; margin-bottom: 8px; line-height: 1.4; }
-    .reg-meta { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-bottom: 7px; }
-    .meta-pill {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 2px 7px;
-      font-size: 11px;
-      color: var(--muted);
-    }
-    .reg-ativ { font-size: 11px; color: var(--muted); line-height: 1.4; }
-    .copy-btn {
-      background: transparent;
-      border: 1px solid var(--border);
-      border-radius: 5px;
-      padding: 2px 8px;
-      font-size: 11px;
-      cursor: pointer;
-      color: var(--muted);
-      font-family: var(--font);
-      transition: all .2s;
-      margin-left: auto;
-    }
-    .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
 
     /* ── SPINNER ── */
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -1146,7 +1071,7 @@
         <input type="email" id="reqEmail" required>
       </div>
       <div class="login-field">
-        <label>Motivo do acesso</label>
+        <label>Setor/Cargo</label>
         <textarea id="reqMotivo" rows="3" required></textarea>
       </div>
       <div class="login-field">
@@ -1184,6 +1109,7 @@
   </a>
   <div class="topbar-spacer"></div>
   <button class="topbar-btn" id="btnAdminPainel" style="display:none" onclick="abrirAdminPainel()" title="Solicitações de acesso"><i class="fas fa-user-clock"></i></button>
+  <button class="topbar-btn" id="btnDarkMode" onclick="toggleDarkMode()" title="Alternar tema"><i class="fas fa-moon"></i></button>
   <button class="topbar-btn" onclick="openSettings()" title="Configurações"><i class="fas fa-sliders-h"></i></button>
   <button class="topbar-btn" onclick="logout()" title="Sair"><i class="fas fa-sign-out-alt"></i></button>
 </nav>
@@ -1211,9 +1137,6 @@
     <div class="nav-item active" onclick="showTab('consulta', this)">
       <i class="fas fa-search"></i> Consulta CNPJ
     </div>
-    <div class="nav-item" onclick="showTab('regional', this)">
-      <i class="fas fa-map-marker-alt"></i> Análise Regional
-    </div>
     <div class="nav-item" onclick="showTab('prospeccao', this)">
       <i class="fas fa-bullseye"></i> Prospecção
     </div>
@@ -1231,7 +1154,7 @@
       </div>
       <div class="api-option">
         <input type="radio" name="api" id="api3" value="arcom" onchange="selectAPI('arcom')">
-        <label for="api3"><strong>Consulta CNPJ Arcom</strong><small>API própria (JWT)</small></label>
+        <label for="api3"><strong>Consulta CNPJ Arcom</strong><small>API própria Arcom</small></label>
       </div>
     </div>
 
@@ -1354,64 +1277,10 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
 
     </div><!-- /tab-consulta -->
 
-    <!-- TAB: REGIONAL -->
-    <div class="tab-panel" id="tab-regional">
-
-      <div class="regional-search-bar">
-        <input type="text" id="cnpjRegional" class="regional-input"
-          placeholder="11.222.333/0001-81 ou 11222333000181"
-          maxlength="18"
-          oninput="maskCNPJRegional(this)"
-          onkeydown="if(event.key==='Enter') analyzeRegional()"
-          autocomplete="off">
-        <button class="btn btn-primary" id="btnAnalyze" onclick="analyzeRegional()">
-          <i class="fas fa-search"></i> Buscar
-        </button>
-      </div>
-
-      <div id="regionalAlert"></div>
-
-      <div id="regionalOrigemSection" style="display:none">
-        <div class="origem-card">
-          <div>
-            <p class="origem-nome" id="regNome">—</p>
-            <p class="origem-meta" id="regInfo">—</p>
-          </div>
-          <span class="badge" id="regBadge"></span>
-        </div>
-        <div class="cidade-pill">
-          <i class="fas fa-city"></i>
-          <span id="regCidadeTag">—</span>
-        </div>
-      </div>
-
-      <div id="regionalProgressSection" style="display:none" class="progress-card">
-        <div class="progress-header">
-          <span class="progress-status" id="regProgressText"><span class="spinner"></span> Buscando empresas…</span>
-          <span class="progress-pct" id="regProgressPct">0%</span>
-        </div>
-        <div class="progress-bar-bg">
-          <div class="progress-bar-fill" id="regProgressBar" style="width:0%"></div>
-        </div>
-        <p style="font-size:11px;color:var(--muted);margin-top:8px" id="regProgressSub">Consultando a BrasilAPI…</p>
-      </div>
-
-      <div id="regionalResultsSection" style="display:none">
-        <div class="filter-bar">
-          <button class="filter-chip active" id="filtroTodas" onclick="aplicarFiltroRegional('todas')">Todas</button>
-          <button class="filter-chip" id="filtroAtiva" onclick="aplicarFiltroRegional('ativa')">Só Ativas</button>
-          <span class="count-pill" id="regCountBadge">0 empresas</span>
-        </div>
-        <div class="regional-grid" id="regionalGrid"></div>
-      </div>
-
-
-    </div><!-- /tab-regional -->
-
     <div class="tab-panel" id="tab-prospeccao">
       <div class="card">
         <h2>Prospecção por Cidade e Ramo</h2>
-        <div style="display:grid;grid-template-columns:1fr 100px 1fr 120px;gap:12px;margin-top:15px">
+        <div style="display:grid;grid-template-columns:1fr 100px 1fr;gap:12px;margin-top:15px">
           <input id="prosCidade" class="regional-input" placeholder="Cidade">
           <input id="prosUF" class="regional-input" placeholder="UF">
           <select id="prosCNAE" class="regional-input">
@@ -1455,7 +1324,6 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
             <option value="5611203">Hamburgueria</option>
             <option value="MISTO">Misto (Ramos Diversos)</option>
           </select>
-          <input id="prosLimite" class="regional-input" type="number" value="15" min="1" max="100">
         </div>
         <button class="btn btn-primary" style="margin-top:15px" onclick="buscarProspeccao()">
           <i class="fas fa-search"></i> Buscar Empresas
@@ -1676,7 +1544,6 @@ let rows = [], allData = {}, selectedAPI = 'brasilapi';
 let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
 let historyLog = JSON.parse(localStorage.getItem('cnpjHistory')) || [];
 let chart = null, currentDetailsCNPJ = null;
-let _regionalResultados = [], _regionalCidade = '', _regionalUF = '';
 let enrichData = {}; // cnpj -> insight comercial gerado pela IA (Groq)
 let currentEnrichCNPJ = null;
 let erroCNPJs = []; // lista de {cnpj, motivo} que não foram consultados com sucesso
@@ -1705,6 +1572,22 @@ function selectAPI(api) {
   const th = document.getElementById('thPorteCol');
   if (th) th.textContent = (api === 'arcom') ? 'Cliente Arcom' : 'Porte';
 }
+
+// ── DARK MODE ─────────────────────────────────────────────────────────────
+function applyDarkModePreference() {
+  const isDark = localStorage.getItem('darkMode') === 'true';
+  document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  const btn = document.getElementById('btnDarkMode');
+  if (btn) btn.innerHTML = isDark ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
+}
+function toggleDarkMode() {
+  const novo = document.documentElement.getAttribute('data-theme') !== 'dark';
+  document.documentElement.setAttribute('data-theme', novo ? 'dark' : 'light');
+  localStorage.setItem('darkMode', String(novo));
+  const btn = document.getElementById('btnDarkMode');
+  if (btn) btn.innerHTML = novo ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
+}
+applyDarkModePreference(); // aplica assim que o script roda, evitando "flash" de tela clara
 
 // ── APARÊNCIA (cores + partículas) ───────────────────────────────────────────
 const DEFAULT_ACCENT  = '#007840';
@@ -1880,6 +1763,7 @@ function clearHistory() {
   renderHistory();
 }
 window.addEventListener('load', () => {
+  applyDarkModePreference();
   renderHistory();
   loadThemeSettings();
   document.getElementById('toggleParticles').checked = particleSettings.enabled;
@@ -2262,9 +2146,11 @@ async function resolverMunicipioRF(nomeCidade) {
   return item; // { codigo, descricao }
 }
 
-// Busca estabelecimentos ativos e que ainda NÃO são clientes Arcom
+// Busca UMA página de estabelecimentos ativos e que ainda NÃO são clientes Arcom
 // (excluir_clientes=true — fail-closed: 503 se o serviço de clientes cair).
-async function buscarEstabelecimentosArcom({ uf, municipioCodigo, cnae, limit }) {
+const ARCOM_PAGE_SIZE = 1000; // tamanho de página por requisição (máximo aceito pela API)
+
+async function buscarPaginaEstabelecimentosArcom({ uf, municipioCodigo, cnae, offset }) {
   let token = await obterArcomToken(false);
   const params = new URLSearchParams();
   if (uf) params.set('uf', uf.toUpperCase());
@@ -2272,7 +2158,8 @@ async function buscarEstabelecimentosArcom({ uf, municipioCodigo, cnae, limit })
   if (cnae) params.set('cnae_fiscal_principal', cnae);
   params.set('situacao_cadastral', '02'); // ATIVA
   params.set('excluir_clientes', 'true');
-  params.set('limit', String(Math.min(Math.max(parseInt(limit, 10) || 15, 1), 1000)));
+  params.set('limit', String(ARCOM_PAGE_SIZE));
+  params.set('offset', String(offset || 0));
 
   const url = ARCOM_API_BASE_URL + '/v1/estabelecimentos?' + params.toString();
   let r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
@@ -2286,13 +2173,29 @@ async function buscarEstabelecimentosArcom({ uf, municipioCodigo, cnae, limit })
   return data.data || [];
 }
 
+// Busca TODAS as páginas disponíveis para um CNAE/cidade — sem limite de
+// quantidade — parando apenas quando a API retornar uma página incompleta
+// (ou vazia), o que indica que não há mais registros.
+async function buscarTodosEstabelecimentosArcom({ uf, municipioCodigo, cnae }, onProgresso) {
+  let offset = 0, todos = [], pagina = 0;
+  const MAX_PAGINAS = 200; // trava de segurança (200 x 1000 = até 200.000 registros)
+  while (pagina < MAX_PAGINAS) {
+    if (onProgresso) onProgresso(pagina, todos.length);
+    const parcial = await buscarPaginaEstabelecimentosArcom({ uf, municipioCodigo, cnae, offset });
+    todos = todos.concat(parcial);
+    pagina++;
+    if (parcial.length < ARCOM_PAGE_SIZE) break; // última página (retornou menos que o tamanho pedido)
+    offset += ARCOM_PAGE_SIZE;
+  }
+  return todos;
+}
+
 let prospeccaoCNPJs = [];
 
 async function buscarProspeccao() {
   const cidade = document.getElementById('prosCidade').value.trim();
   const uf = document.getElementById('prosUF').value.trim();
   const cnae = document.getElementById('prosCNAE').value;
-  const limite = parseInt(document.getElementById('prosLimite').value, 10) || 15;
   const resultado = document.getElementById('prosResultado');
 
   if (!cidade || !uf) { resultado.innerHTML = '<p>Informe cidade e UF.</p>'; return; }
@@ -2302,7 +2205,7 @@ async function buscarProspeccao() {
     cnaesBusca = ['4711302','4771701','5611201','4520001','4789004','4761003','4731800','4721102','8630503','6821801'];
   }
 
-  resultado.innerHTML = '<p>Buscando empresas na Consulta CNPJ Arcom...</p>';
+  resultado.innerHTML = '<p><span class="spinner"></span> Buscando todas as empresas disponíveis na Consulta CNPJ Arcom...</p>';
   prospeccaoCNPJs = [];
 
   try {
@@ -2310,19 +2213,23 @@ async function buscarProspeccao() {
 
     let empresas = [];
     for (const c of cnaesBusca) {
-      if (empresas.length >= limite) break;
-      const pagina = await buscarEstabelecimentosArcom({ uf, municipioCodigo: municipio.codigo, cnae: c, limit: limite });
+      const pagina = await buscarTodosEstabelecimentosArcom(
+        { uf, municipioCodigo: municipio.codigo, cnae: c },
+        (paginaAtual, encontradasNesteCnae) => {
+          resultado.innerHTML = `<p><span class="spinner"></span> Buscando em ${municipio.descricao}/${uf.toUpperCase()}… (página ${paginaAtual + 1} · ${empresas.length + encontradasNesteCnae} encontradas até agora)</p>`;
+        }
+      );
       empresas = empresas.concat(pagina);
     }
 
-    // dedup por CNPJ (o modo "Misto" pode repetir empresas entre CNAEs) e corta no limite
+    // dedup por CNPJ (o modo "Misto" pode repetir empresas entre CNAEs)
     const vistos = new Set();
     empresas = empresas.filter(emp => {
       const cnpjLimpo = (emp.cnpj || '').replace(/\D/g, '');
       if (!cnpjLimpo || vistos.has(cnpjLimpo)) return false;
       vistos.add(cnpjLimpo);
       return true;
-    }).slice(0, limite);
+    });
 
     if (!empresas.length) {
       resultado.innerHTML = `<p>Nenhum prospect (empresa ativa e ainda não cliente) encontrado em ${municipio.descricao}/${uf.toUpperCase()} para esse ramo.</p>`;
@@ -2330,7 +2237,7 @@ async function buscarProspeccao() {
     }
 
     let h = `<p style="font-size:12px;color:var(--muted);margin-bottom:10px">
-        ${empresas.length} prospect(s) encontrado(s) em <strong>${municipio.descricao}/${uf.toUpperCase()}</strong> — apenas empresas ativas que ainda não são clientes Arcom.
+        ${empresas.length} prospect(s) encontrado(s) em <strong>${municipio.descricao}/${uf.toUpperCase()}</strong> — todas as empresas ativas que ainda não são clientes Arcom.
       </p><table style="width:100%"><thead><tr><th>CNPJ</th><th>Razão Social</th><th>Atividade</th></tr></thead><tbody>`;
     empresas.forEach(emp => {
       const cnpj = (emp.cnpj || '').replace(/\D/g, '');
@@ -2952,224 +2859,6 @@ function exportPDF() {
   const el=document.createElement('div');el.innerHTML=html;
   html2pdf().set({margin:10,filename:'resultado_'+new Date().toISOString().split('T')[0]+'.pdf'}).from(el).save();
   closeModal('exportModal');
-}
-
-// ── REGIONAL ──────────────────────────────────────────────────────────────────
-function calcularDigitosCNPJ(cnpj12) {
-  if(!cnpj12||cnpj12.length!==12) return null;
-  const d=cnpj12.split('').map(Number);
-  const p1=[5,4,3,2,9,8,7,6,5,4,3,2],p2=[6,5,4,3,2,9,8,7,6,5,4,3,2];
-  let s=d.reduce((a,v,i)=>a+v*p1[i],0),r=s%11; const dv1=r<2?0:11-r;
-  const d2=[...d,dv1]; s=d2.reduce((a,v,i)=>a+v*p2[i],0); r=s%11;
-  const dv2=r<2?0:11-r;
-  return cnpj12+String(dv1)+String(dv2);
-}
-function maskCNPJRegional(el) {
-  let v=el.value.replace(/\D/g,'');
-  if(v.length>14) v=v.slice(0,14);
-  if(v.length>12)     v=v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2}).*/,'$1.$2.$3/$4-$5');
-  else if(v.length>8) v=v.replace(/^(\d{2})(\d{3})(\d{3})(\d{0,4}).*/,'$1.$2.$3/$4');
-  else if(v.length>5) v=v.replace(/^(\d{2})(\d{3})(\d{0,3}).*/,'$1.$2.$3');
-  else if(v.length>2) v=v.replace(/^(\d{2})(\d{0,3}).*/,'$1.$2');
-  el.value=v;
-}
-function setRegionalAlert(msg,type='warning'){
-  document.getElementById('regionalAlert').innerHTML=msg?`<div class="alert alert-${type}">${msg}</div>`:'';
-}
-function setRegProgress(pct,sub){
-  document.getElementById('regProgressBar').style.width=pct+'%';
-  document.getElementById('regProgressPct').textContent=pct+'%';
-  if(sub) document.getElementById('regProgressSub').textContent=sub;
-}
-function aplicarFiltroRegional(filtro){
-  document.getElementById('filtroTodas').classList.toggle('active',filtro==='todas');
-  document.getElementById('filtroAtiva').classList.toggle('active',filtro==='ativa');
-  const lista=filtro==='ativa'
-    ?_regionalResultados.filter(e=>{const s=(e.dados.descricao_situacao_cadastral||e.dados.situacao||'').toUpperCase();return s.includes('ATIVA')&&!s.includes('INAPTA');})
-    :_regionalResultados;
-  document.getElementById('regCountBadge').textContent=lista.length+' empresa'+(lista.length!==1?'s':'');
-  renderRegionalGrid(lista);
-}
-function renderRegionalGrid(lista){
-  const grid=document.getElementById('regionalGrid');
-  if(!lista.length){
-    grid.innerHTML=`<div style="grid-column:1/-1;text-align:center;padding:48px 24px;color:var(--muted)">
-      <i class="fas fa-building" style="font-size:32px;display:block;margin-bottom:12px;opacity:.3"></i>
-      <p style="font-size:13px">Nenhuma empresa encontrada para este filtro.</p>
-      <p style="font-size:12px;margin-top:4px">Tente o filtro "Todas".</p></div>`;
-    return;
-  }
-  grid.innerHTML=lista.map(({cnpj,dados})=>{
-    const s=dados.descricao_situacao_cadastral||dados.situacao||'';
-    const bc=badgeClass(s.toUpperCase());
-    const razao=dados.razao_social||dados.razao||dados.nome||'—';
-    const ativ=dados.cnae_fiscal_descricao||dados.atividade||'';
-    const porte=dados.porte||'';
-    const ufEmp=dados.uf||_regionalUF;
-    return `<div class="reg-empresa-card">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
-        <span class="reg-cnpj">${fmt(cnpj)}</span>
-        <button class="copy-btn" onclick="navigator.clipboard.writeText('${cnpj}').then(()=>this.textContent='✓').catch(()=>{})">copiar</button>
-      </div>
-      <p class="reg-razao">${razao}</p>
-      <div class="reg-meta">
-        ${bc?`<span class="badge ${bc}" style="font-size:11px">${s||'ATIVA'}</span>`:''}
-        ${porte?`<span class="meta-pill">${porte}</span>`:''}
-        ${ufEmp?`<span class="meta-pill">${ufEmp}</span>`:''}
-      </div>
-      ${ativ?`<p class="reg-ativ">${ativ.length>90?ativ.slice(0,90)+'…':ativ}</p>`:''}
-    </div>`;
-  }).join('');
-}
-
-async function buscarMunicipioId(cidade,uf){
-  try{
-    const r=await fetch(`https://brasilapi.com.br/api/ibge/municipios/v1/${encodeURIComponent(uf)}`,{signal:AbortSignal.timeout(6000)});
-    if(r.ok){
-      const lista=await r.json();
-      const cidadeNorm=cidade.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
-      const match=lista.find(m=>{const n=(m.nome||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();return n===cidadeNorm;});
-      if(match) return match.codigo_ibge||match.id||null;
-    }
-  }catch(_){}
-  return null;
-}
-async function buscarViaDadosCnpjWs(municipioId,cnpjExcluir,alvo=50){
-  const encontradas=[],vistos=new Set([cnpjExcluir]);
-  for(let page=1;page<=5&&encontradas.length<alvo;page++){
-    try{
-      const r=await fetch(`https://dados.cnpj.ws/estabelecimentos?municipio_id=${municipioId}&page=${page}`,{signal:AbortSignal.timeout(8000)});
-      if(!r.ok) break;
-      const d=await r.json();
-      const items=Array.isArray(d)?d:(d.data||d.estabelecimentos||[]);
-      if(!items.length) break;
-      for(const emp of items){
-        const cnpjLimpo=norm(emp.cnpj||'');
-        if(!cnpjLimpo||cnpjLimpo.length!==14||vistos.has(cnpjLimpo)) continue;
-        vistos.add(cnpjLimpo);
-        const dados={razao_social:emp.razao_social||emp.nome_fantasia||emp.nome||'',descricao_situacao_cadastral:(emp.descricao_situacao_cadastral||emp.situacao_cadastral||emp.situacao||'').toUpperCase(),cnae_fiscal_descricao:emp.cnae_fiscal_descricao||emp.cnae_descricao||emp.atividade||'',porte:emp.porte||emp.descricao_porte||'',uf:emp.uf||''};
-        encontradas.push({cnpj:cnpjLimpo,dados});
-        if(encontradas.length>=alvo) break;
-      }
-    }catch(_){break;}
-    await delay(200);
-  }
-  return encontradas;
-}
-async function buscarViaReceitaWS(cidade,uf,cnpjExcluir,alvo=50){
-  const encontradas=[],vistos=new Set([cnpjExcluir]);
-  try{
-    const url=`https://www.receitaws.com.br/v1/cnpj/search?municipio=${encodeURIComponent(cidade)}&uf=${encodeURIComponent(uf)}&status=ATIVA`;
-    const r=await fetch(url,{signal:AbortSignal.timeout(8000)});
-    if(r.ok){const d=await r.json();const items=d.companies||d.data||d.results||(Array.isArray(d)?d:[]);for(const emp of items){const cnpjLimpo=norm(emp.cnpj||emp.CNPJ||'');if(!cnpjLimpo||!isValidCNPJ(cnpjLimpo)||vistos.has(cnpjLimpo)) continue;vistos.add(cnpjLimpo);encontradas.push({cnpj:cnpjLimpo,dados:emp});if(encontradas.length>=alvo) break;}}
-  }catch(_){}
-  return encontradas;
-}
-async function buscarViaCnpjWsPublica(cidade,uf,cnpjExcluir,alvo=50){
-  const encontradas=[],vistos=new Set([cnpjExcluir]);
-  for(let page=1;page<=5&&encontradas.length<alvo;page++){
-    try{
-      const url=`https://publica.cnpj.ws/cnpj/search?municipio=${encodeURIComponent(cidade)}&uf=${encodeURIComponent(uf)}&page=${page}`;
-      const r=await fetch(url,{signal:AbortSignal.timeout(8000)});
-      if(!r.ok) break;
-      const d=await r.json();
-      const items=Array.isArray(d)?d:(d.data||d.companies||d.estabelecimentos||[]);
-      if(!items.length) break;
-      for(const emp of items){const cnpjLimpo=norm(emp.cnpj||emp.CNPJ||'');if(!cnpjLimpo||!isValidCNPJ(cnpjLimpo)||vistos.has(cnpjLimpo)) continue;vistos.add(cnpjLimpo);encontradas.push({cnpj:cnpjLimpo,dados:emp});if(encontradas.length>=alvo) break;}
-    }catch(_){break;}
-    await delay(200);
-  }
-  return encontradas;
-}
-async function buscarPorVarredura(cnpjOrigem,cidade,cnpjsExcluir,alvo=30,onProg){
-  const raiz=cnpjOrigem.slice(0,8),raizInt=parseInt(raiz,10);
-  const vistos=new Set(cnpjsExcluir),candidatos=[];
-  for(let ord=2;ord<=50;ord++){const c=calcularDigitosCNPJ(raiz+String(ord).padStart(4,'0'));if(c&&isValidCNPJ(c)&&!vistos.has(c)) candidatos.push(c);}
-  for(let delta=1;delta<=600;delta++){for(const sinal of[1,-1]){const nr=String(Math.max(1,raizInt+delta*sinal)).padStart(8,'0');const c=calcularDigitosCNPJ(nr+'0001');if(c&&isValidCNPJ(c)&&!vistos.has(c)&&!candidatos.includes(c)) candidatos.push(c);}if(candidatos.length>=400) break;}
-  const encontradas=[],lista=candidatos.slice(0,400);
-  for(let i=0;i<lista.length;i++){
-    if(encontradas.length>=alvo) break;
-    const cnpj=lista[i];vistos.add(cnpj);
-    if(onProg) onProg(i,lista.length,encontradas.length);
-    try{const r=await fetch('https://brasilapi.com.br/api/cnpj/v1/'+cnpj,{signal:AbortSignal.timeout(6000)});if(!r.ok){await delay(100);continue;}const d=await r.json();if((d.municipio||'').toUpperCase().trim()===cidade) encontradas.push({cnpj,dados:d});}catch(_){}
-    await delay(160);
-  }
-  return encontradas;
-}
-
-async function analyzeRegional(){
-  const raw=norm(document.getElementById('cnpjRegional').value);
-  setRegionalAlert('');
-  if(raw.length!==14){setRegionalAlert('Digite um CNPJ com 14 dígitos para continuar.');return;}
-  if(!isValidCNPJ(raw)){setRegionalAlert('CNPJ inválido. Verifique os dígitos e tente novamente.');return;}
-  const btn=document.getElementById('btnAnalyze');
-  btn.disabled=true;
-  btn.innerHTML='<span class="spinner"></span> Consultando…';
-  document.getElementById('regionalOrigemSection').style.display='none';
-  document.getElementById('regionalProgressSection').style.display='none';
-  document.getElementById('regionalResultsSection').style.display='none';
-  _regionalResultados=[];
-  let origem;
-  try{
-    const r=await fetch('https://brasilapi.com.br/api/cnpj/v1/'+raw,{signal:AbortSignal.timeout(10000)});
-    if(!r.ok) throw new Error('status '+r.status);
-    origem=await r.json();
-  }catch(e){setRegionalAlert('Não foi possível consultar esse CNPJ. Verifique a conexão ou tente novamente.','danger');btn.disabled=false;btn.innerHTML='<i class="fas fa-search"></i> Buscar';return;}
-  const cidade=(origem.municipio||'').toUpperCase().trim();
-  const uf=origem.uf||'';
-  const sit=origem.descricao_situacao_cadastral||'';
-  const bc=badgeClass(sit.toUpperCase());
-  _regionalCidade=cidade;_regionalUF=uf;
-  document.getElementById('regNome').textContent=origem.razao_social||'—';
-  document.getElementById('regInfo').textContent=`${fmt(raw)} · ${origem.cnae_fiscal_descricao||'Atividade não informada'}`;
-  document.getElementById('regBadge').textContent=sit;
-  document.getElementById('regBadge').className='badge '+bc;
-  document.getElementById('regCidadeTag').innerHTML=`Buscando empresas em <strong style="margin-left:3px">${cidade}/${uf}</strong>`;
-  document.getElementById('regionalOrigemSection').style.display='block';
-  if(!cidade){setRegionalAlert('Município não identificado para esse CNPJ.','warning');btn.disabled=false;btn.innerHTML='<i class="fas fa-search"></i> Buscar';return;}
-  document.getElementById('regionalProgressSection').style.display='block';
-  document.getElementById('regProgressText').innerHTML=`<span class="spinner"></span> Buscando empresas em <strong>${cidade}/${uf}</strong>…`;
-  const ALVO=50;
-  let encontradas=[];
-  setRegProgress(5,'Resolvendo código IBGE do município…');
-  const municipioId=await buscarMunicipioId(cidade,uf);
-  if(municipioId){setRegProgress(15,`Buscando empresas via base CNPJ.ws (código ${municipioId})…`);encontradas=await buscarViaDadosCnpjWs(municipioId,raw,ALVO);}
-  if(encontradas.length<10){setRegProgress(30,'Tentando busca direta por município (CNPJ.ws)…');const extra=await buscarViaCnpjWsPublica(cidade,uf,raw,ALVO);const ex=new Set(encontradas.map(e=>e.cnpj));for(const e of extra){if(!ex.has(e.cnpj)) encontradas.push(e);}}
-  if(encontradas.length<10){setRegProgress(40,'Tentando ReceitaWS por município…');const extra=await buscarViaReceitaWS(cidade,uf,raw,ALVO);const ex=new Set(encontradas.map(e=>e.cnpj));for(const e of extra){if(!ex.has(e.cnpj)) encontradas.push(e);}}
-  if(encontradas.length<10){
-    const faltam=Math.max(15,ALVO-encontradas.length);
-    const existentes=new Set([raw,...encontradas.map(e=>e.cnpj)]);
-    setRegProgress(45,`Iniciando varredura (meta: ${faltam} empresas)…`);
-    const extras=await buscarPorVarredura(raw,cidade,[...existentes],faltam,(i,total,achou)=>{
-      const pct=Math.min(95,Math.round(45+(i/total)*50));
-      setRegProgress(pct,`Varredura ${i+1}/${total} · ${achou} empresa(s) encontrada(s)`);
-      document.getElementById('regProgressText').innerHTML=`<span class="spinner"></span> Varrendo CNPJs próximos em <strong>${cidade}/${uf}</strong>…`;
-    });
-    for(const e of extras) encontradas.push(e);
-  }
-  setRegProgress(97,'Verificando dados das empresas encontradas…');
-  const enriquecidas=[];
-  for(const emp of encontradas.slice(0,ALVO)){
-    const razao=emp.dados.razao_social||emp.dados.razao||emp.dados.nome||'';
-    if(!razao&&emp.cnpj){try{const r=await fetch('https://brasilapi.com.br/api/cnpj/v1/'+emp.cnpj,{signal:AbortSignal.timeout(5000)});if(r.ok){emp.dados=await r.json();}}catch(_){}await delay(100);}
-    enriquecidas.push(emp);
-  }
-  setRegProgress(100,'Concluído!');
-  await delay(250);
-  document.getElementById('regionalProgressSection').style.display='none';
-  document.getElementById('regionalResultsSection').style.display='block';
-  _regionalResultados=enriquecidas;
-  aplicarFiltroRegional('ativa');
-  if(!enriquecidas.length){
-    document.getElementById('regCountBadge').textContent='0 empresas';
-    document.getElementById('regionalGrid').innerHTML=`<div style="grid-column:1/-1;text-align:center;padding:48px 24px;color:var(--muted)">
-      <i class="fas fa-building" style="font-size:32px;display:block;margin-bottom:12px;opacity:.3"></i>
-      <p style="font-weight:600;font-size:14px;margin-bottom:8px">Nenhuma empresa encontrada em ${cidade}</p>
-      <p style="font-size:12px">Tente um CNPJ de banco, supermercado ou posto de gasolina — empresas com muitas filiais aumentam a chance de resultados.</p>
-    </div>`;
-  }
-  btn.disabled=false;
-  btn.innerHTML='<i class="fas fa-search"></i> Buscar';
 }
 
 function delay(ms){return new Promise(r=>setTimeout(r,ms));}
