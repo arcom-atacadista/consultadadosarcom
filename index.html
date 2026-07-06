@@ -3,15 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CDA (Consulta dados Arcom)</title>
+  <title>VERIFICADOR — Verificador CNPJ</title>
 
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" rel="preload" as="script">
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script>
 /* ── Não sou nenhum DEV, apenas um cara curioso testando tudo que esta ao seu alcance! ── */
 let prospeccaoCNPJs = [];
@@ -43,7 +40,7 @@ if(cnae === "MISTO"){
  try{
    const response=await fetch('https://api.casadosdados.com.br/v5/cnpj/pesquisa',{
      method:'POST',
-     headers:{'Content-Type':'application/json','api-key':'8a2eca20e47150964d8149e78fe712b1d76ab35547107fd18077b389b181d287be5f9d7c6c6ef32164c77fd1c50d9b980339da9f9b910551b8c33d251b33b68a'},
+     headers:{'Content-Type':'application/json','api-key':'337366889483241a1d1f7cdb8b25986564ef64c661ca8c6798fc76434fffe339fa15d1e851f12fbba338d4493f09e183581e13ec983a19eeb674be7199b532f6'},
      body:JSON.stringify({
        codigo_atividade_principal:cnaesBusca,
        municipio:[cidade.toLowerCase()],
@@ -77,6 +74,11 @@ function copiarProspeccao(){
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" defer></script>
+
+  <!-- ═══ FIREBASE SDK (Chat) ═══ -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
   <style>
 
@@ -555,6 +557,33 @@ function copiarProspeccao(){
     }
 
     /* ── ENRICH (Insight IA) ── */
+    .decisor-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-left: 3px solid #a855f7;
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      margin-bottom: 8px;
+    }
+    .decisor-card:last-child { margin-bottom: 0; }
+    .decisor-nome { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+    .decisor-cargo { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+    .decisor-contatos { display: flex; flex-wrap: wrap; gap: 6px; }
+    .decisor-contatos a, .decisor-contatos span {
+      font-size: 11px;
+      color: var(--text);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 9px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      text-decoration: none;
+      transition: all .2s;
+    }
+    .decisor-contatos a:hover { border-color: #a855f7; color: #c084fc; }
+    .decisor-contatos i { font-size: 10px; }
     .enrich-stat-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
     .enrich-stat {
       background: var(--surface2);
@@ -1011,210 +1040,54 @@ function copiarProspeccao(){
     .chat-input-row button:hover { background: var(--accent2); }
     .chat-input-row button:disabled { opacity: .5; cursor: not-allowed; }
 
-    /* Indicador de digitação da IA */
-    .chat-typing {
-      display: flex;
-      gap: 4px;
-      padding: 10px 12px;
-      align-self: flex-start;
-    }
-    .chat-typing span {
-      width: 6px; height: 6px;
-      border-radius: 50%;
-      background: var(--muted);
-      animation: chatTypingBounce 1.2s infinite ease-in-out;
-    }
-    .chat-typing span:nth-child(2) { animation-delay: .15s; }
-    .chat-typing span:nth-child(3) { animation-delay: .3s; }
-    @keyframes chatTypingBounce {
-      0%, 60%, 100% { transform: translateY(0); opacity: .5; }
-      30% { transform: translateY(-4px); opacity: 1; }
-    }
-    /* ── TELA DE LOGIN / ACESSO RESTRITO ── */
-    .login-overlay {
-      position: fixed;
-      inset: 0;
-      z-index: 999;
-      background: radial-gradient(circle at 30% 20%, rgba(59,130,246,.10), transparent 60%), var(--bg);
-      display: flex;
+    /* Modal de nome */
+    #chatNameOverlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.6);
+      z-index: 1001;
+      display: none;
       align-items: center;
       justify-content: center;
-      padding: 24px;
     }
-    .login-box {
-      width: 100%;
-      max-width: 380px;
+    #chatNameOverlay.open { display: flex; }
+    .chat-name-box {
       background: var(--surface);
-      border: 1px solid var(--border);
+      border: 1px solid var(--border-lit);
       border-radius: var(--radius);
+      padding: 22px;
+      width: 300px;
       box-shadow: var(--glow);
-      padding: 32px 28px;
     }
-    .login-logo {
-      width: 44px; height: 44px;
-      border-radius: 10px;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      display: flex; align-items: center; justify-content: center;
-      color: #fff; font-size: 18px;
-      margin-bottom: 16px;
-    }
-    .login-box h1 {
-      font-size: 20px;
-      font-weight: 700;
-      letter-spacing: -.3px;
-      margin-bottom: 4px;
-    }
-    .login-box h1 span {
-      display: block;
-      font-size: 12px;
-      font-weight: 400;
-      color: var(--muted);
-      margin-top: 2px;
-    }
-    .login-sub {
-      font-size: 13px;
-      color: var(--muted);
-      margin: 10px 0 20px;
-      line-height: 1.5;
-    }
-    .login-field { margin-bottom: 14px; }
-    .login-field label {
-      display: block;
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--muted);
-      margin-bottom: 6px;
-    }
-    .login-field input, .login-field textarea {
+    .chat-name-box h3 { font-size: 15px; margin-bottom: 6px; }
+    .chat-name-box p { font-size: 12.5px; color: var(--muted); margin-bottom: 14px; }
+    .chat-name-box input {
       width: 100%;
-      background: var(--surface2);
+      background: var(--bg);
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
+      padding: 9px 12px;
       color: var(--text);
-      padding: 10px 12px;
       font-family: var(--font);
-      font-size: 14px;
+      font-size: 13px;
       outline: none;
-      resize: vertical;
+      margin-bottom: 12px;
     }
-    .login-field input:focus, .login-field textarea:focus { border-color: var(--accent); }
-    .login-error {
-      background: rgba(239,68,68,.1);
-      border: 1px solid rgba(239,68,68,.3);
-      color: var(--red);
-      font-size: 12.5px;
-      padding: 8px 10px;
-      border-radius: var(--radius-sm);
-      margin-bottom: 14px;
-    }
-    .login-submit { width: 100%; justify-content: center; }
-    .login-request-link {
+    .chat-name-box input:focus { border-color: var(--accent); }
+    .chat-name-box button {
       width: 100%;
-      background: none;
+      background: var(--accent);
       border: none;
-      color: var(--accent);
-      font-size: 12.5px;
-      font-family: var(--font);
+      color: #fff;
+      padding: 10px;
+      border-radius: var(--radius-sm);
+      font-weight: 600;
+      font-size: 13px;
       cursor: pointer;
-      margin-top: 16px;
-      text-align: center;
-      display: block;
     }
-    .login-request-link:hover { text-decoration: underline; }
-    .login-status-box {
-      text-align: center; padding: 20px 4px;
-    }
-    .login-status-box i { font-size: 30px; margin-bottom: 12px; display: block; }
-    .login-status-box.pendente i { color: #eab308; }
-    .login-status-box.negado i { color: #ef4444; }
-    .login-status-box p { color: var(--muted); font-size: 13px; line-height: 1.5; }
-    .req-item {
-      border: 1px solid var(--border); border-radius: 10px;
-      padding: 12px 14px; margin-bottom: 10px;
-      display: flex; align-items: center; justify-content: space-between; gap: 10px;
-    }
-    .req-item-info p { margin: 0; font-size: 12px; color: var(--muted); }
-    .req-item-info strong { font-size: 13px; }
-    .req-item-actions { display: flex; gap: 6px; flex-shrink: 0; }
-    .req-item-actions button {
-      border: none; border-radius: 6px; width: 30px; height: 30px;
-      cursor: pointer; font-size: 12px; color: #fff;
-    }
-    .req-approve { background: #16a34a; }
-    .req-deny { background: #ef4444; }
+    .chat-name-box button:hover { background: var(--accent2); }
   </style>
 </head>
 <body>
-
-<!-- ═══════════════ TELA DE LOGIN (ACESSO RESTRITO) ═══════════════ -->
-<div id="loginOverlay" class="login-overlay">
-  <div class="login-box">
-    <div class="login-logo"><i class="fas fa-building"></i></div>
-    <h1>CDA <span>Consulta dados Arcom</span></h1>
-    <p class="login-sub">Acesso restrito. Faça login com seu usuário e senha, ou solicite permissão ao administrador.</p>
-
-    <form id="loginForm" onsubmit="return tentarLogin(event)">
-      <div class="login-field">
-        <label>E-mail</label>
-        <input type="email" id="loginUser" autocomplete="username" required>
-      </div>
-      <div class="login-field">
-        <label>Senha</label>
-        <input type="password" id="loginPass" autocomplete="current-password" required>
-      </div>
-      <div id="loginError" class="login-error" style="display:none"></div>
-      <button type="submit" class="btn btn-primary login-submit">
-        <i class="fas fa-sign-in-alt"></i> Entrar
-      </button>
-    </form>
-
-    <button class="login-request-link" onclick="abrirSolicitacao()">
-      Não tenho acesso — solicitar permissão
-    </button>
-  </div>
-</div>
-
-<!-- ═══════════════ MODAL: SOLICITAR ACESSO ═══════════════ -->
-<div id="requestOverlay" class="login-overlay" style="display:none">
-  <div class="login-box">
-    <h1 style="font-size:18px">Solicitar acesso</h1>
-    <p class="login-sub">Preencha os dados abaixo e crie uma senha. Sua conta ficará pendente até que o administrador aprove o acesso.</p>
-    <form id="requestForm" onsubmit="return enviarSolicitacao(event)">
-      <div class="login-field">
-        <label>Seu nome</label>
-        <input type="text" id="reqNome" required>
-      </div>
-      <div class="login-field">
-        <label>Seu e-mail</label>
-        <input type="email" id="reqEmail" required>
-      </div>
-      <div class="login-field">
-        <label>Motivo do acesso</label>
-        <textarea id="reqMotivo" rows="3" required></textarea>
-      </div>
-      <div class="login-field">
-        <label>Crie uma senha</label>
-        <input type="password" id="reqSenha" autocomplete="new-password" minlength="6" required>
-      </div>
-      <div id="reqError" class="login-error" style="display:none"></div>
-      <button type="submit" class="btn btn-primary login-submit">
-        <i class="fas fa-paper-plane"></i> Enviar solicitação
-      </button>
-    </form>
-    <button class="login-request-link" onclick="fecharSolicitacao()">Voltar ao login</button>
-  </div>
-</div>
-
-<!-- ═══════════════ TELA: STATUS DA SOLICITAÇÃO (pendente / negado) ═══════════════ -->
-<div id="statusOverlay" class="login-overlay" style="display:none">
-  <div class="login-box">
-    <div id="statusContent" class="login-status-box"></div>
-    <button class="login-request-link" onclick="fecharStatus()">Voltar ao login</button>
-  </div>
-</div>
-
-<!-- ═══════════════ CONTEÚDO DO APP (fica oculto até o login ser aprovado) ═══════════════ -->
-<div id="appGate" style="display:none">
 
 <!-- FUNDO DE PARTÍCULAS -->
 <canvas id="particleCanvas"></canvas>
@@ -1223,28 +1096,11 @@ function copiarProspeccao(){
 <nav class="topbar">
   <a class="topbar-brand" href="#">
     <span class="logo-dot"><i class="fas fa-building"></i></span>
-    <span>/ CDA (Consulta dados Arcom)</span>
+    <span>/ Verificador CNPJ</span>
   </a>
   <div class="topbar-spacer"></div>
-  <button class="topbar-btn" id="btnAdminPainel" style="display:none" onclick="abrirAdminPainel()" title="Solicitações de acesso"><i class="fas fa-user-clock"></i></button>
   <button class="topbar-btn" onclick="openSettings()" title="Configurações"><i class="fas fa-sliders-h"></i></button>
-  <button class="topbar-btn" onclick="logout()" title="Sair"><i class="fas fa-sign-out-alt"></i></button>
 </nav>
-
-<!-- ═══════════════ MODAL: PAINEL DE APROVAÇÃO DE ACESSOS (só admin) ═══════════════ -->
-<div class="modal-overlay" id="adminModal">
-  <div class="modal-box">
-    <div class="modal-head">
-      <div>
-        <p class="modal-head-razao">Solicitações de acesso</p>
-      </div>
-      <button class="modal-close" onclick="closeModal('adminModal')"><i class="fas fa-times"></i></button>
-    </div>
-    <div class="modal-body">
-      <div id="adminReqList"><p style="color:var(--muted);font-size:13px">Carregando...</p></div>
-    </div>
-  </div>
-</div>
 
 <div class="page">
 
@@ -1271,10 +1127,6 @@ function copiarProspeccao(){
       <div class="api-option">
         <input type="radio" name="api" id="api2" value="opencnpj" onchange="selectAPI('opencnpj')">
         <label for="api2"><strong>OpenCNPJ</strong><small>Receita Federal direto</small></label>
-      </div>
-      <div class="api-option">
-        <input type="radio" name="api" id="api3" value="arcom" onchange="selectAPI('arcom')">
-        <label for="api3"><strong>Consulta CNPJ Arcom</strong><small>API própria (JWT)</small></label>
       </div>
     </div>
 
@@ -1580,41 +1432,13 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
     <div class="modal-body" id="enrichBody">
       <div class="enrich-loading">
         <div class="spinner-lg"></div>
-        <p>Buscando contato na web e gerando insight comercial com IA…</p>
+        <p>Gerando insight comercial com IA…</p>
       </div>
     </div>
     <div class="modal-footer-row">
       <button class="btn btn-ghost" onclick="closeModal('enrichModal')">Fechar</button>
       <button class="btn btn-purple" id="btnExportEnrich" onclick="exportEnrichAtual()" style="display:none">
         <i class="fas fa-download"></i> Exportar insight
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL: MAPA -->
-<div class="modal-overlay" id="mapModal">
-  <div class="modal-box" style="max-width:640px">
-    <div class="modal-head">
-      <div>
-        <p class="modal-head-cnpj" id="mapCNPJ"></p>
-        <p class="modal-head-razao" id="mapRazao"></p>
-      </div>
-      <button class="modal-close" onclick="closeModal('mapModal')"><i class="fas fa-times"></i></button>
-    </div>
-    <div class="modal-body" style="padding:0">
-      <div style="padding:16px 24px 0">
-        <p style="font-size:12px;color:var(--muted);margin-bottom:12px" id="mapEndereco">—</p>
-      </div>
-      <iframe id="mapFrame"
-        width="100%" height="380" style="border:0;display:block"
-        loading="lazy" referrerpolicy="no-referrer-when-downgrade">
-      </iframe>
-    </div>
-    <div class="modal-footer-row">
-      <button class="btn btn-ghost" onclick="closeModal('mapModal')">Fechar</button>
-      <button class="btn btn-primary" id="btnAbrirMapaExterno" onclick="abrirMapaExterno()">
-        <i class="fas fa-up-right-from-square"></i> Abrir no Google Maps
       </button>
     </div>
   </div>
@@ -1714,16 +1538,54 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
 
 <script>
 // ── GLOBALS ─────────────────────────────────────────────────────────────────
-const norm  = s => s.replace(/\D/g,'');
-let rows = [], allData = {}, selectedAPI = 'brasilapi';
-let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
-let historyLog = JSON.parse(localStorage.getItem('cnpjHistory')) || [];
-let chart = null, currentDetailsCNPJ = null;
-let _regionalResultados = [], _regionalCidade = '', _regionalUF = '';
-let enrichData = {}; // cnpj -> insight comercial gerado pela IA (Groq)
-let currentEnrichCNPJ = null;
-let erroCNPJs = []; // lista de {cnpj, motivo} que não foram consultados com sucesso
-let mapaEnderecoAtual = ''; // endereço em exibição no modal de mapa
+// ⚠️ Cole aqui a URL do seu Worker do Cloudflare (veja worker.js para o passo a passo).
+// Sem isso configurado, o botão "Gerar insight" não vai funcionar — o GitHub Pages
+// é hospedagem estática e não pode chamar a API da Groq com segurança direto (a
+// chave ficaria exposta no código-fonte).
+    const prospects = await searchResponse.json();
+
+    // Enriquecer com dados comerciais
+    const enrichResponse = await fetch(`${VIBE_API_BASE}/companies/enrich`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${VIBE_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        company: {
+          name: dadosEmpresa.razao,
+          cnpj: cnpj
+        }
+      })
+    });
+
+    const enrichedData = await enrichResponse.json();
+
+    // Estruturar resposta no formato esperado
+    return {
+      resumo: `${dadosEmpresa.razao} - ${enrichedData.industry || dadosEmpresa.atividade}. ${enrichedData.description || ''}`,
+      pontos_fortes: [
+        enrichedData.funding_status ? `Financiamento: ${enrichedData.funding_status}` : 'Dados financeiros disponíveis',
+        enrichedData.employee_count ? `${enrichedData.employee_count} funcionários` : 'Empresa estruturada',
+        enrichedData.growth_rate ? `Crescimento: ${enrichedData.growth_rate}%` : 'Em operação ativa'
+      ],
+      sinais_atencao: [
+        dadosEmpresa.situacao.includes('ATIVA') ? 'Regularizada' : '⚠️ Verifique situação cadastral'
+      ],
+      abordagem_sugerida: `Procure por: ${prospects.data?.map(p => p.job_title).join(', ') || 'gestores da empresa'}. Foque em proposta de valor para ${enrichedData.industry || 'seu setor'}.`,
+      perguntas_qualificacao: [
+        `Como está o orçamento para ${enrichedData.industry} em ${new Date().getFullYear()}?`,
+        `Quais são os principais desafios operacionais?`,
+        `Utiliza tecnologia para ${enrichedData.primary_use_case || 'gestão'} atualmente?`
+      ],
+      nivel_confianca: 'alto',
+      contatos_encontrados: prospects.data || [],
+      dados_enriquecidos: enrichedData
+    };
+  } catch (error) {
+    throw new Error(`Erro ao consultar Vibe Prospecting: ${error.message}`);
+  }
+}
 
 // ── TABS ────────────────────────────────────────────────────────────────────
 function showTab(name, el) {
@@ -1927,188 +1789,6 @@ window.addEventListener('load', () => {
   initParticles();
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ── LOGIN / SOLICITAÇÃO DE ACESSO (Firebase Auth + Firestore) ──────────────
-// ═══════════════════════════════════════════════════════════════════════════
-
-// TODO: cole aqui o firebaseConfig do seu projeto (Configurações do projeto > Seus apps > SDK setup and configuration)
-const firebaseConfig = {
-  apiKey: "AIzaSyDPIZIPl9zlQW1xUptgP4OlJkiTlFEnN4g",
-  authDomain: "consulta-cnpj-efe7c.firebaseapp.com",
-  databaseURL: "https://consulta-cnpj-efe7c-default-rtdb.firebaseio.com",
-  projectId: "consulta-cnpj-efe7c",
-  storageBucket: "consulta-cnpj-efe7c.firebasestorage.app",
-  messagingSenderId: "978339964025",
-  appId: "1:978339964025:web:c303d79519cc37efc720a8",
-  measurementId: "G-Z8J38Y2Z59"
-};
-
-// TODO: troque pelo seu e-mail. Só quem logar com este e-mail vê o painel de aprovação.
-const ADMIN_EMAIL = 'jlrodrigues6900@gmail.com';
-
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.firestore();
-const usersCol = db.collection('usuarios'); // uma doc por usuário, id = uid, campos: nome, email, motivo, status, criadoEm
-
-function mostrarTelaLogin() {
-  document.getElementById('loginOverlay').style.display = 'flex';
-  document.getElementById('requestOverlay').style.display = 'none';
-  document.getElementById('statusOverlay').style.display = 'none';
-  document.getElementById('appGate').style.display = 'none';
-}
-
-function mostrarTelaStatus(status) {
-  document.getElementById('loginOverlay').style.display = 'none';
-  document.getElementById('requestOverlay').style.display = 'none';
-  document.getElementById('appGate').style.display = 'none';
-  const overlay = document.getElementById('statusOverlay');
-  const content = document.getElementById('statusContent');
-  overlay.style.display = 'flex';
-  if (status === 'pendente') {
-    content.className = 'login-status-box pendente';
-    content.innerHTML = '<i class="fas fa-hourglass-half"></i><p><strong>Solicitação em análise.</strong><br>Assim que o administrador aprovar seu acesso, você poderá entrar normalmente com seu e-mail e senha.</p>';
-  } else if (status === 'negado') {
-    content.className = 'login-status-box negado';
-    content.innerHTML = '<i class="fas fa-ban"></i><p><strong>Acesso negado.</strong><br>O administrador não aprovou sua solicitação. Entre em contato caso ache que isso é um engano.</p>';
-  } else {
-    content.className = 'login-status-box negado';
-    content.innerHTML = '<i class="fas fa-triangle-exclamation"></i><p>Não encontramos uma solicitação de acesso vinculada a esta conta.</p>';
-  }
-}
-
-function fecharStatus() {
-  auth.signOut();
-  mostrarTelaLogin();
-}
-
-async function mostrarApp(userDoc) {
-  document.getElementById('loginOverlay').style.display = 'none';
-  document.getElementById('requestOverlay').style.display = 'none';
-  document.getElementById('statusOverlay').style.display = 'none';
-  document.getElementById('appGate').style.display = '';
-  const isAdmin = auth.currentUser && auth.currentUser.email === ADMIN_EMAIL;
-  document.getElementById('btnAdminPainel').style.display = isAdmin ? '' : 'none';
-}
-
-// Reage a qualquer mudança de login (login, logout, refresh da página)
-auth.onAuthStateChanged(async (user) => {
-  if (!user) { mostrarTelaLogin(); return; }
-  try {
-    const doc = await usersCol.doc(user.uid).get();
-    if (!doc.exists) { mostrarTelaStatus(null); return; }
-    const status = doc.data().status;
-    if (status === 'aprovado') { mostrarApp(doc.data()); }
-    else if (status === 'pendente') { mostrarTelaStatus('pendente'); }
-    else { mostrarTelaStatus('negado'); }
-  } catch (e) {
-    console.error(e);
-    mostrarTelaStatus(null);
-  }
-});
-
-async function tentarLogin(event) {
-  event.preventDefault();
-  const email = document.getElementById('loginUser').value.trim();
-  const senha = document.getElementById('loginPass').value;
-  const errBox = document.getElementById('loginError');
-  errBox.style.display = 'none';
-  try {
-    await auth.signInWithEmailAndPassword(email, senha);
-    // onAuthStateChanged cuida do resto (checar status e mostrar tela certa)
-  } catch (e) {
-    let msg = 'Não foi possível entrar. Verifique seu e-mail e senha.';
-    if (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found') {
-      msg = 'E-mail ou senha incorretos.';
-    } else if (e.code === 'auth/too-many-requests') {
-      msg = 'Muitas tentativas. Aguarde um momento e tente novamente.';
-    }
-    errBox.textContent = msg;
-    errBox.style.display = 'block';
-  }
-  return false;
-}
-
-function abrirSolicitacao() {
-  document.getElementById('loginOverlay').style.display = 'none';
-  document.getElementById('requestOverlay').style.display = 'flex';
-}
-function fecharSolicitacao() {
-  document.getElementById('requestOverlay').style.display = 'none';
-  document.getElementById('loginOverlay').style.display = 'flex';
-}
-
-async function enviarSolicitacao(event) {
-  event.preventDefault();
-  const nome = document.getElementById('reqNome').value.trim();
-  const email = document.getElementById('reqEmail').value.trim();
-  const motivo = document.getElementById('reqMotivo').value.trim();
-  const senha = document.getElementById('reqSenha').value;
-  const errBox = document.getElementById('reqError');
-  errBox.style.display = 'none';
-  try {
-    const cred = await auth.createUserWithEmailAndPassword(email, senha);
-    await usersCol.doc(cred.user.uid).set({
-      nome, email, motivo,
-      status: 'pendente',
-      criadoEm: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    // onAuthStateChanged vai detectar o login automático e mostrar a tela "pendente"
-  } catch (e) {
-    let msg = 'Não foi possível enviar a solicitação.';
-    if (e.code === 'auth/email-already-in-use') msg = 'Este e-mail já possui uma conta. Tente fazer login.';
-    else if (e.code === 'auth/weak-password') msg = 'Senha muito fraca (mínimo 6 caracteres).';
-    else if (e.code === 'auth/invalid-email') msg = 'E-mail inválido.';
-    errBox.textContent = msg;
-    errBox.style.display = 'block';
-  }
-  return false;
-}
-
-function logout() {
-  auth.signOut();
-}
-
-// ── PAINEL DE ADMINISTRAÇÃO (aprovar / negar) ──────────────────────────────
-async function abrirAdminPainel() {
-  openModal('adminModal');
-  await renderAdminPainel();
-}
-
-async function renderAdminPainel() {
-  const box = document.getElementById('adminReqList');
-  box.innerHTML = '<p style="color:var(--muted);font-size:13px">Carregando...</p>';
-  const snap = await usersCol.orderBy('criadoEm', 'desc').get();
-  if (snap.empty) {
-    box.innerHTML = '<p style="color:var(--muted);font-size:13px">Nenhuma solicitação ainda.</p>';
-    return;
-  }
-  box.innerHTML = '';
-  snap.forEach(doc => {
-    const d = doc.data();
-    const uid = doc.id;
-    const statusLabel = { pendente: 'Pendente', aprovado: 'Aprovado', negado: 'Negado' }[d.status] || d.status;
-    const item = document.createElement('div');
-    item.className = 'req-item';
-    item.innerHTML = `
-      <div class="req-item-info">
-        <strong>${d.nome || '—'}</strong> <span class="badge">${statusLabel}</span>
-        <p>${d.email || ''}</p>
-        <p>${d.motivo || ''}</p>
-      </div>
-      <div class="req-item-actions">
-        ${d.status !== 'aprovado' ? `<button class="req-approve" title="Aprovar" onclick="definirStatus('${uid}','aprovado')"><i class="fas fa-check"></i></button>` : ''}
-        ${d.status !== 'negado' ? `<button class="req-deny" title="Negar" onclick="definirStatus('${uid}','negado')"><i class="fas fa-times"></i></button>` : ''}
-      </div>`;
-    box.appendChild(item);
-  });
-}
-
-async function definirStatus(uid, status) {
-  await usersCol.doc(uid).update({ status });
-  await renderAdminPainel();
-}
-
 // ── API CALLS ─────────────────────────────────────────────────────────────────
 async function consultarBrasilAPI(cnpj) {
   const r = await fetch('https://brasilapi.com.br/api/cnpj/v1/'+cnpj);
@@ -2137,79 +1817,6 @@ async function consultarOpenCNPJ(cnpj) {
     endereco:`${d.logradouro||'—'}, ${d.numero||'—'} ${d.bairro||'—'}, ${d.municipio||'—'} - ${d.uf||'—'}`,
     cep:d.cep||'—', telefone:d.telefone||'—', email:d.email||'—',
     socios:d.qsa||[], api:'OpenCNPJ', municipio:d.municipio||'' };
-}
-
-// ── CONSULTA CNPJ ARCOM (JWT) ───────────────────────────────────────────────
-// TODO: cole sua api_key real aqui antes de usar.
-const ARCOM_API_BASE_URL = 'http://consultacnpj.arcom.com.br:8080';
-const ARCOM_API_KEY = 'fd4152b9-6b34-43b7-85f2-93f901809ac6.t6bad8Z6ooOfBuvTt0lqI7SLQ0nqbCq2X-E3qAqmAe8';
-
-let arcomToken = localStorage.getItem('arcomToken') || null;
-let arcomTokenExp = parseInt(localStorage.getItem('arcomTokenExp') || '0', 10);
-
-async function obterArcomToken(forcar) {
-  if (ARCOM_API_KEY === 'COLOQUE_SUA_API_KEY_AQUI') {
-    throw new Error('Consulta CNPJ Arcom: cole sua api_key real na constante ARCOM_API_KEY antes de usar.');
-  }
-  if (!forcar && arcomToken && Date.now() < arcomTokenExp) return arcomToken;
-  const r = await fetch(ARCOM_API_BASE_URL + '/v1/auth/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ api_key: ARCOM_API_KEY })
-  });
-  if (!r.ok) throw new Error('Falha ao autenticar na Consulta CNPJ Arcom (HTTP ' + r.status + ')');
-  const data = await r.json();
-  arcomToken = data.token;
-  // token vale 90 dias; guardamos com 1 dia de folga
-  arcomTokenExp = Date.now() + (89 * 24 * 60 * 60 * 1000);
-  localStorage.setItem('arcomToken', arcomToken);
-  localStorage.setItem('arcomTokenExp', String(arcomTokenExp));
-  return arcomToken;
-}
-
-async function consultarNovaAPI(cnpj) {
-  if (!isValidCNPJ(cnpj)) throw new Error('CNPJ inválido');
-  let token = await obterArcomToken(false);
-  let r = await fetch(ARCOM_API_BASE_URL + '/v1/cnpj/' + cnpj, {
-    headers: { 'Authorization': 'Bearer ' + token }
-  });
-  if (r.status === 401) {
-    token = await obterArcomToken(true);
-    r = await fetch(ARCOM_API_BASE_URL + '/v1/cnpj/' + cnpj, {
-      headers: { 'Authorization': 'Bearer ' + token }
-    });
-  }
-  if (!r.ok) {
-    if (r.status === 404) throw new Error('CNPJ não encontrado');
-    if (r.status === 422) throw new Error('CNPJ inválido');
-    throw new Error('Erro na Consulta CNPJ Arcom (HTTP ' + r.status + ')');
-  }
-  const d = await r.json();
-  const sit = ((d.situacao_cadastral && d.situacao_cadastral.descricao) || 'INDEFINIDA').toUpperCase();
-  const nomeMunicipio = (d.municipio && d.municipio.descricao) || '';
-  const enderecoInicio = [d.logradouro, d.numero].filter(Boolean).join(', ');
-  const enderecoFim = [d.bairro, nomeMunicipio, d.uf].filter(Boolean).join(', ');
-  const endereco = (enderecoInicio || enderecoFim)
-    ? (enderecoInicio + (enderecoFim ? ' - ' + enderecoFim : ''))
-    : '—';
-  return {
-    situacao: sit,
-    razao: (d.empresa && d.empresa.razao_social) || '—',
-    porte: (d.empresa && d.empresa.porte_empresa && d.empresa.porte_empresa.descricao) || '—',
-    natureza: (d.empresa && d.empresa.natureza_juridica && d.empresa.natureza_juridica.descricao) || '—',
-    atividade: (d.cnae_fiscal_principal && d.cnae_fiscal_principal.descricao) || '—',
-    uf: (d.uf || '—').substring(0, 2),
-    nomeFantasia: d.nome_fantasia || '—',
-    dataInicio: d.data_inicio_atividade || '—',
-    capitalSocial: d.capital_social ? 'R$ ' + Number(d.capital_social).toLocaleString('pt-BR') : '—',
-    endereco: endereco,
-    cep: d.cep || '—',
-    telefone: d.telefone || d.ddd_telefone_1 || '—',
-    email: d.email || '—',
-    socios: d.socios || [],
-    api: 'Consulta CNPJ Arcom',
-    municipio: nomeMunicipio
-  };
 }
 
 // ── VERIFICATION ──────────────────────────────────────────────────────────────
@@ -2244,7 +1851,7 @@ async function startVerification() {
       continue;
     }
     try {
-      const result = selectedAPI==='brasilapi'?await consultarBrasilAPI(cnpj):selectedAPI==='opencnpj'?await consultarOpenCNPJ(cnpj):await consultarNovaAPI(cnpj);
+      const result = selectedAPI==='brasilapi'?await consultarBrasilAPI(cnpj):await consultarOpenCNPJ(cnpj);
       allData[cnpj]=result; total++;
       if (result.situacao.includes('INAPTA')) inap++;
       else if (result.situacao.includes('BAIXADA')) baix++;
@@ -2262,7 +1869,6 @@ async function startVerification() {
         <td class="td-actions">
           <button class="btn-eye" onclick="openDetailsModal('${cnpj}')"><i class="fas fa-eye"></i> Ver</button>
           <button class="btn-eye btn-purple" onclick="enriquecerDados('${cnpj}')" id="enrichBtn-${cnpj}"><i class="fas fa-lightbulb"></i> Insight IA</button>
-          <button class="btn-eye" onclick="abrirMapa('${cnpj}')"><i class="fas fa-map-location-dot"></i> Mapa</button>
         </td>
       </tr>`;
       updateStats(total,baix,inap,susp,erro);
@@ -2395,192 +2001,76 @@ function copiarCNPJsProblema() {
     .catch(()=>alert('Erro ao copiar.'));
 }
 
-// ── MAPA (endereço do CNPJ consultado) ─────────────────────────────────────
-function abrirMapa(cnpj) {
-  const data = allData[cnpj];
-  if (!data) return;
-  const endereco = data.endereco || '';
-  if (!endereco || endereco.trim()==='' || endereco.replace(/[—,\s-]/g,'')==='') {
-    alert('Endereço não disponível para esta empresa.');
-    return;
-  }
-  mapaEnderecoAtual = endereco;
-  document.getElementById('mapCNPJ').textContent = fmt(cnpj);
-  document.getElementById('mapRazao').textContent = data.razao;
-  document.getElementById('mapEndereco').innerHTML = `<i class="fas fa-map-pin" style="color:var(--accent);margin-right:5px"></i>${endereco}`;
-  document.getElementById('mapFrame').src =
-    `https://maps.google.com/maps?q=${encodeURIComponent(endereco)}&t=&z=15&output=embed`;
-  openModal('mapModal');
-}
-
-function abrirMapaExterno() {
-  if (!mapaEnderecoAtual) return;
-  window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapaEnderecoAtual)}`, '_blank');
-}
-
-// ── INSIGHT COMERCIAL (IA — Groq + busca real na web via Tavily) ──────────
-// Duas etapas:
-//  1) TAVILY faz uma busca de verdade na internet (inclui site institucional,
-//     Instagram, LinkedIn, listas telefônicas etc.) usando razão social /
-//     nome fantasia / cidade da empresa.
-//  2) GROQ lê os trechos retornados pela busca e organiza tudo (resumo
-//     comercial + telefone/site/redes sociais encontrados, SEMPRE citando
-//     de qual resultado tirou cada contato — nunca inventa nada que não
-//     esteja nos trechos retornados pela busca).
-//
-// ⚠️ Cole aqui suas chaves (ambas grátis, sem cartão):
-//   - Groq:   console.groq.com/keys
-//   - Tavily: app.tavily.com (1.000 buscas grátis/mês)
-// Atenção: como este é um site estático (GitHub Pages), as chaves ficam
-// visíveis no código-fonte para quem inspecionar a página. Para uso
-// pessoal/interno da equipe isso costuma ser aceitável; para publicar para
-// terceiros, o ideal é colocar essas chamadas atrás de um proxy simples
-// (ex.: Cloudflare Worker) para não expor as chaves.
-const GROQ_API_KEY = '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';
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
-
-const TAVILY_API_KEY = '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'; // <- cole sua chave tvly-xxxxxxxx aqui
-const TAVILY_API_URL = 'https://api.tavily.com/search';
-
-// Faz a busca real na web sobre a empresa (site, telefone, Instagram, LinkedIn).
-// Retorna uma lista de resultados [{title, url, content}]. Se a Tavily não
-// estiver configurada, retorna [] e o insight segue só com os dados da Receita.
-async function buscarContatoWeb(dadosEmpresa) {
-  if (!TAVILY_API_KEY) return [];
-
-  const nome = dadosEmpresa.nomeFantasia && dadosEmpresa.nomeFantasia !== '—'
-    ? dadosEmpresa.nomeFantasia : dadosEmpresa.razao;
-  const query = `${nome} ${dadosEmpresa.municipio} ${dadosEmpresa.uf} telefone contato site instagram linkedin`;
-
-  try {
-    const response = await fetch(TAVILY_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        api_key: TAVILY_API_KEY,
-        query,
-        search_depth: 'advanced',
-        include_answer: false,
-        max_results: 8
-      })
-    });
-    if (!response.ok) return [];
-    const data = await response.json();
-    return (data.results || []).map(r => ({
-      title: r.title || '',
-      url: r.url || '',
-      content: (r.content || '').slice(0, 500)
-    }));
-  } catch {
-    return []; // busca falhou (ex.: CORS no host onde o site está publicado) — segue sem contato web
-  }
-}
-
+// ── INSIGHT COMERCIAL (IA — Groq/Llama, gratuito) ─────────────────────────────
+// Gera um resumo/insight comercial usando SOMENTE os dados públicos que já
+// foram consultados na Receita Federal (situação, porte, atividade, sócios,
+// capital social, endereço). A IA nunca busca a web e nunca inventa contato,
+// e-mail ou telefone — só interpreta o que já temos em mãos.
 async function consultarInsightIA(cnpj, dadosEmpresa) {
-  if (!GROQ_API_KEY) {
-    throw new Error('Configure sua chave da Groq na constante GROQ_API_KEY.');
-  }
+  const socios = (dadosEmpresa.socios||[])
+    .map(s => `${s.nome_socio||s.nome||'Não informado'} (${s.qualificacao_socio||s.qualificacao||'qualificação não informada'})`)
+    .join('; ') || 'não informado';
 
-  const resultadosWeb = await buscarContatoWeb(dadosEmpresa);
-  const blocoWeb = resultadosWeb.length
-    ? resultadosWeb.map((r, i) => `[${i + 1}] ${r.title}\nURL: ${r.url}\nTrecho: ${r.content}`).join('\n\n')
-    : '(nenhum resultado de busca disponível — Tavily não configurada ou sem resultados)';
+  const prompt = `Você é um analista comercial. Analise ESTRITAMENTE os dados públicos abaixo (vindos da Receita Federal) sobre uma empresa brasileira e gere um insight comercial curto para ajudar um vendedor a se preparar para o contato.
 
-  const prompt = `Você é um analista comercial. Use os dados públicos da Receita Federal E os trechos de busca na internet abaixo para montar um insight comercial de abordagem B2B.
+Regras importantes:
+- Use APENAS as informações fornecidas abaixo. NUNCA invente nomes de contato, e-mail, telefone, site, redes sociais, funcionários ou faturamento que não estejam nos dados.
+- Se um dado não permitir conclusão, diga isso explicitamente em vez de supor.
 
-Dados da empresa (Receita Federal):
-- Razão Social: ${dadosEmpresa.razao}
-- Nome Fantasia: ${dadosEmpresa.nomeFantasia}
-- Situação Cadastral: ${dadosEmpresa.situacao}
-- Porte: ${dadosEmpresa.porte}
-- Natureza Jurídica: ${dadosEmpresa.natureza}
-- Atividade Principal: ${dadosEmpresa.atividade}
-- Data de Abertura: ${dadosEmpresa.dataInicio}
-- Capital Social: ${dadosEmpresa.capitalSocial}
-- Município/UF: ${dadosEmpresa.municipio}/${dadosEmpresa.uf}
-- Quadro Societário: ${(dadosEmpresa.socios||[]).map(s=>`${s.nome_socio||s.nome||''} (${s.qualificacao_socio||s.qualificacao||''})`).join('; ') || 'não informado'}
+Dados da empresa:
+Razão social: ${dadosEmpresa.razao}
+Nome fantasia: ${dadosEmpresa.nomeFantasia||'—'}
+CNPJ: ${fmt(cnpj)}
+Situação cadastral: ${dadosEmpresa.situacao}
+Porte: ${dadosEmpresa.porte}
+Natureza jurídica: ${dadosEmpresa.natureza}
+Atividade principal: ${dadosEmpresa.atividade}
+Data de abertura: ${dadosEmpresa.dataInicio}
+Capital social: ${dadosEmpresa.capitalSocial}
+Cidade/UF: ${dadosEmpresa.municipio||''}/${dadosEmpresa.uf}
+Quadro societário: ${socios}
 
-Resultados de busca na internet sobre esta empresa:
-${blocoWeb}
-
-REGRAS IMPORTANTES:
-- Para "pontos_fortes", "sinais_atencao", "abordagem_sugerida" e "perguntas_qualificacao": baseie-se nos dados da Receita Federal, sem inventar.
-- Para "contatos_encontrados": preencha telefone, site, instagram, linkedin e email SOMENTE se aparecerem literalmente nos trechos de busca acima. Se não encontrar algum, deixe null. NUNCA invente um contato.
-- Em "fontes", liste apenas os números [n] dos resultados de busca que você realmente usou para extrair algum contato.
-
-Responda ESTRITAMENTE em JSON válido, sem nenhum texto antes ou depois, seguindo este formato exato:
+Responda ESTRITAMENTE em JSON válido, sem markdown, sem texto fora do JSON, neste formato exato:
 {
-  "resumo": "resumo de 2-3 frases sobre a empresa e o potencial comercial",
-  "pontos_fortes": ["ponto 1", "ponto 2", "ponto 3"],
-  "sinais_atencao": ["sinal 1", "sinal 2"],
-  "abordagem_sugerida": "sugestão de abordagem comercial em 2-3 frases",
-  "perguntas_qualificacao": ["pergunta 1", "pergunta 2", "pergunta 3"],
-  "nivel_confianca": "alto, médio ou baixo",
-  "contatos_encontrados": {
-    "telefone": "string ou null",
-    "site": "string ou null",
-    "instagram": "string ou null",
-    "linkedin": "string ou null",
-    "email": "string ou null",
-    "fontes": [1, 3]
-  }
+  "resumo": "panorama comercial da empresa em 2 a 4 frases",
+  "pontos_fortes": ["ponto forte 1", "ponto forte 2"],
+  "sinais_atencao": ["sinal de atenção 1 (ex: situação cadastral, tempo de mercado curto, etc.)"],
+  "abordagem_sugerida": "como abordar essa empresa comercialmente, com base no perfil observado",
+  "perguntas_qualificacao": ["pergunta 1 para qualificar o lead na primeira conversa", "pergunta 2"],
+  "nivel_confianca": "alto, médio ou baixo — baseado na completude dos dados públicos disponíveis"
 }`;
 
-  const response = await fetch(GROQ_API_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${GROQ_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.3,
-      response_format: { type: 'json_object' }
-    })
-  });
-
-  if (!response.ok) {
-    const errText = await response.text().catch(() => '');
-    throw new Error(`Groq HTTP ${response.status} — ${errText.slice(0,200)}`);
+  if (!ENRICH_PROXY_URL || ENRICH_PROXY_URL.includes('SEU-WORKER')) {
+    throw new Error('Configure ENRICH_PROXY_URL no topo do script (veja worker.js)');
   }
 
+  const response = await fetch(ENRICH_PROXY_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt, max_tokens: 900 })
+  });
   const data = await response.json();
-  const conteudo = data.choices?.[0]?.message?.content || '{}';
+  if (!response.ok) throw new Error(data.error || ('Falha ao consultar a IA (status '+response.status+')'));
+
+  // O worker repassa a resposta no formato OpenAI-compatible da Groq.
+  const textOut = data.choices?.[0]?.message?.content
+    || (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim()
+    || '';
 
   let parsed;
   try {
-    parsed = JSON.parse(conteudo);
-  } catch {
-    throw new Error('A IA retornou um JSON inválido.');
+    const clean = textOut.replace(/```json|```/g,'').trim();
+    parsed = JSON.parse(clean);
+  } catch(e) {
+    parsed = { resumo:'Não foi possível interpretar a resposta da IA como JSON estruturado.', pontos_fortes:[], sinais_atencao:[], abordagem_sugerida:'', perguntas_qualificacao:[], nivel_confianca:'baixo', raw:textOut };
   }
-
-  const contatos = parsed.contatos_encontrados || {};
-  const fontesIdx = Array.isArray(contatos.fontes) ? contatos.fontes : [];
-
-  return {
-    resumo: parsed.resumo || 'Sem resumo disponível.',
-    pontos_fortes: parsed.pontos_fortes || [],
-    sinais_atencao: parsed.sinais_atencao || [],
-    abordagem_sugerida: parsed.abordagem_sugerida || '',
-    perguntas_qualificacao: parsed.perguntas_qualificacao || [],
-    nivel_confianca: parsed.nivel_confianca || '—',
-    buscaWebRealizada: resultadosWeb.length > 0,
-    contatos: {
-      telefone: contatos.telefone || null,
-      site: contatos.site || null,
-      instagram: contatos.instagram || null,
-      linkedin: contatos.linkedin || null,
-      email: contatos.email || null,
-      fontes: fontesIdx.map(n => resultadosWeb[n - 1]).filter(Boolean)
-    }
-  };
+  return parsed;
 }
 
 function renderEnrichBody(cnpj, dados) {
   const semPontos = !dados.pontos_fortes || !dados.pontos_fortes.length;
   const semAtencao = !dados.sinais_atencao || !dados.sinais_atencao.length;
+  const semPerguntas = !dados.perguntas_qualificacao || !dados.perguntas_qualificacao.length;
   const nivel = (dados.nivel_confianca||'—');
   const nivelClasse = nivel.toLowerCase().includes('alto') ? 'badge-ativa'
     : nivel.toLowerCase().includes('médio')||nivel.toLowerCase().includes('medio') ? 'badge-inapta'
@@ -2592,24 +2082,6 @@ function renderEnrichBody(cnpj, dados) {
     <div class="modal-section-title purple"><i class="fas fa-file-lines"></i> Panorama Comercial</div>
     <p style="font-size:13px;line-height:1.6">${dados.resumo||'Sem resumo disponível.'}</p>
     <div style="margin-top:10px"><span class="badge ${nivelClasse}">Confiança dos dados: ${nivel}</span></div>
-  </div>`;
-
-  const c = dados.contatos || {};
-  const temContato = c.telefone || c.site || c.instagram || c.linkedin || c.email;
-  html += `<div class="modal-section">
-    <div class="modal-section-title purple"><i class="fas fa-address-book"></i> Contato Encontrado na Web</div>
-    ${!dados.buscaWebRealizada
-      ? '<div class="enrich-empty">Busca na web não configurada (defina TAVILY_API_KEY no código) ou sem resultados.</div>'
-      : !temContato
-      ? '<div class="enrich-empty">Nenhum contato encontrado nos resultados de busca.</div>'
-      : `<ul style="padding-left:18px;font-size:13px;line-height:1.9">
-          ${c.telefone ? `<li><i class="fas fa-phone"></i> ${c.telefone}</li>` : ''}
-          ${c.site ? `<li><i class="fas fa-globe"></i> <a href="${c.site}" target="_blank" rel="noopener">${c.site}</a></li>` : ''}
-          ${c.instagram ? `<li><i class="fab fa-instagram"></i> ${c.instagram}</li>` : ''}
-          ${c.linkedin ? `<li><i class="fab fa-linkedin"></i> <a href="${c.linkedin}" target="_blank" rel="noopener">${c.linkedin}</a></li>` : ''}
-          ${c.email ? `<li><i class="fas fa-envelope"></i> ${c.email}</li>` : ''}
-        </ul>`}
-    ${(c.fontes && c.fontes.length) ? `<div style="margin-top:8px;font-size:11px;opacity:.75">Fontes: ${c.fontes.map(f=>`<a href="${f.url}" target="_blank" rel="noopener">${f.title || f.url}</a>`).join(' · ')}</div>` : ''}
   </div>`;
 
   html += `<div class="modal-section">
@@ -2631,12 +2103,11 @@ function renderEnrichBody(cnpj, dados) {
 
   html += `<div class="modal-section">
     <div class="modal-section-title purple"><i class="fas fa-circle-question"></i> Perguntas de Qualificação</div>
-    <ul style="padding-left:18px;font-size:13px;line-height:1.7">
-      ${(dados.perguntas_qualificacao||[]).map(p=>`<li>${p}</li>`).join('')}
-    </ul>
+    ${semPerguntas ? '<div class="enrich-empty">Nenhuma pergunta sugerida.</div>'
+      : '<ul style="padding-left:18px;font-size:13px;line-height:1.7">'+dados.perguntas_qualificacao.map(p=>`<li>${p}</li>`).join('')+'</ul>'}
   </div>`;
 
-  html += `<div class="enrich-source-note"><i class="fas fa-circle-info"></i> Insight gerado via Groq (IA)${dados.buscaWebRealizada ? ' com busca real na web via Tavily' : ''} a partir dos dados públicos da Receita Federal${dados.buscaWebRealizada ? ' e de resultados de busca na internet' : ''}. Confirme os contatos encontrados antes de usar.</div>`;
+  html += `<div class="enrich-source-note"><i class="fas fa-circle-info"></i> Insight gerado por IA (Groq/Llama) a partir apenas dos dados públicos da Receita Federal já consultados — nenhum contato foi inventado.</div>`;
 
   return html;
 }
@@ -2651,7 +2122,7 @@ async function enriquecerDados(cnpj) {
   document.getElementById('enrichBody').innerHTML = `
     <div class="enrich-loading">
       <div class="spinner-lg"></div>
-      <p>Buscando contato na web e gerando insight comercial com IA…</p>
+      <p>Gerando insight comercial com IA…</p>
     </div>`;
   openModal('enrichModal');
 
@@ -2991,37 +2462,69 @@ async function analyzeRegional(){
 function delay(ms){return new Promise(r=>setTimeout(r,ms));}
 </script>
 
-<!-- ═══════════════ CHAT COM IA (Groq) ═══════════════ -->
+<!-- ═══════════════ CHAT WIDGET (Firebase) ═══════════════ -->
+
+<!-- Modal para digitar o nome -->
+<div id="chatNameOverlay">
+  <div class="chat-name-box">
+    <h3>Entrar no chat</h3>
+    <p>Escolha um nome para aparecer nas mensagens.</p>
+    <input id="chatNameInput" type="text" placeholder="Seu nome" maxlength="30">
+    <button onclick="chatEntrar()">Entrar no chat</button>
+  </div>
+</div>
 
 <!-- Botão flutuante -->
-<button id="chatToggleBtn" onclick="chatToggle()" title="Chat com IA">
-  <i class="fas fa-robot"></i>
+<button id="chatToggleBtn" onclick="chatToggle()" title="Chat">
+  <i class="fas fa-comment-dots"></i>
+  <span class="chat-badge" id="chatBadge">0</span>
 </button>
 
 <!-- Painel do chat -->
 <div id="chatPanel">
   <div class="chat-header">
     <span class="dot-live"></span>
-    <strong>Chat com IA</strong>
+    <strong>Chat ao vivo</strong>
     <button class="chat-close" onclick="chatToggle()"><i class="fas fa-times"></i></button>
   </div>
-  <div id="chatMessages"><div class="chat-empty">Pergunte qualquer coisa — ou peça um resumo das empresas que você já consultou nesta sessão.</div></div>
+  <div id="chatMessages"><div class="chat-empty">Carregando mensagens…</div></div>
   <div class="chat-input-row">
-    <input id="chatInput" type="text" placeholder="Digite uma mensagem…" maxlength="1000" onkeydown="if(event.key==='Enter')chatEnviar()">
+    <input id="chatInput" type="text" placeholder="Digite uma mensagem…" maxlength="500" onkeydown="if(event.key==='Enter')chatEnviar()">
     <button id="chatSendBtn" onclick="chatEnviar()"><i class="fas fa-paper-plane"></i></button>
   </div>
 </div>
 
 <script>
-// ── CHAT COM IA (Groq) ────────────────────────────────────────────────────
-// Reaproveita a mesma chave/endpoint/modelo já configurados para o botão
-// "Insight IA" (constantes GROQ_API_KEY, GROQ_API_URL, GROQ_MODEL, definidas
-// mais acima no arquivo). O histórico da conversa fica só na memória da aba
-// — se recarregar a página, a conversa reinicia do zero.
+/* ═══════════════════════════════════════════════════════════
+   CONFIGURAÇÃO DO FIREBASE
+   Substitua os valores abaixo pelos dados do SEU projeto Firebase:
+   Console Firebase > Configurações do projeto > Geral >
+   "Seus apps" > ícone Web (</>) > SDK setup and configuration > "Config"
+   ═══════════════════════════════════════════════════════════ */
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyDPIZIPl9zlQW1xUptgP4OlJkiTlFEnN4g",
+  authDomain: "consulta-cnpj-efe7c.firebaseapp.com",
+  databaseURL: "https://consulta-cnpj-efe7c-default-rtdb.firebaseio.com",
+  projectId: "consulta-cnpj-efe7c",
+  storageBucket: "consulta-cnpj-efe7c.firebasestorage.app",
+  messagingSenderId: "978339964025",
+  appId: "1:978339964025:web:c303d79519cc37efc720a8",
+  measurementId: "G-Z8J38Y2Z59"
+};
 
-let chatHistorico = []; // [{role:'user'|'assistant', texto}]
+firebase.initializeApp(firebaseConfig);
+const chatDb = firebase.firestore();
+const chatAuth = firebase.auth();
+
+const CHAT_COLLECTION = "site_chat_global"; // sala pública única
+const CHAT_LIMIT = 100; // últimas N mensagens carregadas
+
+let chatUid = null;
+let chatNome = localStorage.getItem('chat_nome') || '';
+let chatUnsub = null;
 let chatAberto = false;
-let chatCarregando = false;
+let chatNaoLidas = 0;
 
 function escapeHtml(str){
   const d = document.createElement('div');
@@ -3029,101 +2532,123 @@ function escapeHtml(str){
   return d.innerHTML;
 }
 
+// Autenticação anônima — cada visitante recebe um UID único da sessão
+chatAuth.signInAnonymously().catch(err=>{
+  console.error('Erro ao autenticar no chat:', err);
+});
+
+chatAuth.onAuthStateChanged(user=>{
+  if(user){
+    chatUid = user.uid;
+    if(chatNome){
+      chatIniciarListener();
+    }
+  }
+});
+
 function chatToggle(){
   const panel = document.getElementById('chatPanel');
   chatAberto = !chatAberto;
   panel.classList.toggle('open', chatAberto);
   if(chatAberto){
-    const box = document.getElementById('chatMessages');
-    box.scrollTop = box.scrollHeight;
-    document.getElementById('chatInput').focus();
+    chatNaoLidas = 0;
+    atualizarBadge();
+    if(!chatNome){
+      document.getElementById('chatNameOverlay').classList.add('open');
+    } else {
+      const box = document.getElementById('chatMessages');
+      box.scrollTop = box.scrollHeight;
+      document.getElementById('chatInput').focus();
+    }
   }
 }
 
-// Dá contexto pra IA sobre as empresas já consultadas na aba "Consulta CNPJ",
-// pra permitir perguntas como "qual dessas empresas está com situação irregular?"
-function montarContextoEmpresas(){
-  const cnpjs = Object.keys(allData || {});
-  if(!cnpjs.length) return '';
-  const resumo = cnpjs.slice(0,30).map(cnpj=>{
-    const d = allData[cnpj];
-    return `- ${d.razao} (${fmt(cnpj)}) — ${d.situacao}, ${d.porte}, ${d.municipio}/${d.uf}, atividade: ${d.atividade}`;
-  }).join('\n');
-  return `\n\nO usuário já consultou estas empresas nesta sessão (dados públicos da Receita Federal):\n${resumo}`;
+function chatEntrar(){
+  const val = document.getElementById('chatNameInput').value.trim();
+  if(!val){ alert('Digite um nome para continuar.'); return; }
+  chatNome = val.slice(0,30);
+  localStorage.setItem('chat_nome', chatNome);
+  document.getElementById('chatNameOverlay').classList.remove('open');
+  if(chatUid) chatIniciarListener();
+  document.getElementById('chatInput').focus();
 }
 
-function montarSystemPromptChat(){
-  return `Você é o assistente de IA do VERIFICADOR, uma ferramenta de consulta de CNPJ. Responda em português do Brasil, de forma clara, objetiva e útil. Você pode ajudar a interpretar dados de empresas já consultadas na ferramenta (situação cadastral, porte, atividade etc.), tirar dúvidas gerais sobre CNPJ/Receita Federal, ou apenas conversar. Nunca invente dados de empresas que não foram informados a você.${montarContextoEmpresas()}`;
+function chatIniciarListener(){
+  if(chatUnsub) return; // já está escutando
+  chatUnsub = chatDb.collection(CHAT_COLLECTION)
+    .orderBy('timestamp', 'desc')
+    .limit(CHAT_LIMIT)
+    .onSnapshot(snap=>{
+      const msgs = [];
+      snap.forEach(doc=> msgs.push(doc.data()));
+      msgs.reverse();
+      renderMensagens(msgs);
+    }, err=>{
+      console.error('Erro ao ler mensagens do chat:', err);
+      document.getElementById('chatMessages').innerHTML =
+        '<div class="chat-empty">Não foi possível carregar o chat. Verifique a configuração do Firebase.</div>';
+    });
 }
 
-function renderMensagensChat(){
+function renderMensagens(msgs){
   const box = document.getElementById('chatMessages');
-  if(!chatHistorico.length && !chatCarregando){
-    box.innerHTML = '<div class="chat-empty">Pergunte qualquer coisa — ou peça um resumo das empresas que você já consultou nesta sessão.</div>';
+  if(!msgs.length){
+    box.innerHTML = '<div class="chat-empty">Nenhuma mensagem ainda. Seja o primeiro a falar!</div>';
     return;
   }
-  let html = chatHistorico.map(m=>{
-    const own = m.role === 'user';
+  const wasAtBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 40;
+  box.innerHTML = msgs.map(m=>{
+    const own = m.uid === chatUid;
+    const hora = m.timestamp && m.timestamp.toDate ?
+      m.timestamp.toDate().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '';
     return `<div class="chat-msg ${own?'own':''}">
-      <div class="chat-msg-meta"><span>${own?'Você':'IA'}</span></div>
-      <div class="chat-msg-bubble">${escapeHtml(m.texto)}</div>
+      <div class="chat-msg-meta"><span>${escapeHtml(m.nome||'Anônimo')}</span><span>${hora}</span></div>
+      <div class="chat-msg-bubble">${escapeHtml(m.texto||'')}</div>
     </div>`;
   }).join('');
-  if(chatCarregando){
-    html += `<div class="chat-typing"><span></span><span></span><span></span></div>`;
+  if(wasAtBottom || !chatAberto){
+    box.scrollTop = box.scrollHeight;
   }
-  box.innerHTML = html;
-  box.scrollTop = box.scrollHeight;
+  if(!chatAberto){
+    chatNaoLidas++;
+    atualizarBadge();
+  }
 }
 
-async function consultarGroqChat(mensagemUsuario){
-  if (!GROQ_API_KEY) {
-    throw new Error('Configure sua chave da Groq na constante GROQ_API_KEY.');
+function atualizarBadge(){
+  const badge = document.getElementById('chatBadge');
+  if(chatNaoLidas > 0){
+    badge.style.display = 'flex';
+    badge.textContent = chatNaoLidas > 9 ? '9+' : chatNaoLidas;
+  } else {
+    badge.style.display = 'none';
   }
-  const messagesPayload = [
-    { role: 'system', content: montarSystemPromptChat() },
-    ...chatHistorico.slice(-12).map(m => ({ role: m.role, content: m.texto })),
-    { role: 'user', content: mensagemUsuario }
-  ];
-  const response = await fetch(GROQ_API_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${GROQ_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      messages: messagesPayload,
-      temperature: 0.5
-    })
-  });
-  if (!response.ok) {
-    const errText = await response.text().catch(() => '');
-    throw new Error(`Groq HTTP ${response.status} — ${errText.slice(0,200)}`);
-  }
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || 'Desculpe, não consegui gerar uma resposta.';
 }
 
 async function chatEnviar(){
   const input = document.getElementById('chatInput');
   const texto = input.value.trim();
-  if(!texto || chatCarregando) return;
-  chatHistorico.push({ role:'user', texto });
-  input.value = '';
-  chatCarregando = true;
-  renderMensagensChat();
+  if(!texto) return;
+  if(!chatUid){
+    alert('Não foi possível conectar ao chat (falha na autenticação Firebase). Veja o console (F12) para detalhes, ou recarregue a página.');
+    return;
+  }
+  if(!chatNome) return;
   const btn = document.getElementById('chatSendBtn');
   btn.disabled = true;
-  try {
-    const resposta = await consultarGroqChat(texto);
-    chatHistorico.push({ role:'assistant', texto: resposta });
-  } catch(e) {
-    chatHistorico.push({ role:'assistant', texto: `⚠️ Erro ao falar com a IA: ${e.message}` });
+  try{
+    await chatDb.collection(CHAT_COLLECTION).add({
+      uid: chatUid,
+      nome: chatNome,
+      texto: texto.slice(0,500),
+      timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    input.value = '';
+  }catch(err){
+    console.error('Erro ao enviar mensagem:', err);
+    alert('Erro ao enviar mensagem: ' + (err.message || err.code || 'desconhecido'));
   }
-  chatCarregando = false;
   btn.disabled = false;
-  renderMensagensChat();
   input.focus();
 }
 </script>
