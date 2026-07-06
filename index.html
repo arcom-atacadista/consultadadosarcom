@@ -9,6 +9,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script>
 /* ── Não sou nenhum DEV, apenas um cara curioso testando tudo que esta ao seu alcance! ── */
 let prospeccaoCNPJs = [];
@@ -1027,9 +1030,191 @@ function copiarProspeccao(){
       0%, 60%, 100% { transform: translateY(0); opacity: .5; }
       30% { transform: translateY(-4px); opacity: 1; }
     }
+    /* ── TELA DE LOGIN / ACESSO RESTRITO ── */
+    .login-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 999;
+      background: radial-gradient(circle at 30% 20%, rgba(59,130,246,.10), transparent 60%), var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .login-box {
+      width: 100%;
+      max-width: 380px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--glow);
+      padding: 32px 28px;
+    }
+    .login-logo {
+      width: 44px; height: 44px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 18px;
+      margin-bottom: 16px;
+    }
+    .login-box h1 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -.3px;
+      margin-bottom: 4px;
+    }
+    .login-box h1 span {
+      display: block;
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .login-sub {
+      font-size: 13px;
+      color: var(--muted);
+      margin: 10px 0 20px;
+      line-height: 1.5;
+    }
+    .login-field { margin-bottom: 14px; }
+    .login-field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .login-field input, .login-field textarea {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      padding: 10px 12px;
+      font-family: var(--font);
+      font-size: 14px;
+      outline: none;
+      resize: vertical;
+    }
+    .login-field input:focus, .login-field textarea:focus { border-color: var(--accent); }
+    .login-error {
+      background: rgba(239,68,68,.1);
+      border: 1px solid rgba(239,68,68,.3);
+      color: var(--red);
+      font-size: 12.5px;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 14px;
+    }
+    .login-submit { width: 100%; justify-content: center; }
+    .login-request-link {
+      width: 100%;
+      background: none;
+      border: none;
+      color: var(--accent);
+      font-size: 12.5px;
+      font-family: var(--font);
+      cursor: pointer;
+      margin-top: 16px;
+      text-align: center;
+      display: block;
+    }
+    .login-request-link:hover { text-decoration: underline; }
+    .login-status-box {
+      text-align: center; padding: 20px 4px;
+    }
+    .login-status-box i { font-size: 30px; margin-bottom: 12px; display: block; }
+    .login-status-box.pendente i { color: #eab308; }
+    .login-status-box.negado i { color: #ef4444; }
+    .login-status-box p { color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .req-item {
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 12px 14px; margin-bottom: 10px;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    }
+    .req-item-info p { margin: 0; font-size: 12px; color: var(--muted); }
+    .req-item-info strong { font-size: 13px; }
+    .req-item-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .req-item-actions button {
+      border: none; border-radius: 6px; width: 30px; height: 30px;
+      cursor: pointer; font-size: 12px; color: #fff;
+    }
+    .req-approve { background: #16a34a; }
+    .req-deny { background: #ef4444; }
   </style>
 </head>
 <body>
+
+<!-- ═══════════════ TELA DE LOGIN (ACESSO RESTRITO) ═══════════════ -->
+<div id="loginOverlay" class="login-overlay">
+  <div class="login-box">
+    <div class="login-logo"><i class="fas fa-building"></i></div>
+    <h1>CDA <span>Consulta dados Arcom</span></h1>
+    <p class="login-sub">Acesso restrito. Faça login com seu usuário e senha, ou solicite permissão ao administrador.</p>
+
+    <form id="loginForm" onsubmit="return tentarLogin(event)">
+      <div class="login-field">
+        <label>E-mail</label>
+        <input type="email" id="loginUser" autocomplete="username" required>
+      </div>
+      <div class="login-field">
+        <label>Senha</label>
+        <input type="password" id="loginPass" autocomplete="current-password" required>
+      </div>
+      <div id="loginError" class="login-error" style="display:none"></div>
+      <button type="submit" class="btn btn-primary login-submit">
+        <i class="fas fa-sign-in-alt"></i> Entrar
+      </button>
+    </form>
+
+    <button class="login-request-link" onclick="abrirSolicitacao()">
+      Não tenho acesso — solicitar permissão
+    </button>
+  </div>
+</div>
+
+<!-- ═══════════════ MODAL: SOLICITAR ACESSO ═══════════════ -->
+<div id="requestOverlay" class="login-overlay" style="display:none">
+  <div class="login-box">
+    <h1 style="font-size:18px">Solicitar acesso</h1>
+    <p class="login-sub">Preencha os dados abaixo e crie uma senha. Sua conta ficará pendente até que o administrador aprove o acesso.</p>
+    <form id="requestForm" onsubmit="return enviarSolicitacao(event)">
+      <div class="login-field">
+        <label>Seu nome</label>
+        <input type="text" id="reqNome" required>
+      </div>
+      <div class="login-field">
+        <label>Seu e-mail</label>
+        <input type="email" id="reqEmail" required>
+      </div>
+      <div class="login-field">
+        <label>Motivo do acesso</label>
+        <textarea id="reqMotivo" rows="3" required></textarea>
+      </div>
+      <div class="login-field">
+        <label>Crie uma senha</label>
+        <input type="password" id="reqSenha" autocomplete="new-password" minlength="6" required>
+      </div>
+      <div id="reqError" class="login-error" style="display:none"></div>
+      <button type="submit" class="btn btn-primary login-submit">
+        <i class="fas fa-paper-plane"></i> Enviar solicitação
+      </button>
+    </form>
+    <button class="login-request-link" onclick="fecharSolicitacao()">Voltar ao login</button>
+  </div>
+</div>
+
+<!-- ═══════════════ TELA: STATUS DA SOLICITAÇÃO (pendente / negado) ═══════════════ -->
+<div id="statusOverlay" class="login-overlay" style="display:none">
+  <div class="login-box">
+    <div id="statusContent" class="login-status-box"></div>
+    <button class="login-request-link" onclick="fecharStatus()">Voltar ao login</button>
+  </div>
+</div>
+
+<!-- ═══════════════ CONTEÚDO DO APP (fica oculto até o login ser aprovado) ═══════════════ -->
+<div id="appGate" style="display:none">
 
 <!-- FUNDO DE PARTÍCULAS -->
 <canvas id="particleCanvas"></canvas>
@@ -1041,8 +1226,25 @@ function copiarProspeccao(){
     <span>/ CDA (Consulta dados Arcom)</span>
   </a>
   <div class="topbar-spacer"></div>
+  <button class="topbar-btn" id="btnAdminPainel" style="display:none" onclick="abrirAdminPainel()" title="Solicitações de acesso"><i class="fas fa-user-clock"></i></button>
   <button class="topbar-btn" onclick="openSettings()" title="Configurações"><i class="fas fa-sliders-h"></i></button>
+  <button class="topbar-btn" onclick="logout()" title="Sair"><i class="fas fa-sign-out-alt"></i></button>
 </nav>
+
+<!-- ═══════════════ MODAL: PAINEL DE APROVAÇÃO DE ACESSOS (só admin) ═══════════════ -->
+<div class="modal-overlay" id="adminModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div>
+        <p class="modal-head-razao">Solicitações de acesso</p>
+      </div>
+      <button class="modal-close" onclick="closeModal('adminModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <div id="adminReqList"><p style="color:var(--muted);font-size:13px">Carregando...</p></div>
+    </div>
+  </div>
+</div>
 
 <div class="page">
 
@@ -1724,6 +1926,188 @@ window.addEventListener('load', () => {
   document.getElementById('particleDensityVal').textContent = particleSettings.density;
   initParticles();
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── LOGIN / SOLICITAÇÃO DE ACESSO (Firebase Auth + Firestore) ──────────────
+// ═══════════════════════════════════════════════════════════════════════════
+
+// TODO: cole aqui o firebaseConfig do seu projeto (Configurações do projeto > Seus apps > SDK setup and configuration)
+const firebaseConfig = {
+  apiKey: "AIzaSyDPIZIPl9zlQW1xUptgP4OlJkiTlFEnN4g",
+  authDomain: "consulta-cnpj-efe7c.firebaseapp.com",
+  databaseURL: "https://consulta-cnpj-efe7c-default-rtdb.firebaseio.com",
+  projectId: "consulta-cnpj-efe7c",
+  storageBucket: "consulta-cnpj-efe7c.firebasestorage.app",
+  messagingSenderId: "978339964025",
+  appId: "1:978339964025:web:c303d79519cc37efc720a8",
+  measurementId: "G-Z8J38Y2Z59"
+};
+
+// TODO: troque pelo seu e-mail. Só quem logar com este e-mail vê o painel de aprovação.
+const ADMIN_EMAIL = 'jlrodrigues6900@gmail.com';
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+const usersCol = db.collection('usuarios'); // uma doc por usuário, id = uid, campos: nome, email, motivo, status, criadoEm
+
+function mostrarTelaLogin() {
+  document.getElementById('loginOverlay').style.display = 'flex';
+  document.getElementById('requestOverlay').style.display = 'none';
+  document.getElementById('statusOverlay').style.display = 'none';
+  document.getElementById('appGate').style.display = 'none';
+}
+
+function mostrarTelaStatus(status) {
+  document.getElementById('loginOverlay').style.display = 'none';
+  document.getElementById('requestOverlay').style.display = 'none';
+  document.getElementById('appGate').style.display = 'none';
+  const overlay = document.getElementById('statusOverlay');
+  const content = document.getElementById('statusContent');
+  overlay.style.display = 'flex';
+  if (status === 'pendente') {
+    content.className = 'login-status-box pendente';
+    content.innerHTML = '<i class="fas fa-hourglass-half"></i><p><strong>Solicitação em análise.</strong><br>Assim que o administrador aprovar seu acesso, você poderá entrar normalmente com seu e-mail e senha.</p>';
+  } else if (status === 'negado') {
+    content.className = 'login-status-box negado';
+    content.innerHTML = '<i class="fas fa-ban"></i><p><strong>Acesso negado.</strong><br>O administrador não aprovou sua solicitação. Entre em contato caso ache que isso é um engano.</p>';
+  } else {
+    content.className = 'login-status-box negado';
+    content.innerHTML = '<i class="fas fa-triangle-exclamation"></i><p>Não encontramos uma solicitação de acesso vinculada a esta conta.</p>';
+  }
+}
+
+function fecharStatus() {
+  auth.signOut();
+  mostrarTelaLogin();
+}
+
+async function mostrarApp(userDoc) {
+  document.getElementById('loginOverlay').style.display = 'none';
+  document.getElementById('requestOverlay').style.display = 'none';
+  document.getElementById('statusOverlay').style.display = 'none';
+  document.getElementById('appGate').style.display = '';
+  const isAdmin = auth.currentUser && auth.currentUser.email === ADMIN_EMAIL;
+  document.getElementById('btnAdminPainel').style.display = isAdmin ? '' : 'none';
+}
+
+// Reage a qualquer mudança de login (login, logout, refresh da página)
+auth.onAuthStateChanged(async (user) => {
+  if (!user) { mostrarTelaLogin(); return; }
+  try {
+    const doc = await usersCol.doc(user.uid).get();
+    if (!doc.exists) { mostrarTelaStatus(null); return; }
+    const status = doc.data().status;
+    if (status === 'aprovado') { mostrarApp(doc.data()); }
+    else if (status === 'pendente') { mostrarTelaStatus('pendente'); }
+    else { mostrarTelaStatus('negado'); }
+  } catch (e) {
+    console.error(e);
+    mostrarTelaStatus(null);
+  }
+});
+
+async function tentarLogin(event) {
+  event.preventDefault();
+  const email = document.getElementById('loginUser').value.trim();
+  const senha = document.getElementById('loginPass').value;
+  const errBox = document.getElementById('loginError');
+  errBox.style.display = 'none';
+  try {
+    await auth.signInWithEmailAndPassword(email, senha);
+    // onAuthStateChanged cuida do resto (checar status e mostrar tela certa)
+  } catch (e) {
+    let msg = 'Não foi possível entrar. Verifique seu e-mail e senha.';
+    if (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found') {
+      msg = 'E-mail ou senha incorretos.';
+    } else if (e.code === 'auth/too-many-requests') {
+      msg = 'Muitas tentativas. Aguarde um momento e tente novamente.';
+    }
+    errBox.textContent = msg;
+    errBox.style.display = 'block';
+  }
+  return false;
+}
+
+function abrirSolicitacao() {
+  document.getElementById('loginOverlay').style.display = 'none';
+  document.getElementById('requestOverlay').style.display = 'flex';
+}
+function fecharSolicitacao() {
+  document.getElementById('requestOverlay').style.display = 'none';
+  document.getElementById('loginOverlay').style.display = 'flex';
+}
+
+async function enviarSolicitacao(event) {
+  event.preventDefault();
+  const nome = document.getElementById('reqNome').value.trim();
+  const email = document.getElementById('reqEmail').value.trim();
+  const motivo = document.getElementById('reqMotivo').value.trim();
+  const senha = document.getElementById('reqSenha').value;
+  const errBox = document.getElementById('reqError');
+  errBox.style.display = 'none';
+  try {
+    const cred = await auth.createUserWithEmailAndPassword(email, senha);
+    await usersCol.doc(cred.user.uid).set({
+      nome, email, motivo,
+      status: 'pendente',
+      criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    // onAuthStateChanged vai detectar o login automático e mostrar a tela "pendente"
+  } catch (e) {
+    let msg = 'Não foi possível enviar a solicitação.';
+    if (e.code === 'auth/email-already-in-use') msg = 'Este e-mail já possui uma conta. Tente fazer login.';
+    else if (e.code === 'auth/weak-password') msg = 'Senha muito fraca (mínimo 6 caracteres).';
+    else if (e.code === 'auth/invalid-email') msg = 'E-mail inválido.';
+    errBox.textContent = msg;
+    errBox.style.display = 'block';
+  }
+  return false;
+}
+
+function logout() {
+  auth.signOut();
+}
+
+// ── PAINEL DE ADMINISTRAÇÃO (aprovar / negar) ──────────────────────────────
+async function abrirAdminPainel() {
+  openModal('adminModal');
+  await renderAdminPainel();
+}
+
+async function renderAdminPainel() {
+  const box = document.getElementById('adminReqList');
+  box.innerHTML = '<p style="color:var(--muted);font-size:13px">Carregando...</p>';
+  const snap = await usersCol.orderBy('criadoEm', 'desc').get();
+  if (snap.empty) {
+    box.innerHTML = '<p style="color:var(--muted);font-size:13px">Nenhuma solicitação ainda.</p>';
+    return;
+  }
+  box.innerHTML = '';
+  snap.forEach(doc => {
+    const d = doc.data();
+    const uid = doc.id;
+    const statusLabel = { pendente: 'Pendente', aprovado: 'Aprovado', negado: 'Negado' }[d.status] || d.status;
+    const item = document.createElement('div');
+    item.className = 'req-item';
+    item.innerHTML = `
+      <div class="req-item-info">
+        <strong>${d.nome || '—'}</strong> <span class="badge">${statusLabel}</span>
+        <p>${d.email || ''}</p>
+        <p>${d.motivo || ''}</p>
+      </div>
+      <div class="req-item-actions">
+        ${d.status !== 'aprovado' ? `<button class="req-approve" title="Aprovar" onclick="definirStatus('${uid}','aprovado')"><i class="fas fa-check"></i></button>` : ''}
+        ${d.status !== 'negado' ? `<button class="req-deny" title="Negar" onclick="definirStatus('${uid}','negado')"><i class="fas fa-times"></i></button>` : ''}
+      </div>`;
+    box.appendChild(item);
+  });
+}
+
+async function definirStatus(uid, status) {
+  await usersCol.doc(uid).update({ status });
+  await renderAdminPainel();
+}
 
 // ── API CALLS ─────────────────────────────────────────────────────────────────
 async function consultarBrasilAPI(cnpj) {
