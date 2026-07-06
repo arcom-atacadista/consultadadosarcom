@@ -13,68 +13,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
-<script>
-/* ── Não sou nenhum DEV, apenas um cara curioso testando tudo que esta ao seu alcance! ── */
-let prospeccaoCNPJs = [];
-
-async function buscarProspeccao(){
- const cidade=document.getElementById('prosCidade').value.trim();
- const uf=document.getElementById('prosUF').value.trim();
- const cnae=document.getElementById('prosCNAE').value;
-  let cnaesBusca = [cnae];
-
-if(cnae === "MISTO"){
-
-    cnaesBusca = [
-        "4711302",
-        "4771701",
-        "5611201",
-        "4520001",
-        "4789004",
-        "4761003",
-        "4731800",
-        "4721102",
-        "8630503",
-        "6821801"
-    ];
-}
- const limite=parseInt(document.getElementById('prosLimite').value)||15;
- const resultado=document.getElementById('prosResultado');
- resultado.innerHTML='<p>Buscando empresas...</p>';
- try{
-   const response=await fetch('https://api.casadosdados.com.br/v5/cnpj/pesquisa',{
-     method:'POST',
-     headers:{'Content-Type':'application/json','api-key':'8a2eca20e47150964d8149e78fe712b1d76ab35547107fd18077b389b181d287be5f9d7c6c6ef32164c77fd1c50d9b980339da9f9b910551b8c33d251b33b68a'},
-     body:JSON.stringify({
-       codigo_atividade_principal:cnaesBusca,
-       municipio:[cidade.toLowerCase()],
-       uf:[uf.toLowerCase()],
-       situacao_cadastral:['ATIVA'],
-       limite:limite,
-       pagina:1
-     })
-   });
-   const data=await response.json();
-   const empresas=data.cnpjs||data.data||[];
-   prospeccaoCNPJs=[];
-   let h='<table style="width:100%"><thead><tr><th>CNPJ</th><th>Razão Social</th></tr></thead><tbody>';
-   empresas.forEach(emp=>{
-      const cnpj=(emp.cnpj||'').replace(/\D/g,'');
-      prospeccaoCNPJs.push(cnpj);
-      h+=`<tr><td>${cnpj}</td><td>${emp.razao_social||'-'}</td></tr>`;
-   });
-   h+='</tbody></table>';
-   resultado.innerHTML=h;
- }catch(e){resultado.innerHTML='<p>Erro ao consultar Casa dos Dados.</p>';}
-}
-function copiarProspeccao(){
- if(!prospeccaoCNPJs.length){alert('Nenhum CNPJ encontrado.');return;}
- navigator.clipboard.writeText(prospeccaoCNPJs.join('\n'));
- alert(`${prospeccaoCNPJs.length} CNPJs copiados`);
-}
-
-</script>
-</script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" defer></script>
@@ -2214,7 +2152,7 @@ async function consultarNovaAPI(cnpj) {
   });
   if (r.status === 401) {
     token = await obterArcomToken(true);
-    r = await fetch(ARCOM_API_BASE_URL + '/v1/cnpj/' + cnpj, {
+    r = await fetch(ARCOM_API_BASE_URL + '/v1/cnpj/' + cnpj + '?cliente=true', {
       headers: { 'Authorization': 'Bearer ' + token }
     });
   }
@@ -2224,6 +2162,13 @@ async function consultarNovaAPI(cnpj) {
     throw new Error('Erro na Consulta CNPJ Arcom (HTTP ' + r.status + ')');
   }
   const d = await r.json();
+  return mapArcomRecord(d);
+}
+
+// Converte um CNPJRecord cru da API Arcom no formato usado pela tabela/UI.
+// jaClienteOverride existe porque no /v1/cnpj/batch o campo ja_cliente vem
+// no item (irmão de "data"), não dentro do próprio registro.
+function mapArcomRecord(d, jaClienteOverride) {
   const sit = ((d.situacao_cadastral && d.situacao_cadastral.descricao) || 'INDEFINIDA').toUpperCase();
   const nomeMunicipio = (d.municipio && d.municipio.descricao) || '';
   const enderecoInicio = [d.logradouro, d.numero].filter(Boolean).join(', ');
@@ -2233,7 +2178,7 @@ async function consultarNovaAPI(cnpj) {
     : '—';
 
   // ── CLIENTE ARCOM ──
-  let clienteArcomRaw = d.ja_cliente ?? (d.empresa && d.empresa.ja_cliente);
+  let clienteArcomRaw = jaClienteOverride ?? d.ja_cliente ?? (d.empresa && d.empresa.ja_cliente);
   let clienteArcom = '—';
   if (typeof clienteArcomRaw === 'boolean') {
     clienteArcom = clienteArcomRaw ? 'Sim' : 'Não';
@@ -2262,6 +2207,150 @@ async function consultarNovaAPI(cnpj) {
   };
 }
 
+// ── CONSULTA EM LOTE (POST /v1/cnpj/batch) ──────────────────────────────────
+// Usado sempre que há mais de 1 CNPJ pra consultar via API Arcom.
+// Sempre manda cliente:true. Faz chunking automático (máx 1000 por chamada).
+const ARCOM_BATCH_TAMANHO_MAX = 1000;
+
+async function consultarLoteArcomBruto(cnpjs) {
+  let token = await obterArcomToken(false);
+  const fazerRequisicao = (tok) => fetch(ARCOM_API_BASE_URL + '/v1/cnpj/batch', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + tok, 'Content-Type': 'application/json; charset=utf-8' },
+    body: JSON.stringify({ cnpjs: cnpjs, cliente: true })
+  });
+  let r = await fazerRequisicao(token);
+  if (r.status === 401) {
+    token = await obterArcomToken(true);
+    r = await fazerRequisicao(token);
+  }
+  if (!r.ok) throw new Error('Erro na Consulta CNPJ Arcom em lote (HTTP ' + r.status + ')');
+  const data = await r.json();
+  return data.results || [];
+}
+
+// Divide em lotes de até ARCOM_BATCH_TAMANHO_MAX e consulta sequencialmente.
+// callbackProgresso(loteAtual, totalLotes, tamanhoLote) é chamado antes de cada chamada.
+async function consultarLoteArcom(cnpjs, callbackProgresso) {
+  const lotes = [];
+  for (let i = 0; i < cnpjs.length; i += ARCOM_BATCH_TAMANHO_MAX) {
+    lotes.push(cnpjs.slice(i, i + ARCOM_BATCH_TAMANHO_MAX));
+  }
+  const resultados = [];
+  for (let i = 0; i < lotes.length; i++) {
+    if (callbackProgresso) callbackProgresso(i, lotes.length, lotes[i].length);
+    const parcial = await consultarLoteArcomBruto(lotes[i]);
+    resultados.push(...parcial);
+  }
+  return resultados;
+}
+
+// ── PROSPECÇÃO (GET /v1/estabelecimentos) ───────────────────────────────────
+// Resolve nome de cidade digitado em código de município da RF.
+async function resolverMunicipioRF(nomeCidade) {
+  let token = await obterArcomToken(false);
+  const url = ARCOM_API_BASE_URL + '/v1/municipios?q=' + encodeURIComponent(nomeCidade);
+  let r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+  if (r.status === 401) {
+    token = await obterArcomToken(true);
+    r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+  }
+  if (!r.ok) throw new Error('Erro ao resolver município (HTTP ' + r.status + ')');
+  const data = await r.json();
+  const item = (data.data || [])[0];
+  if (!item) throw new Error('Município "' + nomeCidade + '" não encontrado na Receita Federal');
+  return item; // { codigo, descricao }
+}
+
+// Busca estabelecimentos ativos e que ainda NÃO são clientes Arcom
+// (excluir_clientes=true — fail-closed: 503 se o serviço de clientes cair).
+async function buscarEstabelecimentosArcom({ uf, municipioCodigo, cnae, limit }) {
+  let token = await obterArcomToken(false);
+  const params = new URLSearchParams();
+  if (uf) params.set('uf', uf.toUpperCase());
+  if (municipioCodigo) params.set('municipio', municipioCodigo);
+  if (cnae) params.set('cnae_fiscal_principal', cnae);
+  params.set('situacao_cadastral', '02'); // ATIVA
+  params.set('excluir_clientes', 'true');
+  params.set('limit', String(Math.min(Math.max(parseInt(limit, 10) || 15, 1), 1000)));
+
+  const url = ARCOM_API_BASE_URL + '/v1/estabelecimentos?' + params.toString();
+  let r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+  if (r.status === 401) {
+    token = await obterArcomToken(true);
+    r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+  }
+  if (r.status === 503) throw new Error('Serviço de clientes indisponível no momento — tente novamente em instantes.');
+  if (!r.ok) throw new Error('Erro na Consulta CNPJ Arcom (HTTP ' + r.status + ')');
+  const data = await r.json();
+  return data.data || [];
+}
+
+let prospeccaoCNPJs = [];
+
+async function buscarProspeccao() {
+  const cidade = document.getElementById('prosCidade').value.trim();
+  const uf = document.getElementById('prosUF').value.trim();
+  const cnae = document.getElementById('prosCNAE').value;
+  const limite = parseInt(document.getElementById('prosLimite').value, 10) || 15;
+  const resultado = document.getElementById('prosResultado');
+
+  if (!cidade || !uf) { resultado.innerHTML = '<p>Informe cidade e UF.</p>'; return; }
+
+  let cnaesBusca = [cnae];
+  if (cnae === 'MISTO') {
+    cnaesBusca = ['4711302','4771701','5611201','4520001','4789004','4761003','4731800','4721102','8630503','6821801'];
+  }
+
+  resultado.innerHTML = '<p>Buscando empresas na Consulta CNPJ Arcom...</p>';
+  prospeccaoCNPJs = [];
+
+  try {
+    const municipio = await resolverMunicipioRF(cidade);
+
+    let empresas = [];
+    for (const c of cnaesBusca) {
+      if (empresas.length >= limite) break;
+      const pagina = await buscarEstabelecimentosArcom({ uf, municipioCodigo: municipio.codigo, cnae: c, limit: limite });
+      empresas = empresas.concat(pagina);
+    }
+
+    // dedup por CNPJ (o modo "Misto" pode repetir empresas entre CNAEs) e corta no limite
+    const vistos = new Set();
+    empresas = empresas.filter(emp => {
+      const cnpjLimpo = (emp.cnpj || '').replace(/\D/g, '');
+      if (!cnpjLimpo || vistos.has(cnpjLimpo)) return false;
+      vistos.add(cnpjLimpo);
+      return true;
+    }).slice(0, limite);
+
+    if (!empresas.length) {
+      resultado.innerHTML = `<p>Nenhum prospect (empresa ativa e ainda não cliente) encontrado em ${municipio.descricao}/${uf.toUpperCase()} para esse ramo.</p>`;
+      return;
+    }
+
+    let h = `<p style="font-size:12px;color:var(--muted);margin-bottom:10px">
+        ${empresas.length} prospect(s) encontrado(s) em <strong>${municipio.descricao}/${uf.toUpperCase()}</strong> — apenas empresas ativas que ainda não são clientes Arcom.
+      </p><table style="width:100%"><thead><tr><th>CNPJ</th><th>Razão Social</th><th>Atividade</th></tr></thead><tbody>`;
+    empresas.forEach(emp => {
+      const cnpj = (emp.cnpj || '').replace(/\D/g, '');
+      prospeccaoCNPJs.push(cnpj);
+      const atividade = (emp.cnae_fiscal_principal && emp.cnae_fiscal_principal.descricao) || '—';
+      h += `<tr><td>${fmt(cnpj)}</td><td>${emp.razao_social || '-'}</td><td style="font-size:12px;color:var(--muted)">${atividade}</td></tr>`;
+    });
+    h += '</tbody></table>';
+    resultado.innerHTML = h;
+  } catch (e) {
+    resultado.innerHTML = `<p>${e.message || 'Erro ao consultar a Consulta CNPJ Arcom.'}</p>`;
+  }
+}
+
+function copiarProspeccao() {
+  if (!prospeccaoCNPJs.length) { alert('Nenhum CNPJ encontrado.'); return; }
+  navigator.clipboard.writeText(prospeccaoCNPJs.join('\n'));
+  alert(`${prospeccaoCNPJs.length} CNPJs copiados`);
+}
+
 // ── VERIFICATION ──────────────────────────────────────────────────────────────
 function updateStats(t,b,i,s,e) {
   document.getElementById('statTotal').textContent=t;
@@ -2277,12 +2366,10 @@ async function startVerification() {
   const list = parseCNPJs(document.getElementById('input').value);
   if (!list.length) { document.getElementById('status').textContent='⚠ Nenhum CNPJ encontrado'; return; }
   let total=0,baix=0,inap=0,susp=0,erro=0;
-  for (let n=0; n<list.length; n++) {
-    const cnpj = list[n];
-    document.getElementById('status').textContent=`Consultando ${fmt(cnpj)} (${n+1}/${list.length})`;
-    document.getElementById('barFill').style.width=((n/list.length)*100)+'%';
-    document.getElementById('percentage').textContent=Math.round((n/list.length)*100)+'%';
-    if (n>0) await new Promise(r=>setTimeout(r,300));
+
+  // separa formato inválido (checado no cliente, sem gastar chamada de API) dos válidos
+  const validos = [];
+  list.forEach(cnpj => {
     if (!isValidCNPJ(cnpj)) {
       tbody.innerHTML+=`<tr>
         <td class="td-fav">☆</td>
@@ -2290,43 +2377,83 @@ async function startVerification() {
         <td colspan="4"><span class="badge badge-error">CNPJ Inválido</span></td>
         <td></td></tr>`;
       total++; erro++; erroCNPJs.push({cnpj, motivo:'CNPJ Inválido'});
-      updateStats(total,baix,inap,susp,erro);
-      continue;
+    } else {
+      validos.push(cnpj);
     }
+  });
+  updateStats(total,baix,inap,susp,erro);
+
+  function renderLinha(cnpj, result) {
+    allData[cnpj]=result; total++;
+    if (result.situacao.includes('INAPTA')) inap++;
+    else if (result.situacao.includes('BAIXADA')) baix++;
+    else if (result.situacao.includes('SUSPENSA')) susp++;
+    rows.push([fmt(cnpj),result.razao,result.situacao]);
+    const bc=badgeClass(result.situacao);
+    const isFav=favorites.includes(cnpj)?'⭐':'☆';
+    tbody.innerHTML+=`<tr id="row-${cnpj}">
+      <td class="td-fav" onclick="toggleFavorite('${cnpj}',event)">${isFav}</td>
+      <td class="td-cnpj">${fmt(cnpj)}</td>
+      <td class="td-razao">${result.razao}</td>
+      <td><span class="badge ${bc}">${result.situacao}</span></td>
+      <td style="color:var(--muted);font-size:12px">${selectedAPI==='arcom' ? (result.clienteArcom==='Sim' ? '<span class="badge badge-ativa">Sim</span>' : result.clienteArcom==='Não' ? '<span class="badge badge-baixada">Não</span>' : '—') : result.porte}</td>
+      <td style="color:var(--muted);font-size:12px;font-family:var(--mono)">${result.uf}</td>
+      <td class="td-actions">
+        <button class="btn-eye" onclick="openDetailsModal('${cnpj}')"><i class="fas fa-eye"></i> Ver</button>
+        <button class="btn-eye btn-purple" onclick="enriquecerDados('${cnpj}')" id="enrichBtn-${cnpj}"><i class="fas fa-lightbulb"></i> Insight IA</button>
+        <button class="btn-eye" onclick="abrirMapa('${cnpj}')"><i class="fas fa-map-location-dot"></i> Mapa</button>
+      </td>
+    </tr>`;
+    updateStats(total,baix,inap,susp,erro);
+    addToHistory(cnpj,result.razao);
+  }
+
+  function renderErro(cnpj, mensagem) {
+    tbody.innerHTML+=`<tr>
+      <td class="td-fav">☆</td>
+      <td class="td-cnpj">${fmt(cnpj)}</td>
+      <td colspan="4"><span class="badge badge-error">${mensagem}</span></td>
+      <td></td></tr>`;
+    total++; erro++; erroCNPJs.push({cnpj, motivo:mensagem});
+    updateStats(total,baix,inap,susp,erro);
+  }
+
+  if (selectedAPI === 'arcom' && validos.length > 1) {
+    // ── MAIS DE 1 CNPJ na API Arcom → usa /v1/cnpj/batch (sempre cliente:true) ──
     try {
-      const result = selectedAPI==='brasilapi'?await consultarBrasilAPI(cnpj):selectedAPI==='opencnpj'?await consultarOpenCNPJ(cnpj):await consultarNovaAPI(cnpj);
-      allData[cnpj]=result; total++;
-      if (result.situacao.includes('INAPTA')) inap++;
-      else if (result.situacao.includes('BAIXADA')) baix++;
-      else if (result.situacao.includes('SUSPENSA')) susp++;
-      rows.push([fmt(cnpj),result.razao,result.situacao]);
-      const bc=badgeClass(result.situacao);
-      const isFav=favorites.includes(cnpj)?'⭐':'☆';
-      tbody.innerHTML+=`<tr id="row-${cnpj}">
-        <td class="td-fav" onclick="toggleFavorite('${cnpj}',event)">${isFav}</td>
-        <td class="td-cnpj">${fmt(cnpj)}</td>
-        <td class="td-razao">${result.razao}</td>
-        <td><span class="badge ${bc}">${result.situacao}</span></td>
-        <td style="color:var(--muted);font-size:12px">${selectedAPI==='arcom' ? (result.clienteArcom==='Sim' ? '<span class="badge badge-ativa">Sim</span>' : result.clienteArcom==='Não' ? '<span class="badge badge-baixada">Não</span>' : '—') : result.porte}</td>
-        <td style="color:var(--muted);font-size:12px;font-family:var(--mono)">${result.uf}</td>
-        <td class="td-actions">
-          <button class="btn-eye" onclick="openDetailsModal('${cnpj}')"><i class="fas fa-eye"></i> Ver</button>
-          <button class="btn-eye btn-purple" onclick="enriquecerDados('${cnpj}')" id="enrichBtn-${cnpj}"><i class="fas fa-lightbulb"></i> Insight IA</button>
-          <button class="btn-eye" onclick="abrirMapa('${cnpj}')"><i class="fas fa-map-location-dot"></i> Mapa</button>
-        </td>
-      </tr>`;
-      updateStats(total,baix,inap,susp,erro);
-      addToHistory(cnpj,result.razao);
+      await consultarLoteArcom(validos, (loteAtual, totalLotes, tamanhoLote) => {
+        document.getElementById('status').textContent = totalLotes > 1
+          ? `Consultando lote ${loteAtual+1}/${totalLotes} (${tamanhoLote} CNPJs)…`
+          : `Consultando lote de ${tamanhoLote} CNPJs…`;
+        document.getElementById('barFill').style.width=((loteAtual/totalLotes)*100)+'%';
+        document.getElementById('percentage').textContent=Math.round((loteAtual/totalLotes)*100)+'%';
+      }).then(resultados => {
+        resultados.forEach(item => {
+          if (item.error) { renderErro(item.cnpj, item.error); return; }
+          if (!item.found) { renderErro(item.cnpj, 'CNPJ não encontrado'); return; }
+          renderLinha(item.cnpj, mapArcomRecord(item.data, item.ja_cliente));
+        });
+      });
     } catch(e) {
-      tbody.innerHTML+=`<tr>
-        <td class="td-fav">☆</td>
-        <td class="td-cnpj">${fmt(cnpj)}</td>
-        <td colspan="4"><span class="badge badge-error">${e.message}</span></td>
-        <td></td></tr>`;
-      total++; erro++; erroCNPJs.push({cnpj, motivo:e.message||'Erro na consulta'});
-      updateStats(total,baix,inap,susp,erro);
+      validos.forEach(cnpj => renderErro(cnpj, e.message || 'Erro na consulta em lote'));
+    }
+  } else {
+    // ── 1 único CNPJ, ou API diferente da Arcom → consulta individual, como antes ──
+    for (let n=0; n<validos.length; n++) {
+      const cnpj = validos[n];
+      document.getElementById('status').textContent=`Consultando ${fmt(cnpj)} (${n+1}/${validos.length})`;
+      document.getElementById('barFill').style.width=((n/validos.length)*100)+'%';
+      document.getElementById('percentage').textContent=Math.round((n/validos.length)*100)+'%';
+      if (n>0) await new Promise(r=>setTimeout(r,300));
+      try {
+        const result = selectedAPI==='brasilapi'?await consultarBrasilAPI(cnpj):selectedAPI==='opencnpj'?await consultarOpenCNPJ(cnpj):await consultarNovaAPI(cnpj);
+        renderLinha(cnpj, result);
+      } catch(e) {
+        renderErro(cnpj, e.message||'Erro na consulta');
+      }
     }
   }
+
   document.getElementById('barFill').style.width='100%';
   document.getElementById('percentage').textContent='100%';
   document.getElementById('status').textContent=`✓ Concluído — ${total} CNPJs consultados`;
