@@ -1,0 +1,3132 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CDA (Consulta dados Arcom)</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" rel="preload" as="script">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script>
+/* ── Não sou nenhum DEV, apenas um cara curioso testando tudo que esta ao seu alcance! ── */
+let prospeccaoCNPJs = [];
+
+async function buscarProspeccao(){
+ const cidade=document.getElementById('prosCidade').value.trim();
+ const uf=document.getElementById('prosUF').value.trim();
+ const cnae=document.getElementById('prosCNAE').value;
+  let cnaesBusca = [cnae];
+
+if(cnae === "MISTO"){
+
+    cnaesBusca = [
+        "4711302",
+        "4771701",
+        "5611201",
+        "4520001",
+        "4789004",
+        "4761003",
+        "4731800",
+        "4721102",
+        "8630503",
+        "6821801"
+    ];
+}
+ const limite=parseInt(document.getElementById('prosLimite').value)||15;
+ const resultado=document.getElementById('prosResultado');
+ resultado.innerHTML='<p>Buscando empresas...</p>';
+ try{
+   const response=await fetch('https://api.casadosdados.com.br/v5/cnpj/pesquisa',{
+     method:'POST',
+     headers:{'Content-Type':'application/json','api-key':'8a2eca20e47150964d8149e78fe712b1d76ab35547107fd18077b389b181d287be5f9d7c6c6ef32164c77fd1c50d9b980339da9f9b910551b8c33d251b33b68a'},
+     body:JSON.stringify({
+       codigo_atividade_principal:cnaesBusca,
+       municipio:[cidade.toLowerCase()],
+       uf:[uf.toLowerCase()],
+       situacao_cadastral:['ATIVA'],
+       limite:limite,
+       pagina:1
+     })
+   });
+   const data=await response.json();
+   const empresas=data.cnpjs||data.data||[];
+   prospeccaoCNPJs=[];
+   let h='<table style="width:100%"><thead><tr><th>CNPJ</th><th>Razão Social</th></tr></thead><tbody>';
+   empresas.forEach(emp=>{
+      const cnpj=(emp.cnpj||'').replace(/\D/g,'');
+      prospeccaoCNPJs.push(cnpj);
+      h+=`<tr><td>${cnpj}</td><td>${emp.razao_social||'-'}</td></tr>`;
+   });
+   h+='</tbody></table>';
+   resultado.innerHTML=h;
+ }catch(e){resultado.innerHTML='<p>Erro ao consultar Casa dos Dados.</p>';}
+}
+function copiarProspeccao(){
+ if(!prospeccaoCNPJs.length){alert('Nenhum CNPJ encontrado.');return;}
+ navigator.clipboard.writeText(prospeccaoCNPJs.join('\n'));
+ alert(`${prospeccaoCNPJs.length} CNPJs copiados`);
+}
+
+</script>
+</script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" defer></script>
+
+  <style>
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0c10;
+      --surface:   #111318;
+      --surface2:  #191d24;
+      --border:    #242830;
+      --border-lit:#2e3440;
+      --accent:    #3b82f6;
+      --accent2:   #6366f1;
+      --green:     #22c55e;
+      --yellow:    #f59e0b;
+      --red:       #ef4444;
+      --cyan:      #06b6d4;
+      --text:      #e8eaf0;
+      --muted:     #6b7280;
+      --font:      'Space Grotesk', sans-serif;
+      --mono:      'JetBrains Mono', monospace;
+      --radius:    12px;
+      --radius-sm: 8px;
+      --glow:      0 0 0 1px rgba(59,130,246,.15), 0 8px 32px rgba(59,130,246,.08);
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border-lit); border-radius: 99px; }
+
+    /* ── PARTÍCULAS DE FUNDO ── */
+    #particleCanvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 0;
+      pointer-events: none;
+      display: block;
+    }
+
+    
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      height: 56px;
+      background: rgba(10,12,16,.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 28px;
+      gap: 16px;
+    }
+    .topbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: -.3px;
+      color: var(--text);
+      text-decoration: none;
+    }
+    .topbar-brand .logo-dot {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      color: #fff;
+      flex-shrink: 0;
+    }
+    .topbar-brand span { color: var(--muted); font-weight: 400; }
+    .topbar-spacer { flex: 1; }
+    .topbar-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      transition: all .2s;
+    }
+    .topbar-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(59,130,246,.08); }
+
+    
+    .page { display: grid; grid-template-columns: 280px 1fr; min-height: calc(100vh - 56px); position: relative; z-index: 1; }
+
+    
+    .sidebar {
+      border-right: 1px solid var(--border);
+      padding: 24px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .sidebar-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      padding: 0 10px;
+      margin-bottom: 4px;
+      margin-top: 12px;
+    }
+    .sidebar-label:first-child { margin-top: 0; }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--muted);
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all .2s;
+      text-decoration: none;
+    }
+    .nav-item i { width: 16px; text-align: center; font-size: 13px; }
+    .nav-item:hover { color: var(--text); background: var(--surface2); border-color: var(--border); }
+    .nav-item.active { color: var(--accent); background: rgba(59,130,246,.08); border-color: rgba(59,130,246,.2); }
+
+    .api-select {
+      margin-top: 8px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+    }
+    .api-select p { font-size: 11px; color: var(--muted); margin-bottom: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; }
+    .api-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all .2s;
+      margin-bottom: 4px;
+    }
+    .api-option:last-child { margin-bottom: 0; }
+    .api-option input[type=radio] { accent-color: var(--accent); }
+    .api-option:hover { background: var(--border); }
+    .api-option label { cursor: pointer; font-size: 13px; font-weight: 500; }
+    .api-option small { display: block; font-size: 11px; color: var(--muted); font-weight: 400; }
+
+    .history-box {
+      flex: 1;
+      overflow-y: auto;
+      margin-top: 4px;
+    }
+    .history-entry {
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: background .15s;
+      margin-bottom: 2px;
+    }
+    .history-entry:hover { background: var(--surface2); }
+    .history-entry .h-cnpj { font-family: var(--mono); font-size: 11px; color: var(--accent); }
+    .history-entry .h-nome { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    
+    .main { overflow: hidden; }
+
+    
+    .tab-panel { display: none; padding: 28px; }
+    .tab-panel.active { display: block; }
+
+    
+    .input-section { display: grid; grid-template-columns: 1fr 280px; gap: 20px; margin-bottom: 24px; }
+    .textarea-wrap { position: relative; }
+    .cnpj-textarea {
+      width: 100%;
+      min-height: 148px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 13px;
+      padding: 16px;
+      resize: vertical;
+      outline: none;
+      transition: border-color .2s;
+    }
+    .cnpj-textarea::placeholder { color: var(--muted); font-family: var(--font); font-size: 13px; }
+    .cnpj-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,.1); }
+
+    .action-stack { display: flex; flex-direction: column; gap: 8px; }
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border-radius: var(--radius-sm);
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all .2s;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover { background: #2563eb; filter: brightness(1.05); }
+    .btn-ghost {
+      background: transparent;
+      border-color: var(--border);
+      color: var(--muted);
+    }
+    .btn-ghost:hover { border-color: var(--border-lit); color: var(--text); background: var(--surface2); }
+    .btn-warn {
+      background: rgba(245,158,11,.1);
+      border-color: rgba(245,158,11,.25);
+      color: var(--yellow);
+    }
+    .btn-warn:hover { background: rgba(245,158,11,.18); }
+    .btn-success-outline {
+      background: rgba(34,197,94,.08);
+      border-color: rgba(34,197,94,.25);
+      color: var(--green);
+    }
+    .btn-success-outline:hover { background: rgba(34,197,94,.16); }
+    .btn.hidden { display: none; }
+    .btn-purple {
+      background: rgba(168,85,247,.1);
+      border-color: rgba(168,85,247,.3);
+      color: #c084fc;
+    }
+    .btn-purple:hover { background: rgba(168,85,247,.18); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-eye.btn-purple { background: rgba(168,85,247,.1); border-color: rgba(168,85,247,.3); color: #c084fc; }
+    .btn-eye.btn-purple:hover { border-color: #c084fc; color: #c084fc; }
+
+    /* ── Progresso ── */
+    .progress-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      margin-bottom: 20px;
+    }
+    .progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .progress-status { font-size: 13px; color: var(--muted); }
+    .progress-pct { font-family: var(--mono); font-size: 13px; color: var(--accent); font-weight: 500; }
+    .progress-bar-bg { height: 4px; background: var(--border); border-radius: 99px; overflow: hidden; }
+    .progress-bar-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .3s ease; }
+
+    /* ── Sstatus geral ── */
+    .stats-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px; }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      transition: all .2s;
+    }
+    .stat-card:hover { border-color: var(--border-lit); transform: translateY(-2px); }
+    .stat-val {
+      font-size: 28px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      margin-bottom: 2px;
+    }
+    .stat-lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; font-weight: 600; }
+    .stat-card.c-red   { border-top: 2px solid var(--red);    } .stat-card.c-red   .stat-val { color: var(--red);    }
+    .stat-card.c-yellow{ border-top: 2px solid var(--yellow); } .stat-card.c-yellow .stat-val { color: var(--yellow); }
+    .stat-card.c-cyan  { border-top: 2px solid var(--cyan);   } .stat-card.c-cyan   .stat-val { color: var(--cyan);   }
+    .stat-card.c-green { border-top: 2px solid var(--green);  } .stat-card.c-green  .stat-val { color: var(--green);  }
+    .stat-card.c-gray  { border-top: 2px solid var(--muted);  } .stat-card.c-gray   .stat-val { color: var(--muted);  }
+
+    
+    .bottom-grid { display: grid; grid-template-columns: 1fr 280px; gap: 20px; margin-bottom: 24px; }
+
+    
+    .table-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .table-card-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .table-card-header i { color: var(--accent); }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th {
+      background: var(--surface2);
+      padding: 10px 16px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .7px;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+    tbody td { padding: 12px 16px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: middle; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr { transition: background .15s; }
+    tbody tr:hover { background: var(--surface2); }
+    .td-cnpj { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+    .td-razao { font-weight: 500; }
+    .td-fav { cursor: pointer; font-size: 15px; color: var(--muted); transition: color .2s; }
+    .td-fav:hover { color: var(--yellow); }
+    .td-actions { display: flex; gap: 6px; }
+
+    /* ── BADGES ── */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 9px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .3px;
+    }
+    .badge-ativa    { background: rgba(34,197,94,.12);  color: #4ade80; border: 1px solid rgba(34,197,94,.25); }
+    .badge-inapta   { background: rgba(245,158,11,.12); color: #fbbf24; border: 1px solid rgba(245,158,11,.25); }
+    .badge-baixada  { background: rgba(239,68,68,.12);  color: #f87171; border: 1px solid rgba(239,68,68,.25); }
+    .badge-suspensa { background: rgba(6,182,212,.12);  color: #22d3ee; border: 1px solid rgba(6,182,212,.25); }
+    .badge-error    { background: rgba(239,68,68,.12);  color: #f87171; border: 1px solid rgba(239,68,68,.25); }
+    .badge-purple   { background: rgba(168,85,247,.12); color: #c084fc; border: 1px solid rgba(168,85,247,.25); }
+
+    /* ── MINI BTN ── */
+    .btn-eye {
+      padding: 5px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      font-size: 12px;
+      cursor: pointer;
+      font-family: var(--font);
+      transition: all .2s;
+      white-space: nowrap;
+    }
+    .btn-eye:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── CHART PANEL ── */
+    .chart-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+    }
+    .chart-panel-title { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 16px; }
+    .chart-wrap { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 200px; }
+
+    /* ── EMPTY STATE ── */
+    .empty-state { padding: 48px 24px; text-align: center; color: var(--muted); }
+    .empty-state i { font-size: 32px; margin-bottom: 12px; display: block; opacity: .3; }
+    .empty-state p { font-size: 13px; }
+
+    /* ── MODAL ── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.7);
+      backdrop-filter: blur(4px);
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 640px;
+      max-height: 85vh;
+      overflow-y: auto;
+      box-shadow: var(--glow);
+    }
+    .modal-head {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      background: linear-gradient(135deg, rgba(59,130,246,.12), rgba(99,102,241,.08));
+      border-radius: 16px 16px 0 0;
+    }
+    .modal-head.purple-head {
+      background: linear-gradient(135deg, rgba(168,85,247,.14), rgba(99,102,241,.08));
+    }
+    .modal-head-cnpj { font-family: var(--mono); font-size: 14px; color: var(--accent); margin-bottom: 2px; }
+    .modal-head-razao { font-size: 16px; font-weight: 700; }
+    .modal-close {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all .2s;
+    }
+    .modal-close:hover { border-color: var(--red); color: var(--red); }
+    .modal-body { padding: 24px; }
+    .modal-section { margin-bottom: 24px; }
+    .modal-section:last-child { margin-bottom: 0; }
+    .modal-section-title {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--accent);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .modal-section-title.purple { color: #c084fc; }
+    .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .modal-field label { font-size: 11px; color: var(--muted); margin-bottom: 3px; display: block; }
+    .modal-field p { font-size: 13px; font-weight: 500; }
+    .socios-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .socio-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+    }
+    .socio-card strong { display: block; font-size: 13px; margin-bottom: 3px; }
+    .socio-card small { font-size: 11px; color: var(--muted); }
+    .modal-footer-row {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    /* ── ENRICH (Insight IA) ── */
+    .enrich-stat-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+    .enrich-stat {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      text-align: center;
+    }
+    .enrich-stat .v { font-size: 16px; font-weight: 700; }
+    .enrich-stat .l { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-top: 2px; }
+    .tech-pill-row { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tech-pill {
+      background: rgba(99,102,241,.1);
+      border: 1px solid rgba(99,102,241,.25);
+      color: #a5b4fc;
+      border-radius: 99px;
+      padding: 3px 11px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .evento-item {
+      display: flex;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+    }
+    .evento-item:last-child { border-bottom: none; }
+    .evento-item .ev-dot { width: 6px; height: 6px; border-radius: 50%; background: #a855f7; margin-top: 5px; flex-shrink: 0; }
+    .evento-item .ev-data { color: var(--muted); font-family: var(--mono); font-size: 10px; white-space: nowrap; }
+    .enrich-loading { padding: 40px 20px; text-align: center; }
+    .enrich-loading .spinner-lg {
+      width: 28px; height: 28px;
+      border: 3px solid rgba(168,85,247,.2);
+      border-top-color: #a855f7;
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      margin: 0 auto 14px;
+    }
+    .enrich-loading p { font-size: 13px; color: var(--muted); }
+    .enrich-source-note {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px dashed var(--border);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .enrich-empty { text-align: center; padding: 30px 20px; color: var(--muted); font-size: 12px; }
+
+    /* ── EXPORT MODAL ── */
+    .export-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .export-btn {
+      padding: 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all .2s;
+    }
+    .export-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(59,130,246,.06); }
+
+    /* ── REGIONAL TAB ── */
+    .regional-search-bar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 24px;
+      max-width: 520px;
+    }
+    .regional-input {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 14px;
+      padding: 11px 14px;
+      outline: none;
+      transition: border-color .2s;
+    }
+    .regional-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,.1); }
+    .regional-input::placeholder { font-family: var(--font); color: var(--muted); font-size: 13px; }
+
+    .origem-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .origem-nome { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+    .origem-meta { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+
+    .cidade-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(59,130,246,.1);
+      border: 1px solid rgba(59,130,246,.2);
+      border-radius: 99px;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 20px;
+    }
+
+    .filter-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+    .filter-chip {
+      padding: 5px 14px;
+      border-radius: 99px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: var(--font);
+      transition: all .2s;
+    }
+    .filter-chip:hover { border-color: var(--accent); color: var(--accent); }
+    .filter-chip.active { background: rgba(59,130,246,.12); border-color: rgba(59,130,246,.3); color: var(--accent); }
+    .count-pill {
+      margin-left: auto;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      padding: 3px 12px;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .regional-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+    .reg-empresa-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      transition: all .2s;
+    }
+    .reg-empresa-card:hover { border-color: var(--accent); box-shadow: var(--glow); }
+    .reg-cnpj { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-bottom: 5px; }
+    .reg-razao { font-size: 13px; font-weight: 600; margin-bottom: 8px; line-height: 1.4; }
+    .reg-meta { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-bottom: 7px; }
+    .meta-pill {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 7px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .reg-ativ { font-size: 11px; color: var(--muted); line-height: 1.4; }
+    .copy-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 2px 8px;
+      font-size: 11px;
+      cursor: pointer;
+      color: var(--muted);
+      font-family: var(--font);
+      transition: all .2s;
+      margin-left: auto;
+    }
+    .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── SPINNER ── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      display: inline-block;
+      width: 13px; height: 13px;
+      border: 2px solid rgba(59,130,246,.25);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      vertical-align: middle;
+    }
+
+    /* ── ALERT ── */
+    .alert {
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      font-size: 13px;
+      margin-bottom: 16px;
+      border: 1px solid;
+    }
+    .alert-warning { background: rgba(245,158,11,.08); border-color: rgba(245,158,11,.25); color: var(--yellow); }
+    .alert-danger  { background: rgba(239,68,68,.08);  border-color: rgba(239,68,68,.25);  color: var(--red);    }
+
+    /* ── FOOTER ── */
+    .footer {
+      border-top: 1px solid var(--border);
+      padding: 16px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .footer strong { color: var(--accent); }
+
+    /* ── APARÊNCIA (settings) ── */
+    .appearance-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .appearance-row:last-child { border-bottom: none; }
+    .appearance-row label { font-size: 13px; }
+    .appearance-row small { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .color-input-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    input[type="color"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 34px;
+      height: 34px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: transparent;
+      cursor: pointer;
+      padding: 0;
+    }
+    input[type="color"]::-webkit-color-swatch-wrapper { padding: 3px; }
+    input[type="color"]::-webkit-color-swatch { border: none; border-radius: 6px; }
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; cursor: pointer;
+      inset: 0;
+      background: var(--border-lit);
+      border-radius: 99px;
+      transition: .2s;
+    }
+    .toggle-slider::before {
+      content: "";
+      position: absolute;
+      height: 16px; width: 16px;
+      left: 3px; bottom: 3px;
+      background: var(--muted);
+      border-radius: 50%;
+      transition: .2s;
+    }
+    .toggle-switch input:checked + .toggle-slider { background: rgba(59,130,246,.3); }
+    .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); background: var(--accent); }
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 1024px) {
+      .page { grid-template-columns: 1fr; }
+      .sidebar { border-right: none; border-bottom: 1px solid var(--border); padding: 16px; flex-direction: row; flex-wrap: wrap; gap: 4px; }
+      .sidebar-label { display: none; }
+      .api-select, .history-box { display: none; }
+      .bottom-grid { grid-template-columns: 1fr; }
+      .input-section { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .stats-row { grid-template-columns: 1fr 1fr; }
+      .modal-grid { grid-template-columns: 1fr; }
+      .socios-grid { grid-template-columns: 1fr; }
+      .enrich-stat-row { grid-template-columns: 1fr; }
+      .tab-panel { padding: 16px; }
+    }
+
+    /* ═══════════════ CHAT WIDGET ═══════════════ */
+    #chatToggleBtn {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 22px;
+      cursor: pointer;
+      box-shadow: 0 8px 24px rgba(59,130,246,.35);
+      z-index: 1000;
+      transition: transform .15s ease;
+    }
+    #chatToggleBtn:hover { transform: scale(1.06); }
+    #chatToggleBtn .chat-badge {
+      position: absolute;
+      top: -4px; right: -4px;
+      background: var(--red);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      min-width: 18px;
+      height: 18px;
+      border-radius: 99px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 0 4px;
+      font-family: var(--mono);
+    }
+
+    #chatPanel {
+      position: fixed;
+      bottom: 96px;
+      right: 24px;
+      width: 340px;
+      max-width: calc(100vw - 32px);
+      height: 480px;
+      max-height: calc(100vh - 140px);
+      background: var(--surface);
+      border: 1px solid var(--border-lit);
+      border-radius: var(--radius);
+      box-shadow: var(--glow), 0 20px 60px rgba(0,0,0,.5);
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+      z-index: 1000;
+    }
+    #chatPanel.open { display: flex; }
+
+    .chat-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 16px;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .chat-header .dot-live {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      flex-shrink: 0;
+    }
+    .chat-header strong { font-size: 14px; font-weight: 600; }
+    .chat-header .chat-close {
+      margin-left: auto;
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 16px;
+      width: 28px; height: 28px;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .chat-header .chat-close:hover { background: var(--border); color: var(--text); }
+
+    #chatMessages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .chat-msg { max-width: 88%; }
+    .chat-msg.own { align-self: flex-end; }
+    .chat-msg .chat-msg-meta {
+      font-size: 10.5px;
+      color: var(--muted);
+      margin-bottom: 3px;
+      font-family: var(--mono);
+      display: flex;
+      gap: 6px;
+    }
+    .chat-msg.own .chat-msg-meta { justify-content: flex-end; }
+    .chat-msg .chat-msg-bubble {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.45;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+    .chat-msg.own .chat-msg-bubble {
+      background: rgba(59,130,246,.14);
+      border-color: rgba(59,130,246,.35);
+    }
+    .chat-empty {
+      margin: auto;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+      padding: 20px;
+    }
+
+    .chat-input-row {
+      display: flex;
+      gap: 8px;
+      padding: 10px;
+      border-top: 1px solid var(--border);
+      background: var(--surface2);
+      flex-shrink: 0;
+    }
+    .chat-input-row input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 9px 12px;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 13px;
+      outline: none;
+    }
+    .chat-input-row input:focus { border-color: var(--accent); }
+    .chat-input-row button {
+      background: var(--accent);
+      border: none;
+      color: #fff;
+      width: 38px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .chat-input-row button:hover { background: var(--accent2); }
+    .chat-input-row button:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* Indicador de digitação da IA */
+    .chat-typing {
+      display: flex;
+      gap: 4px;
+      padding: 10px 12px;
+      align-self: flex-start;
+    }
+    .chat-typing span {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--muted);
+      animation: chatTypingBounce 1.2s infinite ease-in-out;
+    }
+    .chat-typing span:nth-child(2) { animation-delay: .15s; }
+    .chat-typing span:nth-child(3) { animation-delay: .3s; }
+    @keyframes chatTypingBounce {
+      0%, 60%, 100% { transform: translateY(0); opacity: .5; }
+      30% { transform: translateY(-4px); opacity: 1; }
+    }
+    /* ── TELA DE LOGIN / ACESSO RESTRITO ── */
+    .login-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 999;
+      background: radial-gradient(circle at 30% 20%, rgba(59,130,246,.10), transparent 60%), var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .login-box {
+      width: 100%;
+      max-width: 380px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--glow);
+      padding: 32px 28px;
+    }
+    .login-logo {
+      width: 44px; height: 44px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 18px;
+      margin-bottom: 16px;
+    }
+    .login-box h1 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -.3px;
+      margin-bottom: 4px;
+    }
+    .login-box h1 span {
+      display: block;
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .login-sub {
+      font-size: 13px;
+      color: var(--muted);
+      margin: 10px 0 20px;
+      line-height: 1.5;
+    }
+    .login-field { margin-bottom: 14px; }
+    .login-field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .login-field input, .login-field textarea {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      padding: 10px 12px;
+      font-family: var(--font);
+      font-size: 14px;
+      outline: none;
+      resize: vertical;
+    }
+    .login-field input:focus, .login-field textarea:focus { border-color: var(--accent); }
+    .login-error {
+      background: rgba(239,68,68,.1);
+      border: 1px solid rgba(239,68,68,.3);
+      color: var(--red);
+      font-size: 12.5px;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 14px;
+    }
+    .login-submit { width: 100%; justify-content: center; }
+    .login-request-link {
+      width: 100%;
+      background: none;
+      border: none;
+      color: var(--accent);
+      font-size: 12.5px;
+      font-family: var(--font);
+      cursor: pointer;
+      margin-top: 16px;
+      text-align: center;
+      display: block;
+    }
+    .login-request-link:hover { text-decoration: underline; }
+    .login-status-box {
+      text-align: center; padding: 20px 4px;
+    }
+    .login-status-box i { font-size: 30px; margin-bottom: 12px; display: block; }
+    .login-status-box.pendente i { color: #eab308; }
+    .login-status-box.negado i { color: #ef4444; }
+    .login-status-box p { color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .req-item {
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 12px 14px; margin-bottom: 10px;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    }
+    .req-item-info p { margin: 0; font-size: 12px; color: var(--muted); }
+    .req-item-info strong { font-size: 13px; }
+    .req-item-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .req-item-actions button {
+      border: none; border-radius: 6px; width: 30px; height: 30px;
+      cursor: pointer; font-size: 12px; color: #fff;
+    }
+    .req-approve { background: #16a34a; }
+    .req-deny { background: #ef4444; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════ TELA DE LOGIN (ACESSO RESTRITO) ═══════════════ -->
+<div id="loginOverlay" class="login-overlay">
+  <div class="login-box">
+    <div class="login-logo"><i class="fas fa-building"></i></div>
+    <h1>CDA <span>Consulta dados Arcom</span></h1>
+    <p class="login-sub">Acesso restrito. Faça login com seu usuário e senha, ou solicite permissão ao administrador.</p>
+
+    <form id="loginForm" onsubmit="return tentarLogin(event)">
+      <div class="login-field">
+        <label>E-mail</label>
+        <input type="email" id="loginUser" autocomplete="username" required>
+      </div>
+      <div class="login-field">
+        <label>Senha</label>
+        <input type="password" id="loginPass" autocomplete="current-password" required>
+      </div>
+      <div id="loginError" class="login-error" style="display:none"></div>
+      <button type="submit" class="btn btn-primary login-submit">
+        <i class="fas fa-sign-in-alt"></i> Entrar
+      </button>
+    </form>
+
+    <button class="login-request-link" onclick="abrirSolicitacao()">
+      Não tenho acesso — solicitar permissão
+    </button>
+  </div>
+</div>
+
+<!-- ═══════════════ MODAL: SOLICITAR ACESSO ═══════════════ -->
+<div id="requestOverlay" class="login-overlay" style="display:none">
+  <div class="login-box">
+    <h1 style="font-size:18px">Solicitar acesso</h1>
+    <p class="login-sub">Preencha os dados abaixo e crie uma senha. Sua conta ficará pendente até que o administrador aprove o acesso.</p>
+    <form id="requestForm" onsubmit="return enviarSolicitacao(event)">
+      <div class="login-field">
+        <label>Seu nome</label>
+        <input type="text" id="reqNome" required>
+      </div>
+      <div class="login-field">
+        <label>Seu e-mail</label>
+        <input type="email" id="reqEmail" required>
+      </div>
+      <div class="login-field">
+        <label>Motivo do acesso</label>
+        <textarea id="reqMotivo" rows="3" required></textarea>
+      </div>
+      <div class="login-field">
+        <label>Crie uma senha</label>
+        <input type="password" id="reqSenha" autocomplete="new-password" minlength="6" required>
+      </div>
+      <div id="reqError" class="login-error" style="display:none"></div>
+      <button type="submit" class="btn btn-primary login-submit">
+        <i class="fas fa-paper-plane"></i> Enviar solicitação
+      </button>
+    </form>
+    <button class="login-request-link" onclick="fecharSolicitacao()">Voltar ao login</button>
+  </div>
+</div>
+
+<!-- ═══════════════ TELA: STATUS DA SOLICITAÇÃO (pendente / negado) ═══════════════ -->
+<div id="statusOverlay" class="login-overlay" style="display:none">
+  <div class="login-box">
+    <div id="statusContent" class="login-status-box"></div>
+    <button class="login-request-link" onclick="fecharStatus()">Voltar ao login</button>
+  </div>
+</div>
+
+<!-- ═══════════════ CONTEÚDO DO APP (fica oculto até o login ser aprovado) ═══════════════ -->
+<div id="appGate" style="display:none">
+
+<!-- FUNDO DE PARTÍCULAS -->
+<canvas id="particleCanvas"></canvas>
+
+<!-- TOPBAR -->
+<nav class="topbar">
+  <a class="topbar-brand" href="#">
+    <span class="logo-dot"><i class="fas fa-building"></i></span>
+    <span>/ CDA (Consulta dados Arcom)</span>
+  </a>
+  <div class="topbar-spacer"></div>
+  <button class="topbar-btn" id="btnAdminPainel" style="display:none" onclick="abrirAdminPainel()" title="Solicitações de acesso"><i class="fas fa-user-clock"></i></button>
+  <button class="topbar-btn" onclick="openSettings()" title="Configurações"><i class="fas fa-sliders-h"></i></button>
+  <button class="topbar-btn" onclick="logout()" title="Sair"><i class="fas fa-sign-out-alt"></i></button>
+</nav>
+
+<!-- ═══════════════ MODAL: PAINEL DE APROVAÇÃO DE ACESSOS (só admin) ═══════════════ -->
+<div class="modal-overlay" id="adminModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div>
+        <p class="modal-head-razao">Solicitações de acesso</p>
+      </div>
+      <button class="modal-close" onclick="closeModal('adminModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <div id="adminReqList"><p style="color:var(--muted);font-size:13px">Carregando...</p></div>
+    </div>
+  </div>
+</div>
+
+<div class="page">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-label">Navegação</div>
+    <div class="nav-item active" onclick="showTab('consulta', this)">
+      <i class="fas fa-search"></i> Consulta CNPJ
+    </div>
+    <div class="nav-item" onclick="showTab('regional', this)">
+      <i class="fas fa-map-marker-alt"></i> Análise Regional
+    </div>
+    <div class="nav-item" onclick="showTab('prospeccao', this)">
+      <i class="fas fa-bullseye"></i> Prospecção
+    </div>
+
+    <div class="sidebar-label" style="margin-top:20px">Fonte de Dados</div>
+    <div class="api-select">
+      <p>API selecionada</p>
+      <div class="api-option">
+        <input type="radio" name="api" id="api1" value="brasilapi" checked onchange="selectAPI('brasilapi')">
+        <label for="api1"><strong>BrasilAPI</strong><small>Dados completos RF</small></label>
+      </div>
+      <div class="api-option">
+        <input type="radio" name="api" id="api2" value="opencnpj" onchange="selectAPI('opencnpj')">
+        <label for="api2"><strong>OpenCNPJ</strong><small>Receita Federal direto</small></label>
+      </div>
+      <div class="api-option">
+        <input type="radio" name="api" id="api3" value="arcom" onchange="selectAPI('arcom')">
+        <label for="api3"><strong>Consulta CNPJ Arcom</strong><small>API própria (JWT)</small></label>
+      </div>
+    </div>
+
+    <div class="sidebar-label" style="margin-top:8px">Histórico recente</div>
+    <div class="history-box" id="historyContainer">
+      <div style="padding:8px 10px;font-size:12px;color:var(--muted)">Nenhuma consulta</div>
+    </div>
+
+    <button class="btn btn-ghost" style="margin-top:8px;font-size:12px" onclick="clearHistory()">
+      <i class="fas fa-trash"></i> Limpar histórico
+    </button>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- TAB: CONSULTA -->
+    <div class="tab-panel active" id="tab-consulta">
+
+      <div class="input-section">
+        <div class="textarea-wrap">
+          <textarea id="input" class="cnpj-textarea"
+            placeholder="Cole os CNPJs aqui, um por linha
+Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
+        </div>
+        <div class="action-stack">
+          <button class="btn btn-primary" onclick="startVerification()">
+            <i class="fas fa-play"></i> Verificar CNPJs
+          </button>
+          <button class="btn btn-ghost" onclick="clearAll()">
+            <i class="fas fa-redo"></i> Limpar tudo
+          </button>
+          <button class="btn btn-warn" onclick="copiarCNPJsProblema()">
+            <i class="fas fa-copy"></i> Copiar problemáticos
+          </button>
+          <button class="btn btn-ghost hidden" id="btnCopiarErros" onclick="copiarCNPJsErro()" style="border-color:var(--border-lit)">
+            <i class="fas fa-triangle-exclamation"></i> Copiar erros
+          </button>
+          <button class="btn btn-success-outline hidden" id="btnExport" onclick="showExportMenu()">
+            <i class="fas fa-download"></i> Exportar resultados
+          </button>
+          <button class="btn btn-purple hidden" id="btnEnrichAll" onclick="enriquecerTodos()">
+            <i class="fas fa-lightbulb"></i> Gerar insight (todos)
+          </button>
+        </div>
+      </div>
+
+      <div class="progress-card">
+        <div class="progress-header">
+          <span class="progress-status" id="status">Aguardando entrada…</span>
+          <span class="progress-pct" id="percentage">0%</span>
+        </div>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" id="barFill" style="width:0%"></div>
+        </div>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-card c-green">
+          <div class="stat-val" id="statTotal">0</div>
+          <div class="stat-lbl">Total</div>
+        </div>
+        <div class="stat-card c-red">
+          <div class="stat-val" id="statBaixada">0</div>
+          <div class="stat-lbl">Baixadas</div>
+        </div>
+        <div class="stat-card c-yellow">
+          <div class="stat-val" id="statInapta">0</div>
+          <div class="stat-lbl">Inaptas</div>
+        </div>
+        <div class="stat-card c-cyan">
+          <div class="stat-val" id="statSuspensa">0</div>
+          <div class="stat-lbl">Suspensas</div>
+        </div>
+        <div class="stat-card c-gray">
+          <div class="stat-val" id="statErro">0</div>
+          <div class="stat-lbl">Erros / Não consultados</div>
+        </div>
+      </div>
+
+      <div class="bottom-grid">
+        <div class="table-card">
+          <div class="table-card-header">
+            <i class="fas fa-table"></i> Resultado da Consulta
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:32px"></th>
+                  <th>CNPJ</th>
+                  <th>Razão Social</th>
+                  <th>Situação</th>
+                  <th>Porte</th>
+                  <th>UF</th>
+                  <th style="width:170px"></th>
+                </tr>
+              </thead>
+              <tbody id="tbody">
+                <tr>
+                  <td colspan="7">
+                    <div class="empty-state">
+                      <i class="fas fa-search"></i>
+                      <p>Nenhuma consulta realizada</p>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="chart-panel">
+          <div class="chart-panel-title"><i class="fas fa-chart-pie" style="color:var(--accent);margin-right:6px"></i>Distribuição</div>
+          <div class="chart-wrap">
+            <canvas id="chartSituacao" style="max-width:200px;max-height:200px"></canvas>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /tab-consulta -->
+
+    <!-- TAB: REGIONAL -->
+    <div class="tab-panel" id="tab-regional">
+
+      <div class="regional-search-bar">
+        <input type="text" id="cnpjRegional" class="regional-input"
+          placeholder="11.222.333/0001-81 ou 11222333000181"
+          maxlength="18"
+          oninput="maskCNPJRegional(this)"
+          onkeydown="if(event.key==='Enter') analyzeRegional()"
+          autocomplete="off">
+        <button class="btn btn-primary" id="btnAnalyze" onclick="analyzeRegional()">
+          <i class="fas fa-search"></i> Buscar
+        </button>
+      </div>
+
+      <div id="regionalAlert"></div>
+
+      <div id="regionalOrigemSection" style="display:none">
+        <div class="origem-card">
+          <div>
+            <p class="origem-nome" id="regNome">—</p>
+            <p class="origem-meta" id="regInfo">—</p>
+          </div>
+          <span class="badge" id="regBadge"></span>
+        </div>
+        <div class="cidade-pill">
+          <i class="fas fa-city"></i>
+          <span id="regCidadeTag">—</span>
+        </div>
+      </div>
+
+      <div id="regionalProgressSection" style="display:none" class="progress-card">
+        <div class="progress-header">
+          <span class="progress-status" id="regProgressText"><span class="spinner"></span> Buscando empresas…</span>
+          <span class="progress-pct" id="regProgressPct">0%</span>
+        </div>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" id="regProgressBar" style="width:0%"></div>
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin-top:8px" id="regProgressSub">Consultando a BrasilAPI…</p>
+      </div>
+
+      <div id="regionalResultsSection" style="display:none">
+        <div class="filter-bar">
+          <button class="filter-chip active" id="filtroTodas" onclick="aplicarFiltroRegional('todas')">Todas</button>
+          <button class="filter-chip" id="filtroAtiva" onclick="aplicarFiltroRegional('ativa')">Só Ativas</button>
+          <span class="count-pill" id="regCountBadge">0 empresas</span>
+        </div>
+        <div class="regional-grid" id="regionalGrid"></div>
+      </div>
+
+
+    </div><!-- /tab-regional -->
+
+    <div class="tab-panel" id="tab-prospeccao">
+      <div class="card">
+        <h2>Prospecção por Cidade e Ramo</h2>
+        <div style="display:grid;grid-template-columns:1fr 100px 1fr 120px;gap:12px;margin-top:15px">
+          <input id="prosCidade" class="regional-input" placeholder="Cidade">
+          <input id="prosUF" class="regional-input" placeholder="UF">
+          <select id="prosCNAE" class="regional-input">
+            <option value="4711302">Supermercado</option>
+            <option value="4771701">Farmácia</option>
+            <option value="5611201">Restaurante</option>
+            <option value="4520001">Oficina Mecânica</option>
+            <option value="4744099">Material Construção</option>
+            <option value="4530703">Auto Peças</option>
+            <option value="4721102">Padaria</option>
+            <option value="4722901">Açougue</option>
+            <option value="4711302">Mercado</option>
+            <option value="4635403">Distribuidora de Bebidas</option>
+            <option value="5510801">Hotel</option>
+            <option value="5590603">Pousada</option>
+            <option value="9313100">Academia</option>
+            <option value="4761003">Papelaria</option>
+            <option value="4751201">Loja de Informática</option>
+            <option value="4752100">Loja de Celular</option>
+            <option value="4781400">Loja de Roupas</option>
+            <option value="4782201">Loja de Calçados</option>
+            <option value="8599601">Auto Escola</option>
+            <option value="4930202">Transportadora</option>
+            <option value="4731800">Posto de Combustível</option>
+            <option value="4520006">Borracharia</option>
+            <option value="4520001">Mecânica</option>
+            <option value="4520002">Funilaria</option>
+            <option value="8630504">Dentista</option>
+            <option value="8630503">Clínica Médica</option>
+            <option value="8640202">Laboratório</option>
+            <option value="7500100">Veterinária</option>
+            <option value="4789004">Pet Shop</option>
+            <option value="4120400">Construtora</option>
+            <option value="6821801">Imobiliária</option>
+            <option value="6920601">Contabilidade</option>
+            <option value="6911701">Advocacia</option>
+            <option value="1813001">Gráfica</option>
+            <option value="4729699">Sorveteria</option>
+            <option value="5611203">Lanchonete</option>
+            <option value="5611204">Pizzaria</option>
+            <option value="5611203">Hamburgueria</option>
+            <option value="MISTO">Misto (Ramos Diversos)</option>
+          </select>
+          <input id="prosLimite" class="regional-input" type="number" value="15" min="1" max="100">
+        </div>
+        <button class="btn btn-primary" style="margin-top:15px" onclick="buscarProspeccao()">
+          <i class="fas fa-search"></i> Buscar Empresas
+        </button>
+        <button class="btn btn-success-outline" style="margin-top:15px" onclick="copiarProspeccao()">
+          <i class="fas fa-copy"></i> Copiar CNPJs
+        </button>
+        <div id="prosResultado" style="margin-top:20px"></div>
+      </div>
+    </div>
+
+
+    <div class="footer">
+      <span>© 2026 VERIFICADOR</span>
+      <span>Ferramenta criada por <strong>João Lucas</strong> · Em desenvolvimento</span>
+    </div>
+  </main>
+</div>
+
+<!-- MODAL: DETALHES -->
+<div class="modal-overlay" id="detailsModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div>
+        <p class="modal-head-cnpj" id="detailCNPJ"></p>
+        <p class="modal-head-razao" id="detailRazao"></p>
+      </div>
+      <button class="modal-close" onclick="closeModal('detailsModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-section">
+        <div class="modal-section-title"><i class="fas fa-building"></i> Informações Básicas</div>
+        <div class="modal-grid">
+          <div class="modal-field"><label>Situação</label><p><span class="badge" id="detailSituacao"></span></p></div>
+          <div class="modal-field"><label>Porte</label><p id="detailPorte"></p></div>
+          <div class="modal-field"><label>Natureza Jurídica</label><p id="detailNatureza"></p></div>
+          <div class="modal-field"><label>Atividade Principal</label><p id="detailAtividade"></p></div>
+          <div class="modal-field"><label>Data de Abertura</label><p id="detailDataInicio"></p></div>
+          <div class="modal-field"><label>Capital Social</label><p id="detailCapital"></p></div>
+        </div>
+      </div>
+      <div class="modal-section">
+        <div class="modal-section-title"><i class="fas fa-map-pin"></i> Localização</div>
+        <div class="modal-grid">
+          <div class="modal-field" style="grid-column:1/-1"><label>Endereço</label><p id="detailEndereco"></p></div>
+          <div class="modal-field"><label>CEP</label><p id="detailCEP"></p></div>
+          <div class="modal-field"><label>Estado</label><p id="detailUF"></p></div>
+        </div>
+      </div>
+      <div class="modal-section">
+        <div class="modal-section-title"><i class="fas fa-phone"></i> Contato</div>
+        <div class="modal-grid">
+          <div class="modal-field"><label>Telefone</label><p id="detailTelefone"></p></div>
+          <div class="modal-field"><label>E-mail</label><p id="detailEmail"></p></div>
+        </div>
+      </div>
+      <div class="modal-section">
+        <div class="modal-section-title"><i class="fas fa-users"></i> Quadro Societário</div>
+        <div id="detailSocios"></div>
+      </div>
+    </div>
+    <div class="modal-footer-row">
+      <button class="btn btn-ghost" onclick="closeModal('detailsModal')">Fechar</button>
+      <button class="btn btn-primary" onclick="exportDetalhes()"><i class="fas fa-download"></i> Exportar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ENRIQUECIMENTO (Insight IA - Groq) -->
+<div class="modal-overlay" id="enrichModal">
+  <div class="modal-box">
+    <div class="modal-head purple-head">
+      <div>
+        <p class="modal-head-cnpj" id="enrichCNPJ"></p>
+        <p class="modal-head-razao" id="enrichRazao"></p>
+      </div>
+      <button class="modal-close" onclick="closeModal('enrichModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body" id="enrichBody">
+      <div class="enrich-loading">
+        <div class="spinner-lg"></div>
+        <p>Buscando contato na web e gerando insight comercial com IA…</p>
+      </div>
+    </div>
+    <div class="modal-footer-row">
+      <button class="btn btn-ghost" onclick="closeModal('enrichModal')">Fechar</button>
+      <button class="btn btn-purple" id="btnExportEnrich" onclick="exportEnrichAtual()" style="display:none">
+        <i class="fas fa-download"></i> Exportar insight
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: MAPA -->
+<div class="modal-overlay" id="mapModal">
+  <div class="modal-box" style="max-width:640px">
+    <div class="modal-head">
+      <div>
+        <p class="modal-head-cnpj" id="mapCNPJ"></p>
+        <p class="modal-head-razao" id="mapRazao"></p>
+      </div>
+      <button class="modal-close" onclick="closeModal('mapModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body" style="padding:0">
+      <div style="padding:16px 24px 0">
+        <p style="font-size:12px;color:var(--muted);margin-bottom:12px" id="mapEndereco">—</p>
+      </div>
+      <iframe id="mapFrame"
+        width="100%" height="380" style="border:0;display:block"
+        loading="lazy" referrerpolicy="no-referrer-when-downgrade">
+      </iframe>
+    </div>
+    <div class="modal-footer-row">
+      <button class="btn btn-ghost" onclick="closeModal('mapModal')">Fechar</button>
+      <button class="btn btn-primary" id="btnAbrirMapaExterno" onclick="abrirMapaExterno()">
+        <i class="fas fa-up-right-from-square"></i> Abrir no Google Maps
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: EXPORT -->
+<div class="modal-overlay" id="exportModal">
+  <div class="modal-box" style="max-width:400px">
+    <div class="modal-head">
+      <div><p class="modal-head-razao">Exportar resultados</p></div>
+      <button class="modal-close" onclick="closeModal('exportModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="export-grid">
+        <button class="export-btn" onclick="exportCSV()"><i class="fas fa-file-excel" style="color:#22c55e"></i> Excel / CSV</button>
+        <button class="export-btn" onclick="exportJSON()"><i class="fas fa-file-code" style="color:#6366f1"></i> JSON</button>
+        <button class="export-btn" onclick="exportPDF()"><i class="fas fa-file-pdf" style="color:#ef4444"></i> PDF</button>
+        <button class="export-btn" onclick="closeModal('exportModal')"><i class="fas fa-times" style="color:var(--muted)"></i> Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: SETTINGS -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal-box" style="max-width:400px">
+    <div class="modal-head">
+      <div><p class="modal-head-razao">Configurações</p></div>
+      <button class="modal-close" onclick="closeModal('settingsModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+
+      <p style="font-size:12px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.8px;font-weight:600">Aparência</p>
+
+      <div class="appearance-row">
+        <div>
+          <label for="colorAccent">Cor de destaque</label>
+          <small>Usada em botões, links e no fundo</small>
+        </div>
+        <div class="color-input-wrap">
+          <input type="color" id="colorAccent" value="#3b82f6" oninput="applyAccentColor()">
+        </div>
+      </div>
+
+      <div class="appearance-row">
+        <div>
+          <label for="colorAccent2">Cor secundária</label>
+          <small>Usada em gradientes (logo, barra de progresso)</small>
+        </div>
+        <div class="color-input-wrap">
+          <input type="color" id="colorAccent2" value="#6366f1" oninput="applyAccentColor()">
+        </div>
+      </div>
+
+      <div class="appearance-row">
+        <div>
+          <label for="toggleParticles">Partículas no fundo</label>
+          <small>Rede de pontos conectados</small>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="toggleParticles" checked onchange="toggleParticles()">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="appearance-row" style="flex-direction:column;align-items:stretch;gap:6px">
+        <div style="display:flex;justify-content:space-between">
+          <label for="particleDensity">Densidade das partículas</label>
+          <small id="particleDensityVal">60</small>
+        </div>
+        <input type="range" id="particleDensity" min="10" max="150" value="60" oninput="updateParticleDensity()">
+      </div>
+
+      <button class="btn btn-ghost" style="margin-top:12px;width:100%;font-size:12px" onclick="resetAccentColor()">
+        <i class="fas fa-rotate-left"></i> Restaurar cores padrão
+      </button>
+
+      <p style="font-size:12px;color:var(--muted);margin:20px 0 6px;text-transform:uppercase;letter-spacing:.8px;font-weight:600">Colunas visíveis</p>
+      <label style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;font-size:14px">
+        <input type="checkbox" id="colCNPJ" checked> CNPJ
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;font-size:14px">
+        <input type="checkbox" id="colRazao" checked> Razão Social
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;font-size:14px">
+        <input type="checkbox" id="colSituacao" checked> Situação
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;padding:10px 0;cursor:pointer;font-size:14px">
+        <input type="checkbox" id="colPorte" checked> Porte
+      </label>
+    </div>
+    <div class="modal-footer-row">
+      <button class="btn btn-primary" onclick="closeModal('settingsModal')">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── GLOBALS ─────────────────────────────────────────────────────────────────
+const norm  = s => s.replace(/\D/g,'');
+let rows = [], allData = {}, selectedAPI = 'brasilapi';
+let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
+let historyLog = JSON.parse(localStorage.getItem('cnpjHistory')) || [];
+let chart = null, currentDetailsCNPJ = null;
+let _regionalResultados = [], _regionalCidade = '', _regionalUF = '';
+let enrichData = {}; // cnpj -> insight comercial gerado pela IA (Groq)
+let currentEnrichCNPJ = null;
+let erroCNPJs = []; // lista de {cnpj, motivo} que não foram consultados com sucesso
+let mapaEnderecoAtual = ''; // endereço em exibição no modal de mapa
+
+// ── TABS ────────────────────────────────────────────────────────────────────
+function showTab(name, el) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  el.classList.add('active');
+}
+
+// ── MODALS ──────────────────────────────────────────────────────────────────
+function openModal(id)  { document.getElementById(id).classList.add('open');    }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+});
+function openSettings() { openModal('settingsModal'); }
+function showExportMenu() { openModal('exportModal'); }
+
+// ── API SELECT ───────────────────────────────────────────────────────────────
+function selectAPI(api) { selectedAPI = api; }
+
+// ── APARÊNCIA (cores + partículas) ───────────────────────────────────────────
+const DEFAULT_ACCENT  = '#3b82f6';
+const DEFAULT_ACCENT2 = '#6366f1';
+
+function loadThemeSettings() {
+  const saved = JSON.parse(localStorage.getItem('themeSettings') || 'null');
+  const accent  = saved?.accent  || DEFAULT_ACCENT;
+  const accent2 = saved?.accent2 || DEFAULT_ACCENT2;
+  document.documentElement.style.setProperty('--accent', accent);
+  document.documentElement.style.setProperty('--accent2', accent2);
+  const inpA = document.getElementById('colorAccent');
+  const inpB = document.getElementById('colorAccent2');
+  if (inpA) inpA.value = accent;
+  if (inpB) inpB.value = accent2;
+}
+function applyAccentColor() {
+  const accent  = document.getElementById('colorAccent').value;
+  const accent2 = document.getElementById('colorAccent2').value;
+  document.documentElement.style.setProperty('--accent', accent);
+  document.documentElement.style.setProperty('--accent2', accent2);
+  localStorage.setItem('themeSettings', JSON.stringify({ accent, accent2 }));
+}
+function resetAccentColor() {
+  document.documentElement.style.setProperty('--accent', DEFAULT_ACCENT);
+  document.documentElement.style.setProperty('--accent2', DEFAULT_ACCENT2);
+  localStorage.removeItem('themeSettings');
+  document.getElementById('colorAccent').value = DEFAULT_ACCENT;
+  document.getElementById('colorAccent2').value = DEFAULT_ACCENT2;
+}
+
+// ── PARTÍCULAS DE FUNDO (rede/constelação) ───────────────────────────────────
+let particleCanvas, particleCtx, particles = [], particleAnimId = null;
+let particleSettings = JSON.parse(localStorage.getItem('particleSettings') || 'null') || { enabled: true, density: 60 };
+
+function hexToRgb(hex) {
+  hex = (hex || '').replace('#', '');
+  if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+  const num = parseInt(hex, 16) || 0x3b82f6;
+  return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+}
+function getParticleColorHex() {
+  return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || DEFAULT_ACCENT;
+}
+function resizeParticleCanvas() {
+  if (!particleCanvas) return;
+  particleCanvas.width = window.innerWidth;
+  particleCanvas.height = window.innerHeight;
+}
+function initParticles() {
+  particleCanvas = document.getElementById('particleCanvas');
+  if (!particleCanvas) return;
+  particleCtx = particleCanvas.getContext('2d');
+  resizeParticleCanvas();
+  particles = [];
+  const count = particleSettings.density;
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x: Math.random() * particleCanvas.width,
+      y: Math.random() * particleCanvas.height,
+      vx: (Math.random() - 0.5) * 0.25,
+      vy: (Math.random() - 0.5) * 0.25,
+      r: Math.random() * 1.4 + 0.6
+    });
+  }
+  if (particleAnimId) cancelAnimationFrame(particleAnimId);
+  if (particleSettings.enabled) animateParticles();
+  else particleCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+}
+function animateParticles() {
+  if (!particleCtx || !particleSettings.enabled) return;
+  particleCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+  const { r, g, b } = hexToRgb(getParticleColorHex());
+  particles.forEach(p => {
+    p.x += p.vx; p.y += p.vy;
+    if (p.x < 0 || p.x > particleCanvas.width) p.vx *= -1;
+    if (p.y < 0 || p.y > particleCanvas.height) p.vy *= -1;
+  });
+  const maxDist = 140;
+  for (let i = 0; i < particles.length; i++) {
+    const p1 = particles[i];
+    particleCtx.beginPath();
+    particleCtx.arc(p1.x, p1.y, p1.r, 0, Math.PI * 2);
+    particleCtx.fillStyle = `rgba(${r},${g},${b},0.65)`;
+    particleCtx.fill();
+    for (let j = i + 1; j < particles.length; j++) {
+      const p2 = particles[j];
+      const dx = p1.x - p2.x, dy = p1.y - p2.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < maxDist) {
+        particleCtx.beginPath();
+        particleCtx.moveTo(p1.x, p1.y);
+        particleCtx.lineTo(p2.x, p2.y);
+        particleCtx.strokeStyle = `rgba(${r},${g},${b},${0.18 * (1 - dist / maxDist)})`;
+        particleCtx.lineWidth = 1;
+        particleCtx.stroke();
+      }
+    }
+  }
+  particleAnimId = requestAnimationFrame(animateParticles);
+}
+function toggleParticles() {
+  particleSettings.enabled = document.getElementById('toggleParticles').checked;
+  localStorage.setItem('particleSettings', JSON.stringify(particleSettings));
+  if (particleSettings.enabled) {
+    animateParticles();
+  } else {
+    if (particleAnimId) cancelAnimationFrame(particleAnimId);
+    if (particleCtx) particleCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+  }
+}
+function updateParticleDensity() {
+  const val = parseInt(document.getElementById('particleDensity').value, 10);
+  particleSettings.density = val;
+  document.getElementById('particleDensityVal').textContent = val;
+  localStorage.setItem('particleSettings', JSON.stringify(particleSettings));
+  initParticles();
+}
+window.addEventListener('resize', () => { if (particleCanvas) resizeParticleCanvas(); });
+
+// ── CNPJ HELPERS ─────────────────────────────────────────────────────────────
+function isValidCNPJ(cnpj) {
+  cnpj = norm(cnpj);
+  if (cnpj.length !== 14 || /^(\d)\1{13}$/.test(cnpj)) return false;
+  let t=cnpj.length-2,n=cnpj.substring(0,t),d=cnpj.substring(t),s=0,p=t-7;
+  for(let i=t;i>=1;i--){s+=n.charAt(t-i)*p--;if(p<2)p=9;}
+  let r=s%11<2?0:11-s%11;
+  if(r!==parseInt(d.charAt(0)))return false;
+  t++;n=cnpj.substring(0,t);s=0;p=t-7;
+  for(let i=t;i>=1;i--){s+=n.charAt(t-i)*p--;if(p<2)p=9;}
+  r=s%11<2?0:11-s%11;
+  return r===parseInt(d.charAt(1));
+}
+function fmt(cnpj) {
+  return cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,'$1.$2.$3/$4-$5');
+}
+function parseCNPJs(text) {
+  const lista=text.match(/\d{13,14}|\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/g)||[];
+  return [...new Set(lista.map(c=>{c=norm(c);if(c.length===13)c='0'+c;return c;}))];
+}
+function badgeClass(sit) {
+  if(!sit) return '';
+  sit=sit.toUpperCase();
+  if(sit.includes('INAPTA'))   return 'badge-inapta';
+  if(sit.includes('BAIXADA'))  return 'badge-baixada';
+  if(sit.includes('SUSPENSA')) return 'badge-suspensa';
+  if(sit.includes('ATIVA'))    return 'badge-ativa';
+  return '';
+}
+
+// ── HISTORY ──────────────────────────────────────────────────────────────────
+function addToHistory(cnpj, razao) {
+  historyLog = historyLog.filter(h => h.cnpj !== cnpj);
+  historyLog.unshift({ cnpj, razao });
+  if (historyLog.length > 20) historyLog = historyLog.slice(0, 20);
+  localStorage.setItem('cnpjHistory', JSON.stringify(historyLog));
+  renderHistory();
+}
+function renderHistory() {
+  const c = document.getElementById('historyContainer');
+  if (!c) return;
+  if (!historyLog.length) { c.innerHTML = '<div style="padding:8px 10px;font-size:12px;color:var(--muted)">Nenhuma consulta</div>'; return; }
+  c.innerHTML = historyLog.slice(0,10).map(h => `
+    <div class="history-entry" onclick="document.getElementById('input').value='${h.cnpj}';startVerification()">
+      <div class="h-cnpj">${fmt(h.cnpj)}</div>
+      <div class="h-nome">${h.razao}</div>
+    </div>`).join('');
+}
+function clearHistory() {
+  if (!confirm('Limpar histórico?')) return;
+  historyLog = [];
+  localStorage.removeItem('cnpjHistory');
+  renderHistory();
+}
+window.addEventListener('load', () => {
+  renderHistory();
+  loadThemeSettings();
+  document.getElementById('toggleParticles').checked = particleSettings.enabled;
+  document.getElementById('particleDensity').value = particleSettings.density;
+  document.getElementById('particleDensityVal').textContent = particleSettings.density;
+  initParticles();
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── LOGIN / SOLICITAÇÃO DE ACESSO (Firebase Auth + Firestore) ──────────────
+// ═══════════════════════════════════════════════════════════════════════════
+
+// TODO: cole aqui o firebaseConfig do seu projeto (Configurações do projeto > Seus apps > SDK setup and configuration)
+const firebaseConfig = {
+  apiKey: "AIzaSyDPIZIPl9zlQW1xUptgP4OlJkiTlFEnN4g",
+  authDomain: "consulta-cnpj-efe7c.firebaseapp.com",
+  databaseURL: "https://consulta-cnpj-efe7c-default-rtdb.firebaseio.com",
+  projectId: "consulta-cnpj-efe7c",
+  storageBucket: "consulta-cnpj-efe7c.firebasestorage.app",
+  messagingSenderId: "978339964025",
+  appId: "1:978339964025:web:c303d79519cc37efc720a8",
+  measurementId: "G-Z8J38Y2Z59"
+};
+
+// TODO: troque pelo seu e-mail. Só quem logar com este e-mail vê o painel de aprovação.
+const ADMIN_EMAIL = 'jlrodrigues6900@gmail.com';
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+const usersCol = db.collection('usuarios'); // uma doc por usuário, id = uid, campos: nome, email, motivo, status, criadoEm
+
+function mostrarTelaLogin() {
+  document.getElementById('loginOverlay').style.display = 'flex';
+  document.getElementById('requestOverlay').style.display = 'none';
+  document.getElementById('statusOverlay').style.display = 'none';
+  document.getElementById('appGate').style.display = 'none';
+}
+
+function mostrarTelaStatus(status) {
+  document.getElementById('loginOverlay').style.display = 'none';
+  document.getElementById('requestOverlay').style.display = 'none';
+  document.getElementById('appGate').style.display = 'none';
+  const overlay = document.getElementById('statusOverlay');
+  const content = document.getElementById('statusContent');
+  overlay.style.display = 'flex';
+  if (status === 'pendente') {
+    content.className = 'login-status-box pendente';
+    content.innerHTML = '<i class="fas fa-hourglass-half"></i><p><strong>Solicitação em análise.</strong><br>Assim que o administrador aprovar seu acesso, você poderá entrar normalmente com seu e-mail e senha.</p>';
+  } else if (status === 'negado') {
+    content.className = 'login-status-box negado';
+    content.innerHTML = '<i class="fas fa-ban"></i><p><strong>Acesso negado.</strong><br>O administrador não aprovou sua solicitação. Entre em contato caso ache que isso é um engano.</p>';
+  } else {
+    content.className = 'login-status-box negado';
+    content.innerHTML = '<i class="fas fa-triangle-exclamation"></i><p>Não encontramos uma solicitação de acesso vinculada a esta conta.</p>';
+  }
+}
+
+function fecharStatus() {
+  auth.signOut();
+  mostrarTelaLogin();
+}
+
+async function mostrarApp(userDoc) {
+  document.getElementById('loginOverlay').style.display = 'none';
+  document.getElementById('requestOverlay').style.display = 'none';
+  document.getElementById('statusOverlay').style.display = 'none';
+  document.getElementById('appGate').style.display = '';
+  const isAdmin = auth.currentUser && auth.currentUser.email === ADMIN_EMAIL;
+  document.getElementById('btnAdminPainel').style.display = isAdmin ? '' : 'none';
+}
+
+// Reage a qualquer mudança de login (login, logout, refresh da página)
+auth.onAuthStateChanged(async (user) => {
+  if (!user) { mostrarTelaLogin(); return; }
+  try {
+    const doc = await usersCol.doc(user.uid).get();
+    if (!doc.exists) { mostrarTelaStatus(null); return; }
+    const status = doc.data().status;
+    if (status === 'aprovado') { mostrarApp(doc.data()); }
+    else if (status === 'pendente') { mostrarTelaStatus('pendente'); }
+    else { mostrarTelaStatus('negado'); }
+  } catch (e) {
+    console.error(e);
+    mostrarTelaStatus(null);
+  }
+});
+
+async function tentarLogin(event) {
+  event.preventDefault();
+  const email = document.getElementById('loginUser').value.trim();
+  const senha = document.getElementById('loginPass').value;
+  const errBox = document.getElementById('loginError');
+  errBox.style.display = 'none';
+  try {
+    await auth.signInWithEmailAndPassword(email, senha);
+    // onAuthStateChanged cuida do resto (checar status e mostrar tela certa)
+  } catch (e) {
+    let msg = 'Não foi possível entrar. Verifique seu e-mail e senha.';
+    if (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found') {
+      msg = 'E-mail ou senha incorretos.';
+    } else if (e.code === 'auth/too-many-requests') {
+      msg = 'Muitas tentativas. Aguarde um momento e tente novamente.';
+    }
+    errBox.textContent = msg;
+    errBox.style.display = 'block';
+  }
+  return false;
+}
+
+function abrirSolicitacao() {
+  document.getElementById('loginOverlay').style.display = 'none';
+  document.getElementById('requestOverlay').style.display = 'flex';
+}
+function fecharSolicitacao() {
+  document.getElementById('requestOverlay').style.display = 'none';
+  document.getElementById('loginOverlay').style.display = 'flex';
+}
+
+async function enviarSolicitacao(event) {
+  event.preventDefault();
+  const nome = document.getElementById('reqNome').value.trim();
+  const email = document.getElementById('reqEmail').value.trim();
+  const motivo = document.getElementById('reqMotivo').value.trim();
+  const senha = document.getElementById('reqSenha').value;
+  const errBox = document.getElementById('reqError');
+  errBox.style.display = 'none';
+  try {
+    const cred = await auth.createUserWithEmailAndPassword(email, senha);
+    await usersCol.doc(cred.user.uid).set({
+      nome, email, motivo,
+      status: 'pendente',
+      criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    // onAuthStateChanged vai detectar o login automático e mostrar a tela "pendente"
+  } catch (e) {
+    let msg = 'Não foi possível enviar a solicitação.';
+    if (e.code === 'auth/email-already-in-use') msg = 'Este e-mail já possui uma conta. Tente fazer login.';
+    else if (e.code === 'auth/weak-password') msg = 'Senha muito fraca (mínimo 6 caracteres).';
+    else if (e.code === 'auth/invalid-email') msg = 'E-mail inválido.';
+    errBox.textContent = msg;
+    errBox.style.display = 'block';
+  }
+  return false;
+}
+
+function logout() {
+  auth.signOut();
+}
+
+// ── PAINEL DE ADMINISTRAÇÃO (aprovar / negar) ──────────────────────────────
+async function abrirAdminPainel() {
+  openModal('adminModal');
+  await renderAdminPainel();
+}
+
+async function renderAdminPainel() {
+  const box = document.getElementById('adminReqList');
+  box.innerHTML = '<p style="color:var(--muted);font-size:13px">Carregando...</p>';
+  const snap = await usersCol.orderBy('criadoEm', 'desc').get();
+  if (snap.empty) {
+    box.innerHTML = '<p style="color:var(--muted);font-size:13px">Nenhuma solicitação ainda.</p>';
+    return;
+  }
+  box.innerHTML = '';
+  snap.forEach(doc => {
+    const d = doc.data();
+    const uid = doc.id;
+    const statusLabel = { pendente: 'Pendente', aprovado: 'Aprovado', negado: 'Negado' }[d.status] || d.status;
+    const item = document.createElement('div');
+    item.className = 'req-item';
+    item.innerHTML = `
+      <div class="req-item-info">
+        <strong>${d.nome || '—'}</strong> <span class="badge">${statusLabel}</span>
+        <p>${d.email || ''}</p>
+        <p>${d.motivo || ''}</p>
+      </div>
+      <div class="req-item-actions">
+        ${d.status !== 'aprovado' ? `<button class="req-approve" title="Aprovar" onclick="definirStatus('${uid}','aprovado')"><i class="fas fa-check"></i></button>` : ''}
+        ${d.status !== 'negado' ? `<button class="req-deny" title="Negar" onclick="definirStatus('${uid}','negado')"><i class="fas fa-times"></i></button>` : ''}
+      </div>`;
+    box.appendChild(item);
+  });
+}
+
+async function definirStatus(uid, status) {
+  await usersCol.doc(uid).update({ status });
+  await renderAdminPainel();
+}
+
+// ── API CALLS ─────────────────────────────────────────────────────────────────
+async function consultarBrasilAPI(cnpj) {
+  const r = await fetch('https://brasilapi.com.br/api/cnpj/v1/'+cnpj);
+  const d = await r.json();
+  if (!isValidCNPJ(cnpj)) throw new Error('CNPJ inválido');
+  const sit=String(d.descricao_situacao_cadastral||'').toUpperCase()||'INDEFINIDA';
+  return { situacao:sit, razao:d.razao_social||'—', porte:d.porte||'—',
+    natureza:d.natureza_juridica||'—', atividade:d.cnae_fiscal_descricao||'—',
+    uf:(d.uf||'—').substring(0,2), nomeFantasia:d.nome_fantasia||'—',
+    dataInicio:d.data_inicio_atividade||'—',
+    capitalSocial:d.capital_social?'R$ '+d.capital_social.toLocaleString('pt-BR'):'—',
+    endereco:`${d.logradouro||'—'}, ${d.numero||'—'} - ${d.bairro||'—'}, ${d.municipio||'—'} - ${d.uf||'—'}`,
+    cep:d.cep||'—', telefone:d.telefone1||'—', email:d.email||'—',
+    socios:d.qsa||[], api:'BrasilAPI', municipio:d.municipio||'' };
+}
+async function consultarOpenCNPJ(cnpj) {
+  const r = await fetch('https://api.opencnpj.org/'+cnpj);
+  if (!r.ok) throw new Error('CNPJ não encontrado');
+  const d = await r.json();
+  if (!isValidCNPJ(cnpj)) throw new Error('CNPJ inválido');
+  return { situacao:String(d.situacao_cadastral||'').toUpperCase()||'INDEFINIDA',
+    razao:d.razao_social||'—', porte:d.porte||'—', natureza:d.natureza_juridica||'—',
+    atividade:d.atividade_principal?.[0]?.text||'—', uf:(d.uf||'—').substring(0,2),
+    nomeFantasia:d.nome_fantasia||'—', dataInicio:d.data_abertura||'—',
+    capitalSocial:d.capital_social?'R$ '+d.capital_social.toLocaleString('pt-BR'):'—',
+    endereco:`${d.logradouro||'—'}, ${d.numero||'—'} ${d.bairro||'—'}, ${d.municipio||'—'} - ${d.uf||'—'}`,
+    cep:d.cep||'—', telefone:d.telefone||'—', email:d.email||'—',
+    socios:d.qsa||[], api:'OpenCNPJ', municipio:d.municipio||'' };
+}
+
+// ── CONSULTA CNPJ ARCOM (JWT) ───────────────────────────────────────────────
+// TODO: cole sua api_key real aqui antes de usar.
+const ARCOM_API_BASE_URL = 'http://consultacnpj.arcom.com.br:8080';
+const ARCOM_API_KEY = 'fd4152b9-6b34-43b7-85f2-93f901809ac6.t6bad8Z6ooOfBuvTt0lqI7SLQ0nqbCq2X-E3qAqmAe8';
+
+let arcomToken = localStorage.getItem('arcomToken') || null;
+let arcomTokenExp = parseInt(localStorage.getItem('arcomTokenExp') || '0', 10);
+
+async function obterArcomToken(forcar) {
+  if (ARCOM_API_KEY === 'COLOQUE_SUA_API_KEY_AQUI') {
+    throw new Error('Consulta CNPJ Arcom: cole sua api_key real na constante ARCOM_API_KEY antes de usar.');
+  }
+  if (!forcar && arcomToken && Date.now() < arcomTokenExp) return arcomToken;
+  const r = await fetch(ARCOM_API_BASE_URL + '/v1/auth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ api_key: ARCOM_API_KEY })
+  });
+  if (!r.ok) throw new Error('Falha ao autenticar na Consulta CNPJ Arcom (HTTP ' + r.status + ')');
+  const data = await r.json();
+  arcomToken = data.token;
+  // token vale 90 dias; guardamos com 1 dia de folga
+  arcomTokenExp = Date.now() + (89 * 24 * 60 * 60 * 1000);
+  localStorage.setItem('arcomToken', arcomToken);
+  localStorage.setItem('arcomTokenExp', String(arcomTokenExp));
+  return arcomToken;
+}
+
+async function consultarNovaAPI(cnpj) {
+  if (!isValidCNPJ(cnpj)) throw new Error('CNPJ inválido');
+  let token = await obterArcomToken(false);
+  let r = await fetch(ARCOM_API_BASE_URL + '/v1/cnpj/' + cnpj, {
+    headers: { 'Authorization': 'Bearer ' + token }
+  });
+  if (r.status === 401) {
+    token = await obterArcomToken(true);
+    r = await fetch(ARCOM_API_BASE_URL + '/v1/cnpj/' + cnpj, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+  }
+  if (!r.ok) {
+    if (r.status === 404) throw new Error('CNPJ não encontrado');
+    if (r.status === 422) throw new Error('CNPJ inválido');
+    throw new Error('Erro na Consulta CNPJ Arcom (HTTP ' + r.status + ')');
+  }
+  const d = await r.json();
+  const sit = ((d.situacao_cadastral && d.situacao_cadastral.descricao) || 'INDEFINIDA').toUpperCase();
+  const nomeMunicipio = (d.municipio && d.municipio.descricao) || '';
+  const enderecoInicio = [d.logradouro, d.numero].filter(Boolean).join(', ');
+  const enderecoFim = [d.bairro, nomeMunicipio, d.uf].filter(Boolean).join(', ');
+  const endereco = (enderecoInicio || enderecoFim)
+    ? (enderecoInicio + (enderecoFim ? ' - ' + enderecoFim : ''))
+    : '—';
+  return {
+    situacao: sit,
+    razao: (d.empresa && d.empresa.razao_social) || '—',
+    porte: (d.empresa && d.empresa.porte_empresa && d.empresa.porte_empresa.descricao) || '—',
+    natureza: (d.empresa && d.empresa.natureza_juridica && d.empresa.natureza_juridica.descricao) || '—',
+    atividade: (d.cnae_fiscal_principal && d.cnae_fiscal_principal.descricao) || '—',
+    uf: (d.uf || '—').substring(0, 2),
+    nomeFantasia: d.nome_fantasia || '—',
+    dataInicio: d.data_inicio_atividade || '—',
+    capitalSocial: d.capital_social ? 'R$ ' + Number(d.capital_social).toLocaleString('pt-BR') : '—',
+    endereco: endereco,
+    cep: d.cep || '—',
+    telefone: d.telefone || d.ddd_telefone_1 || '—',
+    email: d.email || '—',
+    socios: d.socios || [],
+    api: 'Consulta CNPJ Arcom',
+    municipio: nomeMunicipio
+  };
+}
+
+// ── VERIFICATION ──────────────────────────────────────────────────────────────
+function updateStats(t,b,i,s,e) {
+  document.getElementById('statTotal').textContent=t;
+  document.getElementById('statBaixada').textContent=b;
+  document.getElementById('statInapta').textContent=i;
+  document.getElementById('statSuspensa').textContent=s;
+  document.getElementById('statErro').textContent=e||0;
+}
+
+async function startVerification() {
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = ''; rows = []; allData = {}; enrichData = {}; erroCNPJs = [];
+  const list = parseCNPJs(document.getElementById('input').value);
+  if (!list.length) { document.getElementById('status').textContent='⚠ Nenhum CNPJ encontrado'; return; }
+  let total=0,baix=0,inap=0,susp=0,erro=0;
+  for (let n=0; n<list.length; n++) {
+    const cnpj = list[n];
+    document.getElementById('status').textContent=`Consultando ${fmt(cnpj)} (${n+1}/${list.length})`;
+    document.getElementById('barFill').style.width=((n/list.length)*100)+'%';
+    document.getElementById('percentage').textContent=Math.round((n/list.length)*100)+'%';
+    if (n>0) await new Promise(r=>setTimeout(r,300));
+    if (!isValidCNPJ(cnpj)) {
+      tbody.innerHTML+=`<tr>
+        <td class="td-fav">☆</td>
+        <td class="td-cnpj">${fmt(cnpj)}</td>
+        <td colspan="4"><span class="badge badge-error">CNPJ Inválido</span></td>
+        <td></td></tr>`;
+      total++; erro++; erroCNPJs.push({cnpj, motivo:'CNPJ Inválido'});
+      updateStats(total,baix,inap,susp,erro);
+      continue;
+    }
+    try {
+      const result = selectedAPI==='brasilapi'?await consultarBrasilAPI(cnpj):selectedAPI==='opencnpj'?await consultarOpenCNPJ(cnpj):await consultarNovaAPI(cnpj);
+      allData[cnpj]=result; total++;
+      if (result.situacao.includes('INAPTA')) inap++;
+      else if (result.situacao.includes('BAIXADA')) baix++;
+      else if (result.situacao.includes('SUSPENSA')) susp++;
+      rows.push([fmt(cnpj),result.razao,result.situacao]);
+      const bc=badgeClass(result.situacao);
+      const isFav=favorites.includes(cnpj)?'⭐':'☆';
+      tbody.innerHTML+=`<tr id="row-${cnpj}">
+        <td class="td-fav" onclick="toggleFavorite('${cnpj}',event)">${isFav}</td>
+        <td class="td-cnpj">${fmt(cnpj)}</td>
+        <td class="td-razao">${result.razao}</td>
+        <td><span class="badge ${bc}">${result.situacao}</span></td>
+        <td style="color:var(--muted);font-size:12px">${result.porte}</td>
+        <td style="color:var(--muted);font-size:12px;font-family:var(--mono)">${result.uf}</td>
+        <td class="td-actions">
+          <button class="btn-eye" onclick="openDetailsModal('${cnpj}')"><i class="fas fa-eye"></i> Ver</button>
+          <button class="btn-eye btn-purple" onclick="enriquecerDados('${cnpj}')" id="enrichBtn-${cnpj}"><i class="fas fa-lightbulb"></i> Insight IA</button>
+          <button class="btn-eye" onclick="abrirMapa('${cnpj}')"><i class="fas fa-map-location-dot"></i> Mapa</button>
+        </td>
+      </tr>`;
+      updateStats(total,baix,inap,susp,erro);
+      addToHistory(cnpj,result.razao);
+    } catch(e) {
+      tbody.innerHTML+=`<tr>
+        <td class="td-fav">☆</td>
+        <td class="td-cnpj">${fmt(cnpj)}</td>
+        <td colspan="4"><span class="badge badge-error">${e.message}</span></td>
+        <td></td></tr>`;
+      total++; erro++; erroCNPJs.push({cnpj, motivo:e.message||'Erro na consulta'});
+      updateStats(total,baix,inap,susp,erro);
+    }
+  }
+  document.getElementById('barFill').style.width='100%';
+  document.getElementById('percentage').textContent='100%';
+  document.getElementById('status').textContent=`✓ Concluído — ${total} CNPJs consultados`;
+  updateChart();
+  document.getElementById('btnExport').classList.remove('hidden');
+  if (Object.keys(allData).length) document.getElementById('btnEnrichAll').classList.remove('hidden');
+  document.getElementById('btnCopiarErros').classList.toggle('hidden', erroCNPJs.length===0);
+}
+
+function openDetailsModal(cnpj) {
+  currentDetailsCNPJ=cnpj;
+  const data=allData[cnpj];
+  if (!data) return;
+  const bc=badgeClass(data.situacao);
+  document.getElementById('detailCNPJ').textContent=fmt(cnpj);
+  document.getElementById('detailRazao').textContent=data.razao;
+  const sb=document.getElementById('detailSituacao');
+  sb.textContent=data.situacao; sb.className='badge '+bc;
+  document.getElementById('detailPorte').textContent=data.porte;
+  document.getElementById('detailNatureza').textContent=data.natureza;
+  document.getElementById('detailAtividade').textContent=data.atividade;
+  document.getElementById('detailDataInicio').textContent=data.dataInicio;
+  document.getElementById('detailCapital').textContent=data.capitalSocial;
+  document.getElementById('detailEndereco').textContent=data.endereco;
+  document.getElementById('detailCEP').textContent=data.cep;
+  document.getElementById('detailUF').textContent=data.uf;
+  document.getElementById('detailTelefone').textContent=data.telefone||'—';
+  document.getElementById('detailEmail').textContent=data.email||'—';
+  document.getElementById('detailSocios').innerHTML=renderSociosHTML(data.socios);
+  openModal('detailsModal');
+}
+
+function renderSociosHTML(socios) {
+  if (!socios||!socios.length) return '<p style="color:var(--muted);font-size:13px">Quadro societário não disponível</p>';
+  return '<div class="socios-grid">'+socios.map(s=>`
+    <div class="socio-card">
+      <strong>${s.nome_socio||s.nome||'Não informado'}</strong>
+      <small>${s.qualificacao_socio||s.qualificacao||'Qualificação não informada'}</small>
+    </div>`).join('')+'</div>';
+}
+
+function exportDetalhes() {
+  if (!currentDetailsCNPJ||!allData[currentDetailsCNPJ]) return;
+  const data=allData[currentDetailsCNPJ];
+  let csv='CNPJ,Razão Social,Situação,Porte,UF,Telefone,Email,Endereço\n';
+  csv+=`"${fmt(currentDetailsCNPJ)}","${data.razao}","${data.situacao}","${data.porte}","${data.uf}","${data.telefone}","${data.email}","${data.endereco}"\n`;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download=`detalhe_${fmt(currentDetailsCNPJ)}.csv`;
+  a.click();
+}
+
+function updateChart() {
+  const ctx=document.getElementById('chartSituacao');
+  if(!ctx) return;
+  const stats={ATIVA:0,INAPTA:0,BAIXADA:0,SUSPENSA:0};
+  Object.values(allData).forEach(d=>{
+    if(d.situacao.includes('ATIVA')) stats.ATIVA++;
+    else if(d.situacao.includes('INAPTA')) stats.INAPTA++;
+    else if(d.situacao.includes('BAIXADA')) stats.BAIXADA++;
+    else if(d.situacao.includes('SUSPENSA')) stats.SUSPENSA++;
+  });
+  if(chart) chart.destroy();
+  chart=new Chart(ctx.getContext('2d'),{
+    type:'doughnut',
+    data:{
+      labels:['Ativas','Inaptas','Baixadas','Suspensas'],
+      datasets:[{data:[stats.ATIVA,stats.INAPTA,stats.BAIXADA,stats.SUSPENSA],
+        backgroundColor:['#22c55e','#f59e0b','#ef4444','#06b6d4'],
+        borderColor:'#111318', borderWidth:2}]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, cutout:'70%',
+      plugins:{legend:{labels:{color:'#6b7280',font:{family:'Space Grotesk',size:12}}}}
+    }
+  });
+}
+
+function toggleFavorite(cnpj,e) {
+  e.stopPropagation();
+  favorites=favorites.includes(cnpj)?favorites.filter(f=>f!==cnpj):[...favorites,cnpj];
+  localStorage.setItem('favorites',JSON.stringify(favorites));
+}
+
+function clearAll() {
+  document.getElementById('input').value='';
+  document.getElementById('tbody').innerHTML=`<tr><td colspan="7"><div class="empty-state"><i class="fas fa-search"></i><p>Nenhuma consulta realizada</p></div></td></tr>`;
+  document.getElementById('btnExport').classList.add('hidden');
+  document.getElementById('btnEnrichAll').classList.add('hidden');
+  document.getElementById('btnCopiarErros').classList.add('hidden');
+  updateStats(0,0,0,0,0);
+  document.getElementById('barFill').style.width='0%';
+  document.getElementById('percentage').textContent='0%';
+  document.getElementById('status').textContent='Aguardando entrada…';
+  allData={}; rows=[]; enrichData={}; erroCNPJs=[];
+}
+
+function copiarCNPJsErro() {
+  if(!erroCNPJs.length){alert('Nenhum CNPJ com erro encontrado.');return;}
+  const lista = erroCNPJs.map(e=>e.cnpj.replace(/\D/g,''));
+  navigator.clipboard.writeText(lista.join('\n'))
+    .then(()=>alert(`✅ ${lista.length} CNPJ(s) com erro copiados!`))
+    .catch(()=>alert('Erro ao copiar.'));
+}
+
+function copiarCNPJsProblema() {
+  const cnpjsProblema=[];
+  for (const cnpj in allData) {
+    const sit=(allData[cnpj].situacao||'').toUpperCase();
+    if(sit.includes('INAPTA')||sit.includes('SUSPENSA')||sit.includes('BAIXADA'))
+      cnpjsProblema.push(cnpj.replace(/\D/g,''));
+  }
+  if(!cnpjsProblema.length){alert('Nenhum CNPJ problemático encontrado.');return;}
+  navigator.clipboard.writeText(cnpjsProblema.join('\n'))
+    .then(()=>alert(`✅ ${cnpjsProblema.length} CNPJs copiados!`))
+    .catch(()=>alert('Erro ao copiar.'));
+}
+
+// ── MAPA (endereço do CNPJ consultado) ─────────────────────────────────────
+function abrirMapa(cnpj) {
+  const data = allData[cnpj];
+  if (!data) return;
+  const endereco = data.endereco || '';
+  if (!endereco || endereco.trim()==='' || endereco.replace(/[—,\s-]/g,'')==='') {
+    alert('Endereço não disponível para esta empresa.');
+    return;
+  }
+  mapaEnderecoAtual = endereco;
+  document.getElementById('mapCNPJ').textContent = fmt(cnpj);
+  document.getElementById('mapRazao').textContent = data.razao;
+  document.getElementById('mapEndereco').innerHTML = `<i class="fas fa-map-pin" style="color:var(--accent);margin-right:5px"></i>${endereco}`;
+  document.getElementById('mapFrame').src =
+    `https://maps.google.com/maps?q=${encodeURIComponent(endereco)}&t=&z=15&output=embed`;
+  openModal('mapModal');
+}
+
+function abrirMapaExterno() {
+  if (!mapaEnderecoAtual) return;
+  window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapaEnderecoAtual)}`, '_blank');
+}
+
+// ── INSIGHT COMERCIAL (IA — Groq + busca real na web via Tavily) ──────────
+// Duas etapas:
+//  1) TAVILY faz uma busca de verdade na internet (inclui site institucional,
+//     Instagram, LinkedIn, listas telefônicas etc.) usando razão social /
+//     nome fantasia / cidade da empresa.
+//  2) GROQ lê os trechos retornados pela busca e organiza tudo (resumo
+//     comercial + telefone/site/redes sociais encontrados, SEMPRE citando
+//     de qual resultado tirou cada contato — nunca inventa nada que não
+//     esteja nos trechos retornados pela busca).
+//
+// ⚠️ Cole aqui suas chaves (ambas grátis, sem cartão):
+//   - Groq:   console.groq.com/keys
+//   - Tavily: app.tavily.com (1.000 buscas grátis/mês)
+// Atenção: como este é um site estático (GitHub Pages), as chaves ficam
+// visíveis no código-fonte para quem inspecionar a página. Para uso
+// pessoal/interno da equipe isso costuma ser aceitável; para publicar para
+// terceiros, o ideal é colocar essas chamadas atrás de um proxy simples
+// (ex.: Cloudflare Worker) para não expor as chaves.
+const GROQ_API_KEY = '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';
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_MODEL = 'llama-3.3-70b-versatile';
+
+const TAVILY_API_KEY = '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'; // <- cole sua chave tvly-xxxxxxxx aqui
+const TAVILY_API_URL = 'https://api.tavily.com/search';
+
+// Faz a busca real na web sobre a empresa (site, telefone, Instagram, LinkedIn).
+// Retorna uma lista de resultados [{title, url, content}]. Se a Tavily não
+// estiver configurada, retorna [] e o insight segue só com os dados da Receita.
+async function buscarContatoWeb(dadosEmpresa) {
+  if (!TAVILY_API_KEY) return [];
+
+  const nome = dadosEmpresa.nomeFantasia && dadosEmpresa.nomeFantasia !== '—'
+    ? dadosEmpresa.nomeFantasia : dadosEmpresa.razao;
+  const query = `${nome} ${dadosEmpresa.municipio} ${dadosEmpresa.uf} telefone contato site instagram linkedin`;
+
+  try {
+    const response = await fetch(TAVILY_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: TAVILY_API_KEY,
+        query,
+        search_depth: 'advanced',
+        include_answer: false,
+        max_results: 8
+      })
+    });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return (data.results || []).map(r => ({
+      title: r.title || '',
+      url: r.url || '',
+      content: (r.content || '').slice(0, 500)
+    }));
+  } catch {
+    return []; // busca falhou (ex.: CORS no host onde o site está publicado) — segue sem contato web
+  }
+}
+
+async function consultarInsightIA(cnpj, dadosEmpresa) {
+  if (!GROQ_API_KEY) {
+    throw new Error('Configure sua chave da Groq na constante GROQ_API_KEY.');
+  }
+
+  const resultadosWeb = await buscarContatoWeb(dadosEmpresa);
+  const blocoWeb = resultadosWeb.length
+    ? resultadosWeb.map((r, i) => `[${i + 1}] ${r.title}\nURL: ${r.url}\nTrecho: ${r.content}`).join('\n\n')
+    : '(nenhum resultado de busca disponível — Tavily não configurada ou sem resultados)';
+
+  const prompt = `Você é um analista comercial. Use os dados públicos da Receita Federal E os trechos de busca na internet abaixo para montar um insight comercial de abordagem B2B.
+
+Dados da empresa (Receita Federal):
+- Razão Social: ${dadosEmpresa.razao}
+- Nome Fantasia: ${dadosEmpresa.nomeFantasia}
+- Situação Cadastral: ${dadosEmpresa.situacao}
+- Porte: ${dadosEmpresa.porte}
+- Natureza Jurídica: ${dadosEmpresa.natureza}
+- Atividade Principal: ${dadosEmpresa.atividade}
+- Data de Abertura: ${dadosEmpresa.dataInicio}
+- Capital Social: ${dadosEmpresa.capitalSocial}
+- Município/UF: ${dadosEmpresa.municipio}/${dadosEmpresa.uf}
+- Quadro Societário: ${(dadosEmpresa.socios||[]).map(s=>`${s.nome_socio||s.nome||''} (${s.qualificacao_socio||s.qualificacao||''})`).join('; ') || 'não informado'}
+
+Resultados de busca na internet sobre esta empresa:
+${blocoWeb}
+
+REGRAS IMPORTANTES:
+- Para "pontos_fortes", "sinais_atencao", "abordagem_sugerida" e "perguntas_qualificacao": baseie-se nos dados da Receita Federal, sem inventar.
+- Para "contatos_encontrados": preencha telefone, site, instagram, linkedin e email SOMENTE se aparecerem literalmente nos trechos de busca acima. Se não encontrar algum, deixe null. NUNCA invente um contato.
+- Em "fontes", liste apenas os números [n] dos resultados de busca que você realmente usou para extrair algum contato.
+
+Responda ESTRITAMENTE em JSON válido, sem nenhum texto antes ou depois, seguindo este formato exato:
+{
+  "resumo": "resumo de 2-3 frases sobre a empresa e o potencial comercial",
+  "pontos_fortes": ["ponto 1", "ponto 2", "ponto 3"],
+  "sinais_atencao": ["sinal 1", "sinal 2"],
+  "abordagem_sugerida": "sugestão de abordagem comercial em 2-3 frases",
+  "perguntas_qualificacao": ["pergunta 1", "pergunta 2", "pergunta 3"],
+  "nivel_confianca": "alto, médio ou baixo",
+  "contatos_encontrados": {
+    "telefone": "string ou null",
+    "site": "string ou null",
+    "instagram": "string ou null",
+    "linkedin": "string ou null",
+    "email": "string ou null",
+    "fontes": [1, 3]
+  }
+}`;
+
+  const response = await fetch(GROQ_API_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${GROQ_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.3,
+      response_format: { type: 'json_object' }
+    })
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '');
+    throw new Error(`Groq HTTP ${response.status} — ${errText.slice(0,200)}`);
+  }
+
+  const data = await response.json();
+  const conteudo = data.choices?.[0]?.message?.content || '{}';
+
+  let parsed;
+  try {
+    parsed = JSON.parse(conteudo);
+  } catch {
+    throw new Error('A IA retornou um JSON inválido.');
+  }
+
+  const contatos = parsed.contatos_encontrados || {};
+  const fontesIdx = Array.isArray(contatos.fontes) ? contatos.fontes : [];
+
+  return {
+    resumo: parsed.resumo || 'Sem resumo disponível.',
+    pontos_fortes: parsed.pontos_fortes || [],
+    sinais_atencao: parsed.sinais_atencao || [],
+    abordagem_sugerida: parsed.abordagem_sugerida || '',
+    perguntas_qualificacao: parsed.perguntas_qualificacao || [],
+    nivel_confianca: parsed.nivel_confianca || '—',
+    buscaWebRealizada: resultadosWeb.length > 0,
+    contatos: {
+      telefone: contatos.telefone || null,
+      site: contatos.site || null,
+      instagram: contatos.instagram || null,
+      linkedin: contatos.linkedin || null,
+      email: contatos.email || null,
+      fontes: fontesIdx.map(n => resultadosWeb[n - 1]).filter(Boolean)
+    }
+  };
+}
+
+function renderEnrichBody(cnpj, dados) {
+  const semPontos = !dados.pontos_fortes || !dados.pontos_fortes.length;
+  const semAtencao = !dados.sinais_atencao || !dados.sinais_atencao.length;
+  const nivel = (dados.nivel_confianca||'—');
+  const nivelClasse = nivel.toLowerCase().includes('alto') ? 'badge-ativa'
+    : nivel.toLowerCase().includes('médio')||nivel.toLowerCase().includes('medio') ? 'badge-inapta'
+    : 'badge-baixada';
+
+  let html = '';
+
+  html += `<div class="modal-section">
+    <div class="modal-section-title purple"><i class="fas fa-file-lines"></i> Panorama Comercial</div>
+    <p style="font-size:13px;line-height:1.6">${dados.resumo||'Sem resumo disponível.'}</p>
+    <div style="margin-top:10px"><span class="badge ${nivelClasse}">Confiança dos dados: ${nivel}</span></div>
+  </div>`;
+
+  const c = dados.contatos || {};
+  const temContato = c.telefone || c.site || c.instagram || c.linkedin || c.email;
+  html += `<div class="modal-section">
+    <div class="modal-section-title purple"><i class="fas fa-address-book"></i> Contato Encontrado na Web</div>
+    ${!dados.buscaWebRealizada
+      ? '<div class="enrich-empty">Busca na web não configurada (defina TAVILY_API_KEY no código) ou sem resultados.</div>'
+      : !temContato
+      ? '<div class="enrich-empty">Nenhum contato encontrado nos resultados de busca.</div>'
+      : `<ul style="padding-left:18px;font-size:13px;line-height:1.9">
+          ${c.telefone ? `<li><i class="fas fa-phone"></i> ${c.telefone}</li>` : ''}
+          ${c.site ? `<li><i class="fas fa-globe"></i> <a href="${c.site}" target="_blank" rel="noopener">${c.site}</a></li>` : ''}
+          ${c.instagram ? `<li><i class="fab fa-instagram"></i> ${c.instagram}</li>` : ''}
+          ${c.linkedin ? `<li><i class="fab fa-linkedin"></i> <a href="${c.linkedin}" target="_blank" rel="noopener">${c.linkedin}</a></li>` : ''}
+          ${c.email ? `<li><i class="fas fa-envelope"></i> ${c.email}</li>` : ''}
+        </ul>`}
+    ${(c.fontes && c.fontes.length) ? `<div style="margin-top:8px;font-size:11px;opacity:.75">Fontes: ${c.fontes.map(f=>`<a href="${f.url}" target="_blank" rel="noopener">${f.title || f.url}</a>`).join(' · ')}</div>` : ''}
+  </div>`;
+
+  html += `<div class="modal-section">
+    <div class="modal-section-title purple"><i class="fas fa-thumbs-up"></i> Pontos Fortes</div>
+    ${semPontos ? '<div class="enrich-empty">Nenhum ponto forte identificado nos dados disponíveis.</div>'
+      : '<ul style="padding-left:18px;font-size:13px;line-height:1.7">'+dados.pontos_fortes.map(p=>`<li>${p}</li>`).join('')+'</ul>'}
+  </div>`;
+
+  html += `<div class="modal-section">
+    <div class="modal-section-title purple"><i class="fas fa-triangle-exclamation"></i> Sinais de Atenção</div>
+    ${semAtencao ? '<div class="enrich-empty">Nenhum sinal de atenção identificado.</div>'
+      : '<ul style="padding-left:18px;font-size:13px;line-height:1.7">'+dados.sinais_atencao.map(p=>`<li>${p}</li>`).join('')+'</ul>'}
+  </div>`;
+
+  html += `<div class="modal-section">
+    <div class="modal-section-title purple"><i class="fas fa-route"></i> Abordagem Sugerida</div>
+    <p style="font-size:13px;line-height:1.6">${dados.abordagem_sugerida||'—'}</p>
+  </div>`;
+
+  html += `<div class="modal-section">
+    <div class="modal-section-title purple"><i class="fas fa-circle-question"></i> Perguntas de Qualificação</div>
+    <ul style="padding-left:18px;font-size:13px;line-height:1.7">
+      ${(dados.perguntas_qualificacao||[]).map(p=>`<li>${p}</li>`).join('')}
+    </ul>
+  </div>`;
+
+  html += `<div class="enrich-source-note"><i class="fas fa-circle-info"></i> Insight gerado via Groq (IA)${dados.buscaWebRealizada ? ' com busca real na web via Tavily' : ''} a partir dos dados públicos da Receita Federal${dados.buscaWebRealizada ? ' e de resultados de busca na internet' : ''}. Confirme os contatos encontrados antes de usar.</div>`;
+
+  return html;
+}
+
+async function enriquecerDados(cnpj) {
+  const data = allData[cnpj];
+  if (!data) return;
+  currentEnrichCNPJ = cnpj;
+  document.getElementById('enrichCNPJ').textContent = fmt(cnpj);
+  document.getElementById('enrichRazao').textContent = data.razao;
+  document.getElementById('btnExportEnrich').style.display = 'none';
+  document.getElementById('enrichBody').innerHTML = `
+    <div class="enrich-loading">
+      <div class="spinner-lg"></div>
+      <p>Buscando contato na web e gerando insight comercial com IA…</p>
+    </div>`;
+  openModal('enrichModal');
+
+  const btn = document.getElementById('enrichBtn-'+cnpj);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> ...'; }
+
+  try {
+    if (!enrichData[cnpj]) {
+      enrichData[cnpj] = await consultarInsightIA(cnpj, data);
+    }
+    if (currentEnrichCNPJ === cnpj) {
+      document.getElementById('enrichBody').innerHTML = renderEnrichBody(cnpj, enrichData[cnpj]);
+      document.getElementById('btnExportEnrich').style.display = 'inline-flex';
+    }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check"></i> Insight gerado'; btn.classList.add('badge-purple'); }
+  } catch (e) {
+    if (currentEnrichCNPJ === cnpj) {
+      document.getElementById('enrichBody').innerHTML = `<div class="alert alert-danger">Erro ao gerar o insight com IA: ${e.message}</div>`;
+    }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-lightbulb"></i> Tentar novamente'; }
+  }
+}
+
+async function enriquecerTodos() {
+  const cnpjs = Object.keys(allData);
+  if (!cnpjs.length) return;
+  const btn = document.getElementById('btnEnrichAll');
+  btn.disabled = true;
+  for (let i=0; i<cnpjs.length; i++) {
+    const cnpj = cnpjs[i];
+    btn.innerHTML = `<span class="spinner"></span> Gerando insight ${i+1}/${cnpjs.length}…`;
+    if (!enrichData[cnpj]) {
+      const rowBtn = document.getElementById('enrichBtn-'+cnpj);
+      if (rowBtn) { rowBtn.disabled = true; rowBtn.innerHTML = '<span class="spinner"></span> ...'; }
+      try {
+        enrichData[cnpj] = await consultarInsightIA(cnpj, allData[cnpj]);
+        if (rowBtn) { rowBtn.disabled = false; rowBtn.innerHTML = '<i class="fas fa-check"></i> Insight gerado'; rowBtn.classList.add('badge-purple'); }
+      } catch(e) {
+        if (rowBtn) { rowBtn.disabled = false; rowBtn.innerHTML = '<i class="fas fa-lightbulb"></i> Tentar novamente'; }
+      }
+      await delay(250);
+    }
+  }
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-check"></i> Insights concluídos';
+}
+
+function exportEnrichAtual() {
+  if (!currentEnrichCNPJ || !enrichData[currentEnrichCNPJ]) return;
+  exportarInsightsCSV([currentEnrichCNPJ]);
+}
+
+function exportarInsightsCSV(cnpjsFiltro) {
+  const lista = cnpjsFiltro || Object.keys(enrichData);
+  let csv = 'CNPJ,Razão Social,Resumo,Pontos Fortes,Sinais de Atenção,Abordagem Sugerida,Perguntas de Qualificação,Confiança dos Dados\n';
+  lista.forEach(cnpj=>{
+    const dados = enrichData[cnpj];
+    const empresa = allData[cnpj];
+    if (!dados || !empresa) return;
+    const pontos = (dados.pontos_fortes||[]).join(' | ');
+    const atencao = (dados.sinais_atencao||[]).join(' | ');
+    const perguntas = (dados.perguntas_qualificacao||[]).join(' | ');
+    csv += `"${fmt(cnpj)}","${empresa.razao}","${(dados.resumo||'').replace(/"/g,'""')}","${pontos.replace(/"/g,'""')}","${atencao.replace(/"/g,'""')}","${(dados.abordagem_sugerida||'').replace(/"/g,'""')}","${perguntas.replace(/"/g,'""')}","${dados.nivel_confianca||''}"\n`;
+  });
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download=`insights_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+}
+
+function buildExportData() {
+  const empresas=[['CNPJ','Razão Social','Nome Fantasia','Situação','Porte','Natureza Jurídica','Atividade Principal','Data de Abertura','Capital Social','Endereço Completo','CEP','UF','Telefone','E-mail','Quantidade de Sócios','API Utilizada']];
+  const socios=[['CNPJ','Razão Social','Nome do Sócio','Qualificação']];
+  for(const cnpj in allData){
+    const d=allData[cnpj];
+    empresas.push([fmt(cnpj),d.razao||'',d.nomeFantasia||'',d.situacao||'',d.porte||'',d.natureza||'',d.atividade||'',d.dataInicio||'',d.capitalSocial||'',d.endereco||'',d.cep||'',d.uf||'',d.telefone||'',d.email||'',d.socios?d.socios.length:0,d.api||'']);
+    if(d.socios?.length) d.socios.forEach(s=>socios.push([fmt(cnpj),d.razao||'',s.nome_socio||s.nome||'',s.qualificacao_socio||s.qualificacao||'']));
+  }
+  return {empresas,socios};
+}
+function exportCSV() {
+  const {empresas,socios}=buildExportData();
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(empresas),'Empresas');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(socios),'Sócios');
+  if (Object.keys(enrichData).length) {
+    const insights=[['CNPJ','Razão Social','Resumo','Pontos Fortes','Sinais de Atenção','Abordagem Sugerida','Perguntas de Qualificação','Confiança dos Dados']];
+    for(const cnpj in enrichData){
+      const dados=enrichData[cnpj], empresa=allData[cnpj];
+      if(!empresa) continue;
+      insights.push([fmt(cnpj),empresa.razao||'',dados.resumo||'',(dados.pontos_fortes||[]).join(' | '),(dados.sinais_atencao||[]).join(' | '),dados.abordagem_sugerida||'',(dados.perguntas_qualificacao||[]).join(' | '),dados.nivel_confianca||'']);
+    }
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(insights),'Insights (IA)');
+  }
+  XLSX.writeFile(wb,'Consulta_CNPJ_'+new Date().toISOString().split('T')[0]+'.xlsx');
+  closeModal('exportModal');
+}
+function exportJSON() {
+  const merged = {};
+  for (const cnpj in allData) {
+    merged[cnpj] = { ...allData[cnpj] };
+    if (enrichData[cnpj]) merged[cnpj].insight_ia = enrichData[cnpj];
+  }
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(merged,null,2)],{type:'application/json'}));
+  a.download='resultado_'+new Date().toISOString().split('T')[0]+'.json';
+  a.click();
+  closeModal('exportModal');
+}
+function exportPDF() {
+  let html='<h1 style="font-family:sans-serif;margin-bottom:16px">Relatório CNPJ — VERIFICADOR</h1><table border="1" cellpadding="10" style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:12px"><tr style="background:#f0f0f0"><th>CNPJ</th><th>Razão Social</th><th>Situação</th><th>Porte</th><th>UF</th></tr>';
+  for(const cnpj in allData){const d=allData[cnpj];html+=`<tr><td>${fmt(cnpj)}</td><td>${d.razao}</td><td>${d.situacao}</td><td>${d.porte}</td><td>${d.uf}</td></tr>`;}
+  html+='</table>';
+  const el=document.createElement('div');el.innerHTML=html;
+  html2pdf().set({margin:10,filename:'resultado_'+new Date().toISOString().split('T')[0]+'.pdf'}).from(el).save();
+  closeModal('exportModal');
+}
+
+// ── REGIONAL ──────────────────────────────────────────────────────────────────
+function calcularDigitosCNPJ(cnpj12) {
+  if(!cnpj12||cnpj12.length!==12) return null;
+  const d=cnpj12.split('').map(Number);
+  const p1=[5,4,3,2,9,8,7,6,5,4,3,2],p2=[6,5,4,3,2,9,8,7,6,5,4,3,2];
+  let s=d.reduce((a,v,i)=>a+v*p1[i],0),r=s%11; const dv1=r<2?0:11-r;
+  const d2=[...d,dv1]; s=d2.reduce((a,v,i)=>a+v*p2[i],0); r=s%11;
+  const dv2=r<2?0:11-r;
+  return cnpj12+String(dv1)+String(dv2);
+}
+function maskCNPJRegional(el) {
+  let v=el.value.replace(/\D/g,'');
+  if(v.length>14) v=v.slice(0,14);
+  if(v.length>12)     v=v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2}).*/,'$1.$2.$3/$4-$5');
+  else if(v.length>8) v=v.replace(/^(\d{2})(\d{3})(\d{3})(\d{0,4}).*/,'$1.$2.$3/$4');
+  else if(v.length>5) v=v.replace(/^(\d{2})(\d{3})(\d{0,3}).*/,'$1.$2.$3');
+  else if(v.length>2) v=v.replace(/^(\d{2})(\d{0,3}).*/,'$1.$2');
+  el.value=v;
+}
+function setRegionalAlert(msg,type='warning'){
+  document.getElementById('regionalAlert').innerHTML=msg?`<div class="alert alert-${type}">${msg}</div>`:'';
+}
+function setRegProgress(pct,sub){
+  document.getElementById('regProgressBar').style.width=pct+'%';
+  document.getElementById('regProgressPct').textContent=pct+'%';
+  if(sub) document.getElementById('regProgressSub').textContent=sub;
+}
+function aplicarFiltroRegional(filtro){
+  document.getElementById('filtroTodas').classList.toggle('active',filtro==='todas');
+  document.getElementById('filtroAtiva').classList.toggle('active',filtro==='ativa');
+  const lista=filtro==='ativa'
+    ?_regionalResultados.filter(e=>{const s=(e.dados.descricao_situacao_cadastral||e.dados.situacao||'').toUpperCase();return s.includes('ATIVA')&&!s.includes('INAPTA');})
+    :_regionalResultados;
+  document.getElementById('regCountBadge').textContent=lista.length+' empresa'+(lista.length!==1?'s':'');
+  renderRegionalGrid(lista);
+}
+function renderRegionalGrid(lista){
+  const grid=document.getElementById('regionalGrid');
+  if(!lista.length){
+    grid.innerHTML=`<div style="grid-column:1/-1;text-align:center;padding:48px 24px;color:var(--muted)">
+      <i class="fas fa-building" style="font-size:32px;display:block;margin-bottom:12px;opacity:.3"></i>
+      <p style="font-size:13px">Nenhuma empresa encontrada para este filtro.</p>
+      <p style="font-size:12px;margin-top:4px">Tente o filtro "Todas".</p></div>`;
+    return;
+  }
+  grid.innerHTML=lista.map(({cnpj,dados})=>{
+    const s=dados.descricao_situacao_cadastral||dados.situacao||'';
+    const bc=badgeClass(s.toUpperCase());
+    const razao=dados.razao_social||dados.razao||dados.nome||'—';
+    const ativ=dados.cnae_fiscal_descricao||dados.atividade||'';
+    const porte=dados.porte||'';
+    const ufEmp=dados.uf||_regionalUF;
+    return `<div class="reg-empresa-card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">
+        <span class="reg-cnpj">${fmt(cnpj)}</span>
+        <button class="copy-btn" onclick="navigator.clipboard.writeText('${cnpj}').then(()=>this.textContent='✓').catch(()=>{})">copiar</button>
+      </div>
+      <p class="reg-razao">${razao}</p>
+      <div class="reg-meta">
+        ${bc?`<span class="badge ${bc}" style="font-size:11px">${s||'ATIVA'}</span>`:''}
+        ${porte?`<span class="meta-pill">${porte}</span>`:''}
+        ${ufEmp?`<span class="meta-pill">${ufEmp}</span>`:''}
+      </div>
+      ${ativ?`<p class="reg-ativ">${ativ.length>90?ativ.slice(0,90)+'…':ativ}</p>`:''}
+    </div>`;
+  }).join('');
+}
+
+async function buscarMunicipioId(cidade,uf){
+  try{
+    const r=await fetch(`https://brasilapi.com.br/api/ibge/municipios/v1/${encodeURIComponent(uf)}`,{signal:AbortSignal.timeout(6000)});
+    if(r.ok){
+      const lista=await r.json();
+      const cidadeNorm=cidade.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
+      const match=lista.find(m=>{const n=(m.nome||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();return n===cidadeNorm;});
+      if(match) return match.codigo_ibge||match.id||null;
+    }
+  }catch(_){}
+  return null;
+}
+async function buscarViaDadosCnpjWs(municipioId,cnpjExcluir,alvo=50){
+  const encontradas=[],vistos=new Set([cnpjExcluir]);
+  for(let page=1;page<=5&&encontradas.length<alvo;page++){
+    try{
+      const r=await fetch(`https://dados.cnpj.ws/estabelecimentos?municipio_id=${municipioId}&page=${page}`,{signal:AbortSignal.timeout(8000)});
+      if(!r.ok) break;
+      const d=await r.json();
+      const items=Array.isArray(d)?d:(d.data||d.estabelecimentos||[]);
+      if(!items.length) break;
+      for(const emp of items){
+        const cnpjLimpo=norm(emp.cnpj||'');
+        if(!cnpjLimpo||cnpjLimpo.length!==14||vistos.has(cnpjLimpo)) continue;
+        vistos.add(cnpjLimpo);
+        const dados={razao_social:emp.razao_social||emp.nome_fantasia||emp.nome||'',descricao_situacao_cadastral:(emp.descricao_situacao_cadastral||emp.situacao_cadastral||emp.situacao||'').toUpperCase(),cnae_fiscal_descricao:emp.cnae_fiscal_descricao||emp.cnae_descricao||emp.atividade||'',porte:emp.porte||emp.descricao_porte||'',uf:emp.uf||''};
+        encontradas.push({cnpj:cnpjLimpo,dados});
+        if(encontradas.length>=alvo) break;
+      }
+    }catch(_){break;}
+    await delay(200);
+  }
+  return encontradas;
+}
+async function buscarViaReceitaWS(cidade,uf,cnpjExcluir,alvo=50){
+  const encontradas=[],vistos=new Set([cnpjExcluir]);
+  try{
+    const url=`https://www.receitaws.com.br/v1/cnpj/search?municipio=${encodeURIComponent(cidade)}&uf=${encodeURIComponent(uf)}&status=ATIVA`;
+    const r=await fetch(url,{signal:AbortSignal.timeout(8000)});
+    if(r.ok){const d=await r.json();const items=d.companies||d.data||d.results||(Array.isArray(d)?d:[]);for(const emp of items){const cnpjLimpo=norm(emp.cnpj||emp.CNPJ||'');if(!cnpjLimpo||!isValidCNPJ(cnpjLimpo)||vistos.has(cnpjLimpo)) continue;vistos.add(cnpjLimpo);encontradas.push({cnpj:cnpjLimpo,dados:emp});if(encontradas.length>=alvo) break;}}
+  }catch(_){}
+  return encontradas;
+}
+async function buscarViaCnpjWsPublica(cidade,uf,cnpjExcluir,alvo=50){
+  const encontradas=[],vistos=new Set([cnpjExcluir]);
+  for(let page=1;page<=5&&encontradas.length<alvo;page++){
+    try{
+      const url=`https://publica.cnpj.ws/cnpj/search?municipio=${encodeURIComponent(cidade)}&uf=${encodeURIComponent(uf)}&page=${page}`;
+      const r=await fetch(url,{signal:AbortSignal.timeout(8000)});
+      if(!r.ok) break;
+      const d=await r.json();
+      const items=Array.isArray(d)?d:(d.data||d.companies||d.estabelecimentos||[]);
+      if(!items.length) break;
+      for(const emp of items){const cnpjLimpo=norm(emp.cnpj||emp.CNPJ||'');if(!cnpjLimpo||!isValidCNPJ(cnpjLimpo)||vistos.has(cnpjLimpo)) continue;vistos.add(cnpjLimpo);encontradas.push({cnpj:cnpjLimpo,dados:emp});if(encontradas.length>=alvo) break;}
+    }catch(_){break;}
+    await delay(200);
+  }
+  return encontradas;
+}
+async function buscarPorVarredura(cnpjOrigem,cidade,cnpjsExcluir,alvo=30,onProg){
+  const raiz=cnpjOrigem.slice(0,8),raizInt=parseInt(raiz,10);
+  const vistos=new Set(cnpjsExcluir),candidatos=[];
+  for(let ord=2;ord<=50;ord++){const c=calcularDigitosCNPJ(raiz+String(ord).padStart(4,'0'));if(c&&isValidCNPJ(c)&&!vistos.has(c)) candidatos.push(c);}
+  for(let delta=1;delta<=600;delta++){for(const sinal of[1,-1]){const nr=String(Math.max(1,raizInt+delta*sinal)).padStart(8,'0');const c=calcularDigitosCNPJ(nr+'0001');if(c&&isValidCNPJ(c)&&!vistos.has(c)&&!candidatos.includes(c)) candidatos.push(c);}if(candidatos.length>=400) break;}
+  const encontradas=[],lista=candidatos.slice(0,400);
+  for(let i=0;i<lista.length;i++){
+    if(encontradas.length>=alvo) break;
+    const cnpj=lista[i];vistos.add(cnpj);
+    if(onProg) onProg(i,lista.length,encontradas.length);
+    try{const r=await fetch('https://brasilapi.com.br/api/cnpj/v1/'+cnpj,{signal:AbortSignal.timeout(6000)});if(!r.ok){await delay(100);continue;}const d=await r.json();if((d.municipio||'').toUpperCase().trim()===cidade) encontradas.push({cnpj,dados:d});}catch(_){}
+    await delay(160);
+  }
+  return encontradas;
+}
+
+async function analyzeRegional(){
+  const raw=norm(document.getElementById('cnpjRegional').value);
+  setRegionalAlert('');
+  if(raw.length!==14){setRegionalAlert('Digite um CNPJ com 14 dígitos para continuar.');return;}
+  if(!isValidCNPJ(raw)){setRegionalAlert('CNPJ inválido. Verifique os dígitos e tente novamente.');return;}
+  const btn=document.getElementById('btnAnalyze');
+  btn.disabled=true;
+  btn.innerHTML='<span class="spinner"></span> Consultando…';
+  document.getElementById('regionalOrigemSection').style.display='none';
+  document.getElementById('regionalProgressSection').style.display='none';
+  document.getElementById('regionalResultsSection').style.display='none';
+  _regionalResultados=[];
+  let origem;
+  try{
+    const r=await fetch('https://brasilapi.com.br/api/cnpj/v1/'+raw,{signal:AbortSignal.timeout(10000)});
+    if(!r.ok) throw new Error('status '+r.status);
+    origem=await r.json();
+  }catch(e){setRegionalAlert('Não foi possível consultar esse CNPJ. Verifique a conexão ou tente novamente.','danger');btn.disabled=false;btn.innerHTML='<i class="fas fa-search"></i> Buscar';return;}
+  const cidade=(origem.municipio||'').toUpperCase().trim();
+  const uf=origem.uf||'';
+  const sit=origem.descricao_situacao_cadastral||'';
+  const bc=badgeClass(sit.toUpperCase());
+  _regionalCidade=cidade;_regionalUF=uf;
+  document.getElementById('regNome').textContent=origem.razao_social||'—';
+  document.getElementById('regInfo').textContent=`${fmt(raw)} · ${origem.cnae_fiscal_descricao||'Atividade não informada'}`;
+  document.getElementById('regBadge').textContent=sit;
+  document.getElementById('regBadge').className='badge '+bc;
+  document.getElementById('regCidadeTag').innerHTML=`Buscando empresas em <strong style="margin-left:3px">${cidade}/${uf}</strong>`;
+  document.getElementById('regionalOrigemSection').style.display='block';
+  if(!cidade){setRegionalAlert('Município não identificado para esse CNPJ.','warning');btn.disabled=false;btn.innerHTML='<i class="fas fa-search"></i> Buscar';return;}
+  document.getElementById('regionalProgressSection').style.display='block';
+  document.getElementById('regProgressText').innerHTML=`<span class="spinner"></span> Buscando empresas em <strong>${cidade}/${uf}</strong>…`;
+  const ALVO=50;
+  let encontradas=[];
+  setRegProgress(5,'Resolvendo código IBGE do município…');
+  const municipioId=await buscarMunicipioId(cidade,uf);
+  if(municipioId){setRegProgress(15,`Buscando empresas via base CNPJ.ws (código ${municipioId})…`);encontradas=await buscarViaDadosCnpjWs(municipioId,raw,ALVO);}
+  if(encontradas.length<10){setRegProgress(30,'Tentando busca direta por município (CNPJ.ws)…');const extra=await buscarViaCnpjWsPublica(cidade,uf,raw,ALVO);const ex=new Set(encontradas.map(e=>e.cnpj));for(const e of extra){if(!ex.has(e.cnpj)) encontradas.push(e);}}
+  if(encontradas.length<10){setRegProgress(40,'Tentando ReceitaWS por município…');const extra=await buscarViaReceitaWS(cidade,uf,raw,ALVO);const ex=new Set(encontradas.map(e=>e.cnpj));for(const e of extra){if(!ex.has(e.cnpj)) encontradas.push(e);}}
+  if(encontradas.length<10){
+    const faltam=Math.max(15,ALVO-encontradas.length);
+    const existentes=new Set([raw,...encontradas.map(e=>e.cnpj)]);
+    setRegProgress(45,`Iniciando varredura (meta: ${faltam} empresas)…`);
+    const extras=await buscarPorVarredura(raw,cidade,[...existentes],faltam,(i,total,achou)=>{
+      const pct=Math.min(95,Math.round(45+(i/total)*50));
+      setRegProgress(pct,`Varredura ${i+1}/${total} · ${achou} empresa(s) encontrada(s)`);
+      document.getElementById('regProgressText').innerHTML=`<span class="spinner"></span> Varrendo CNPJs próximos em <strong>${cidade}/${uf}</strong>…`;
+    });
+    for(const e of extras) encontradas.push(e);
+  }
+  setRegProgress(97,'Verificando dados das empresas encontradas…');
+  const enriquecidas=[];
+  for(const emp of encontradas.slice(0,ALVO)){
+    const razao=emp.dados.razao_social||emp.dados.razao||emp.dados.nome||'';
+    if(!razao&&emp.cnpj){try{const r=await fetch('https://brasilapi.com.br/api/cnpj/v1/'+emp.cnpj,{signal:AbortSignal.timeout(5000)});if(r.ok){emp.dados=await r.json();}}catch(_){}await delay(100);}
+    enriquecidas.push(emp);
+  }
+  setRegProgress(100,'Concluído!');
+  await delay(250);
+  document.getElementById('regionalProgressSection').style.display='none';
+  document.getElementById('regionalResultsSection').style.display='block';
+  _regionalResultados=enriquecidas;
+  aplicarFiltroRegional('ativa');
+  if(!enriquecidas.length){
+    document.getElementById('regCountBadge').textContent='0 empresas';
+    document.getElementById('regionalGrid').innerHTML=`<div style="grid-column:1/-1;text-align:center;padding:48px 24px;color:var(--muted)">
+      <i class="fas fa-building" style="font-size:32px;display:block;margin-bottom:12px;opacity:.3"></i>
+      <p style="font-weight:600;font-size:14px;margin-bottom:8px">Nenhuma empresa encontrada em ${cidade}</p>
+      <p style="font-size:12px">Tente um CNPJ de banco, supermercado ou posto de gasolina — empresas com muitas filiais aumentam a chance de resultados.</p>
+    </div>`;
+  }
+  btn.disabled=false;
+  btn.innerHTML='<i class="fas fa-search"></i> Buscar';
+}
+
+function delay(ms){return new Promise(r=>setTimeout(r,ms));}
+</script>
+
+<!-- ═══════════════ CHAT COM IA (Groq) ═══════════════ -->
+
+<!-- Botão flutuante -->
+<button id="chatToggleBtn" onclick="chatToggle()" title="Chat com IA">
+  <i class="fas fa-robot"></i>
+</button>
+
+<!-- Painel do chat -->
+<div id="chatPanel">
+  <div class="chat-header">
+    <span class="dot-live"></span>
+    <strong>Chat com IA</strong>
+    <button class="chat-close" onclick="chatToggle()"><i class="fas fa-times"></i></button>
+  </div>
+  <div id="chatMessages"><div class="chat-empty">Pergunte qualquer coisa — ou peça um resumo das empresas que você já consultou nesta sessão.</div></div>
+  <div class="chat-input-row">
+    <input id="chatInput" type="text" placeholder="Digite uma mensagem…" maxlength="1000" onkeydown="if(event.key==='Enter')chatEnviar()">
+    <button id="chatSendBtn" onclick="chatEnviar()"><i class="fas fa-paper-plane"></i></button>
+  </div>
+</div>
+
+<script>
+// ── CHAT COM IA (Groq) ────────────────────────────────────────────────────
+// Reaproveita a mesma chave/endpoint/modelo já configurados para o botão
+// "Insight IA" (constantes GROQ_API_KEY, GROQ_API_URL, GROQ_MODEL, definidas
+// mais acima no arquivo). O histórico da conversa fica só na memória da aba
+// — se recarregar a página, a conversa reinicia do zero.
+
+let chatHistorico = []; // [{role:'user'|'assistant', texto}]
+let chatAberto = false;
+let chatCarregando = false;
+
+function escapeHtml(str){
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+function chatToggle(){
+  const panel = document.getElementById('chatPanel');
+  chatAberto = !chatAberto;
+  panel.classList.toggle('open', chatAberto);
+  if(chatAberto){
+    const box = document.getElementById('chatMessages');
+    box.scrollTop = box.scrollHeight;
+    document.getElementById('chatInput').focus();
+  }
+}
+
+// Dá contexto pra IA sobre as empresas já consultadas na aba "Consulta CNPJ",
+// pra permitir perguntas como "qual dessas empresas está com situação irregular?"
+function montarContextoEmpresas(){
+  const cnpjs = Object.keys(allData || {});
+  if(!cnpjs.length) return '';
+  const resumo = cnpjs.slice(0,30).map(cnpj=>{
+    const d = allData[cnpj];
+    return `- ${d.razao} (${fmt(cnpj)}) — ${d.situacao}, ${d.porte}, ${d.municipio}/${d.uf}, atividade: ${d.atividade}`;
+  }).join('\n');
+  return `\n\nO usuário já consultou estas empresas nesta sessão (dados públicos da Receita Federal):\n${resumo}`;
+}
+
+function montarSystemPromptChat(){
+  return `Você é o assistente de IA do VERIFICADOR, uma ferramenta de consulta de CNPJ. Responda em português do Brasil, de forma clara, objetiva e útil. Você pode ajudar a interpretar dados de empresas já consultadas na ferramenta (situação cadastral, porte, atividade etc.), tirar dúvidas gerais sobre CNPJ/Receita Federal, ou apenas conversar. Nunca invente dados de empresas que não foram informados a você.${montarContextoEmpresas()}`;
+}
+
+function renderMensagensChat(){
+  const box = document.getElementById('chatMessages');
+  if(!chatHistorico.length && !chatCarregando){
+    box.innerHTML = '<div class="chat-empty">Pergunte qualquer coisa — ou peça um resumo das empresas que você já consultou nesta sessão.</div>';
+    return;
+  }
+  let html = chatHistorico.map(m=>{
+    const own = m.role === 'user';
+    return `<div class="chat-msg ${own?'own':''}">
+      <div class="chat-msg-meta"><span>${own?'Você':'IA'}</span></div>
+      <div class="chat-msg-bubble">${escapeHtml(m.texto)}</div>
+    </div>`;
+  }).join('');
+  if(chatCarregando){
+    html += `<div class="chat-typing"><span></span><span></span><span></span></div>`;
+  }
+  box.innerHTML = html;
+  box.scrollTop = box.scrollHeight;
+}
+
+async function consultarGroqChat(mensagemUsuario){
+  if (!GROQ_API_KEY) {
+    throw new Error('Configure sua chave da Groq na constante GROQ_API_KEY.');
+  }
+  const messagesPayload = [
+    { role: 'system', content: montarSystemPromptChat() },
+    ...chatHistorico.slice(-12).map(m => ({ role: m.role, content: m.texto })),
+    { role: 'user', content: mensagemUsuario }
+  ];
+  const response = await fetch(GROQ_API_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${GROQ_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      messages: messagesPayload,
+      temperature: 0.5
+    })
+  });
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '');
+    throw new Error(`Groq HTTP ${response.status} — ${errText.slice(0,200)}`);
+  }
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || 'Desculpe, não consegui gerar uma resposta.';
+}
+
+async function chatEnviar(){
+  const input = document.getElementById('chatInput');
+  const texto = input.value.trim();
+  if(!texto || chatCarregando) return;
+  chatHistorico.push({ role:'user', texto });
+  input.value = '';
+  chatCarregando = true;
+  renderMensagensChat();
+  const btn = document.getElementById('chatSendBtn');
+  btn.disabled = true;
+  try {
+    const resposta = await consultarGroqChat(texto);
+    chatHistorico.push({ role:'assistant', texto: resposta });
+  } catch(e) {
+    chatHistorico.push({ role:'assistant', texto: `⚠️ Erro ao falar com a IA: ${e.message}` });
+  }
+  chatCarregando = false;
+  btn.disabled = false;
+  renderMensagensChat();
+  input.focus();
+}
+</script>
+
+</body>
+</html>
