@@ -1140,6 +1140,9 @@
     <div class="nav-item" onclick="showTab('prospeccao', this)">
       <i class="fas fa-bullseye"></i> Prospecção
     </div>
+    <div class="nav-item" onclick="showTab('razaosocial', this)">
+      <i class="fas fa-building"></i> Busca por Razão Social
+    </div>
 
     <div class="sidebar-label" style="margin-top:20px">Fonte de Dados</div>
     <div class="api-select">
@@ -1336,6 +1339,56 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
       </div>
     </div>
 
+
+    <div class="tab-panel" id="tab-razaosocial">
+      <div class="card">
+        <h2>Busca de CNPJ por Razão Social</h2>
+        <p style="color:var(--muted);font-size:13px;margin-top:6px">
+          Cole uma ou várias razões sociais (uma por linha). A busca é feita via API da Casa dos Dados.
+        </p>
+
+        <div class="input-section" style="margin-top:15px">
+          <div class="textarea-wrap">
+            <textarea id="inputRazaoSocial" class="cnpj-textarea"
+              placeholder="Cole as razões sociais aqui, uma por linha
+Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
+          </div>
+          <div class="action-stack">
+            <button class="btn btn-primary" onclick="buscarPorRazaoSocial()">
+              <i class="fas fa-search"></i> Buscar CNPJs
+            </button>
+            <button class="btn btn-ghost" onclick="limparRazaoSocial()">
+              <i class="fas fa-redo"></i> Limpar tudo
+            </button>
+            <button class="btn btn-success-outline" onclick="copiarCNPJsRazaoSocial()">
+              <i class="fas fa-copy"></i> Copiar CNPJs encontrados
+            </button>
+            <button class="btn btn-purple" onclick="enviarRazaoSocialParaConsulta()">
+              <i class="fas fa-paper-plane"></i> Enviar p/ Consulta CNPJ
+            </button>
+          </div>
+        </div>
+
+        <div style="margin:12px 0 4px">
+          <label style="font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="chkBuscaExata" style="width:auto">
+            Busca exata (desmarcado = busca aproximada / contém o termo)
+          </label>
+        </div>
+
+        <div class="progress-card" style="margin-top:10px">
+          <div class="progress-header">
+            <span class="progress-status" id="statusRazaoSocial">Aguardando entrada…</span>
+            <span class="progress-pct" id="percentageRazaoSocial">0%</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="barFillRazaoSocial" style="width:0%"></div>
+          </div>
+        </div>
+
+        <div id="resultadoRazaoSocial" style="margin-top:20px"></div>
+      </div>
+    </div>
 
     <div class="footer">
       <span>© 2026 VERIFICADOR</span>
@@ -2257,6 +2310,172 @@ function copiarProspeccao() {
   if (!prospeccaoCNPJs.length) { alert('Nenhum CNPJ encontrado.'); return; }
   navigator.clipboard.writeText(prospeccaoCNPJs.join('\n'));
   alert(`${prospeccaoCNPJs.length} CNPJs copiados`);
+}
+
+// ── BUSCA POR RAZÃO SOCIAL (Casa dos Dados) ─────────────────────────────────
+const CASADOSDADOS_API_URL = 'https://api.casadosdados.com.br/v5/cnpj/pesquisa';
+const CASADOSDADOS_API_KEY = '8a2eca20e47150964d8149e78fe712b1d76ab35547107fd18077b389b181d287be5f9d7c6c6ef32164c77fd1c50d9b980339da9f9b910551b8c33d251b33b68a';
+
+let razaoSocialResultados = []; // [{buscado, encontrados:[...]}]
+
+function parseRazoesSociais(text) {
+  return text.split('\n').map(l => l.trim()).filter(Boolean);
+}
+
+// Consulta uma razão social na API da Casa dos Dados e retorna a lista de CNPJs encontrados.
+async function consultarRazaoSocialCasaDosDados(nome, buscaExata) {
+  const body = {
+    busca_textual: [
+      {
+        texto: [nome],
+        tipo_busca: buscaExata ? 'exata' : 'contendo',
+        razao_social: true,
+        nome_fantasia: false,
+        nome_socio: false
+      }
+    ],
+    limite: 10,
+    pagina: 1
+  };
+
+  const r = await fetch(CASADOSDADOS_API_URL, {
+    method: 'POST',
+    headers: {
+      'api-key': CASADOSDADOS_API_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!r.ok) {
+    const errText = await r.text().catch(() => '');
+    throw new Error(`Casa dos Dados HTTP ${r.status} — ${errText.slice(0, 200)}`);
+  }
+
+  const data = await r.json();
+  return (data.cnpjs || []).map(emp => ({
+    cnpj: emp.cnpj,
+    razao_social: emp.razao_social || '',
+    nome_fantasia: emp.nome_fantasia || '',
+    situacao: (emp.situacao_cadastral && emp.situacao_cadastral.situacao_cadastral) || '',
+    uf: (emp.endereco && emp.endereco.uf) || '',
+    municipio: (emp.endereco && emp.endereco.municipio) || ''
+  }));
+}
+
+async function buscarPorRazaoSocial() {
+  const textarea = document.getElementById('inputRazaoSocial');
+  const nomes = parseRazoesSociais(textarea.value);
+  const resultado = document.getElementById('resultadoRazaoSocial');
+  const statusEl = document.getElementById('statusRazaoSocial');
+  const pctEl = document.getElementById('percentageRazaoSocial');
+  const barEl = document.getElementById('barFillRazaoSocial');
+
+  if (!nomes.length) {
+    resultado.innerHTML = '<p>Cole ao menos uma razão social.</p>';
+    return;
+  }
+
+  const buscaExata = document.getElementById('chkBuscaExata').checked;
+  razaoSocialResultados = [];
+  resultado.innerHTML = '';
+
+  for (let i = 0; i < nomes.length; i++) {
+    const nome = nomes[i];
+    statusEl.textContent = `Buscando "${nome}"… (${i + 1}/${nomes.length})`;
+    const pct = Math.round(((i) / nomes.length) * 100);
+    pctEl.textContent = pct + '%';
+    barEl.style.width = pct + '%';
+
+    try {
+      const encontrados = await consultarRazaoSocialCasaDosDados(nome, buscaExata);
+      razaoSocialResultados.push({ buscado: nome, encontrados, erro: null });
+    } catch (e) {
+      razaoSocialResultados.push({ buscado: nome, encontrados: [], erro: e.message || 'Erro na consulta' });
+    }
+  }
+
+  statusEl.textContent = `Concluído — ${nomes.length} razão(ões) social(is) consultada(s)`;
+  pctEl.textContent = '100%';
+  barEl.style.width = '100%';
+
+  renderResultadoRazaoSocial();
+}
+
+function renderResultadoRazaoSocial() {
+  const resultado = document.getElementById('resultadoRazaoSocial');
+
+  if (!razaoSocialResultados.length) {
+    resultado.innerHTML = '<p>Nenhum resultado ainda.</p>';
+    return;
+  }
+
+  let totalEncontrados = 0;
+  let h = `<table style="width:100%"><thead><tr>
+      <th>Razão Social buscada</th><th>CNPJ</th><th>Razão Social encontrada</th><th>Situação</th><th>UF/Município</th>
+    </tr></thead><tbody>`;
+
+  razaoSocialResultados.forEach(item => {
+    if (item.erro) {
+      h += `<tr><td>${item.buscado}</td><td colspan="4" style="color:var(--red)">${item.erro}</td></tr>`;
+      return;
+    }
+    if (!item.encontrados.length) {
+      h += `<tr><td>${item.buscado}</td><td colspan="4" style="color:var(--muted)">Nenhum CNPJ encontrado</td></tr>`;
+      return;
+    }
+    item.encontrados.forEach((emp, idx) => {
+      totalEncontrados++;
+      h += `<tr>
+        <td>${idx === 0 ? item.buscado : ''}</td>
+        <td>${fmt(emp.cnpj)}</td>
+        <td>${emp.razao_social}</td>
+        <td>${emp.situacao || '—'}</td>
+        <td>${emp.municipio ? emp.municipio + '/' : ''}${(emp.uf || '').toUpperCase()}</td>
+      </tr>`;
+    });
+  });
+
+  h += '</tbody></table>';
+
+  resultado.innerHTML = `<p style="font-size:12px;color:var(--muted);margin-bottom:10px">
+      ${totalEncontrados} CNPJ(s) encontrado(s) para ${razaoSocialResultados.length} razão(ões) social(is) pesquisada(s).
+    </p>` + h;
+}
+
+function limparRazaoSocial() {
+  document.getElementById('inputRazaoSocial').value = '';
+  document.getElementById('resultadoRazaoSocial').innerHTML = '';
+  document.getElementById('statusRazaoSocial').textContent = 'Aguardando entrada…';
+  document.getElementById('percentageRazaoSocial').textContent = '0%';
+  document.getElementById('barFillRazaoSocial').style.width = '0%';
+  razaoSocialResultados = [];
+}
+
+function coletarCNPJsRazaoSocial() {
+  const cnpjs = [];
+  razaoSocialResultados.forEach(item => {
+    item.encontrados.forEach(emp => {
+      if (emp.cnpj) cnpjs.push(emp.cnpj.replace(/\D/g, ''));
+    });
+  });
+  return cnpjs;
+}
+
+function copiarCNPJsRazaoSocial() {
+  const cnpjs = coletarCNPJsRazaoSocial();
+  if (!cnpjs.length) { alert('Nenhum CNPJ encontrado ainda.'); return; }
+  navigator.clipboard.writeText(cnpjs.join('\n'));
+  alert(`${cnpjs.length} CNPJs copiados`);
+}
+
+// Manda os CNPJs encontrados direto pra aba "Consulta CNPJ" pra trazer os dados completos.
+function enviarRazaoSocialParaConsulta() {
+  const cnpjs = coletarCNPJsRazaoSocial();
+  if (!cnpjs.length) { alert('Nenhum CNPJ encontrado ainda.'); return; }
+  document.getElementById('input').value = cnpjs.join('\n');
+  const navConsulta = document.querySelector('.nav-item[onclick*="\'consulta\'"]');
+  showTab('consulta', navConsulta);
 }
 
 // ── VERIFICATION ──────────────────────────────────────────────────────────────
