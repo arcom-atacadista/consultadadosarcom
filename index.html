@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -39,29 +39,85 @@
       --muted:     #636466;   /* corpo de texto, labels secundários */
       --font:      'Red Hat Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       --mono:      'JetBrains Mono', monospace;
-      --radius:    12px;
-      --radius-sm: 8px;
+      --radius:    14px;
+      --radius-sm: 10px;
       --glow:      0 0 0 1px rgba(0,120,64,.15), 0 8px 24px rgba(31,64,51,.10);
+      --card-shadow: 0 1px 0 rgba(255,255,255,.5) inset, 0 1px 2px rgba(20,30,26,.04), 0 8px 20px rgba(20,30,26,.05);
     }
 
-    /* ── DARK MODE ── */
+    /* ── DARK MODE — dashboard escuro premium ── */
     [data-theme="dark"] {
       color-scheme: dark;
-      --bg:        #14181A;
-      --surface:   #1E2426;
-      --surface2:  #262D2F;
-      --border:    #333B3D;
-      --border-lit:#454F51;
-      --text:      #E8EDEA;
-      --muted:     #9AA6A3;
-      --glow:      0 0 0 1px rgba(0,120,64,.25), 0 8px 24px rgba(0,0,0,.35);
+      --bg:        #0B0F10;   /* quase preto, com leve tom esverdeado — base premium */
+      --surface:   #14191B;   /* cards "flutuantes" */
+      --surface2:  #1C2325;   /* hover / superfícies secundárias */
+      --border:    rgba(255,255,255,.06);
+      --border-lit:rgba(255,255,255,.14);
+      --text:      #ECF2EF;
+      --muted:     #8CA39C;
+      --glow:      0 1px 0 rgba(255,255,255,.04) inset, 0 16px 40px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.05);
+      --card-shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 10px 28px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.04);
     }
-    [data-theme="dark"] .topbar { background: rgba(20,24,26,.85); }
+    [data-theme="dark"] body,
+    [data-theme="dark"] .login-overlay {
+      background:
+        radial-gradient(1100px circle at 12% -8%, rgba(0,120,64,.14), transparent 55%),
+        radial-gradient(900px circle at 100% 0%, rgba(186,230,79,.06), transparent 50%),
+        var(--bg);
+    }
+    [data-theme="dark"] .topbar { background: rgba(11,15,16,.82); border-bottom-color: rgba(255,255,255,.06); }
     [data-theme="dark"] .modal-overlay { background: rgba(0,0,0,.8); }
     [data-theme="dark"] input[type="color"] { border-color: var(--border); }
     [data-theme="dark"] .tech-pill { background: rgba(186,230,79,.12); border-color: rgba(186,230,79,.3); color: var(--lima); }
-    body, .topbar, .sidebar, .table-card, .chart-panel, .modal-box, .login-box, .stat-card, #chatPanel, .progress-card {
-      transition: background-color .2s ease, border-color .2s ease, color .2s ease;
+
+    /* Cards "flutuantes": sombra suave no lugar de borda pesada */
+    [data-theme="dark"] .stat-card,
+    [data-theme="dark"] .table-card,
+    [data-theme="dark"] .chart-panel,
+    [data-theme="dark"] .progress-card,
+    [data-theme="dark"] .card,
+    [data-theme="dark"] .api-select,
+    [data-theme="dark"] .socio-card,
+    [data-theme="dark"] .enrich-stat,
+    [data-theme="dark"] .export-btn {
+      box-shadow: var(--card-shadow);
+    }
+    [data-theme="dark"] .stat-card:hover,
+    [data-theme="dark"] .table-card:hover,
+    [data-theme="dark"] .chart-panel:hover {
+      box-shadow: 0 1px 0 rgba(255,255,255,.06) inset, 0 20px 44px rgba(0,0,0,.6), 0 0 0 1px rgba(186,230,79,.14);
+    }
+    [data-theme="dark"] .sidebar { box-shadow: 6px 0 32px rgba(0,0,0,.35); }
+
+    /* Acentos neon sutis (lima) em foco/hover */
+    [data-theme="dark"] .cnpj-textarea:focus,
+    [data-theme="dark"] .regional-input:focus {
+      border-color: var(--lima);
+      box-shadow: 0 0 0 3px rgba(186,230,79,.14);
+    }
+    [data-theme="dark"] .topbar-btn:hover { border-color: var(--lima); color: var(--lima); background: rgba(186,230,79,.08); }
+    [data-theme="dark"] .table-card-header i { color: var(--lima); }
+    [data-theme="dark"] .btn-primary:hover { box-shadow: 0 0 0 3px rgba(186,230,79,.16), 0 8px 22px rgba(0,120,64,.4); }
+    [data-theme="dark"] .btn-success-outline:hover { box-shadow: 0 0 16px rgba(186,230,79,.12); }
+    [data-theme="dark"] .progress-bar-fill { background: linear-gradient(90deg, var(--accent), var(--lima)); box-shadow: 0 0 12px rgba(186,230,79,.35); }
+    [data-theme="dark"] .progress-pct { color: var(--lima); }
+
+    /* Badges com mais contraste/neon no escuro */
+    [data-theme="dark"] .badge-ativa    { background: rgba(0,150,80,.16);  border-color: rgba(0,150,80,.4);  color: #4ADE80; }
+    [data-theme="dark"] .badge-inapta   { background: rgba(217,119,6,.16); border-color: rgba(217,119,6,.4); color: #FBBF24; }
+    [data-theme="dark"] .badge-baixada  { background: rgba(239,68,68,.16); border-color: rgba(239,68,68,.4); color: #F87171; }
+    [data-theme="dark"] .badge-suspensa { background: rgba(34,211,238,.16);border-color: rgba(34,211,238,.4);color: #22D3EE; }
+    [data-theme="dark"] .badge-error    { background: rgba(239,68,68,.16); border-color: rgba(239,68,68,.4); color: #F87171; }
+    [data-theme="dark"] .badge-purple   { background: rgba(167,139,250,.16);border-color: rgba(167,139,250,.4);color: #A78BFA; }
+
+    /* Stat cards com acento neon no topo */
+    [data-theme="dark"] .stat-card.c-red    { border-top-color: #F87171; } [data-theme="dark"] .stat-card.c-red    .stat-val { color: #F87171; }
+    [data-theme="dark"] .stat-card.c-yellow { border-top-color: #FBBF24; } [data-theme="dark"] .stat-card.c-yellow .stat-val { color: #FBBF24; }
+    [data-theme="dark"] .stat-card.c-cyan   { border-top-color: #22D3EE; } [data-theme="dark"] .stat-card.c-cyan   .stat-val { color: #22D3EE; }
+    [data-theme="dark"] .stat-card.c-green  { border-top-color: var(--lima); } [data-theme="dark"] .stat-card.c-green .stat-val { color: var(--lima); }
+
+    body, .topbar, .sidebar, .table-card, .chart-panel, .modal-box, .login-box, .stat-card, #chatPanel, .progress-card, .card {
+      transition: background-color .2s ease, border-color .2s ease, color .2s ease, box-shadow .2s ease, transform .2s ease;
     }
 
     body {
@@ -280,7 +336,7 @@
       background: var(--accent);
       color: #fff;
     }
-    .btn-primary:hover { background: #2563eb; filter: brightness(1.05); }
+    .btn-primary:hover { filter: brightness(1.1); box-shadow: 0 6px 16px rgba(0,120,64,.3); }
     .btn-ghost {
       background: transparent;
       border-color: var(--border);
@@ -334,6 +390,8 @@
       transition: all .2s;
     }
     .stat-card:hover { border-color: var(--border-lit); transform: translateY(-2px); }
+    .table-card, .chart-panel { transition: box-shadow .2s ease, transform .2s ease, border-color .2s ease; }
+    .table-card:hover, .chart-panel:hover { transform: translateY(-2px); }
     .stat-val {
       font-size: 28px;
       font-weight: 700;
@@ -455,7 +513,7 @@
     .modal-box {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 16px;
+      border-radius: 20px;
       width: 100%;
       max-width: 640px;
       max-height: 85vh;
@@ -469,7 +527,7 @@
       align-items: flex-start;
       justify-content: space-between;
       background: rgba(0,120,64,.08);
-      border-radius: 16px 16px 0 0;
+      border-radius: 20px 20px 0 0;
     }
     .modal-head.purple-head {
       background: rgba(186,230,79,.16);
@@ -1287,15 +1345,14 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
           <input id="prosCidade" class="regional-input" placeholder="Cidade">
           <input id="prosUF" class="regional-input" placeholder="UF">
           <select id="prosCNAE" class="regional-input">
-            <option value="MISTO">Ramos Diversos</option>
-            <option value="4713002">Loja de Utilidades</option>
             <option value="4711302">Supermercado</option>
             <option value="4771701">Farmácia</option>
             <option value="5611201">Restaurante</option>
             <option value="4520001">Oficina Mecânica</option>
             <option value="4744099">Material Construção</option>
             <option value="4530703">Auto Peças</option>
-            <option value="4721102">Padaria</option>            
+            <option value="4721102">Padaria</option>
+            <option value="4722901">Açougue</option>
             <option value="4711302">Mercado</option>
             <option value="4635403">Distribuidora de Bebidas</option>
             <option value="5510801">Hotel</option>
@@ -1303,14 +1360,31 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
             <option value="9313100">Academia</option>
             <option value="4729699">Casa de Suplementos</option>
             <option value="4761003">Papelaria</option>
-            <option value="4751201">Loja de Informática</option>                                    
+            <option value="4751201">Loja de Informática</option>
+            <option value="4752100">Loja de Celular</option>
+            <option value="4781400">Loja de Roupas</option>
+            <option value="4782201">Loja de Calçados</option>
             <option value="8599601">Auto Escola</option>
             <option value="4930202">Transportadora</option>
-            <option value="4731800">Posto de Combustível</option>           
-            <option value="4520001">Mecânica</option>            
+            <option value="4731800">Posto de Combustível</option>
+            <option value="4520006">Borracharia</option>
+            <option value="4520001">Mecânica</option>
+            <option value="4520002">Funilaria</option>
+            <option value="8630504">Dentista</option>
+            <option value="8630503">Clínica Médica</option>
+            <option value="8640202">Laboratório</option>
+            <option value="7500100">Veterinária</option>
+            <option value="4789004">Pet Shop</option>
+            <option value="4120400">Construtora</option>
+            <option value="6821801">Imobiliária</option>
             <option value="6920601">Contabilidade</option>
-            <option value="6911701">Advocacia</option>                      
-            <option value="5611203">Lanchonete</option>                       
+            <option value="6911701">Advocacia</option>
+            <option value="1813001">Gráfica</option>
+            <option value="4729699">Sorveteria</option>
+            <option value="5611203">Lanchonete</option>
+            <option value="5611204">Pizzaria</option>
+            <option value="5611203">Hamburgueria</option>
+            <option value="MISTO">Misto (Ramos Diversos)</option>
           </select>
         </div>
         <button class="btn btn-primary" style="margin-top:15px" onclick="buscarProspeccao()">
@@ -1356,7 +1430,7 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
         <div style="margin:12px 0 4px">
           <label style="font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer">
             <input type="checkbox" id="chkBuscaExata" style="width:auto">
-            Busca exata (Deixar sempre marcado!)
+            Busca exata (desmarcado = busca aproximada / contém o termo)
           </label>
         </div>
 
@@ -1613,7 +1687,8 @@ function selectAPI(api) {
 
 // ── DARK MODE ─────────────────────────────────────────────────────────────
 function applyDarkModePreference() {
-  const isDark = localStorage.getItem('darkMode') === 'true';
+  const saved = localStorage.getItem('darkMode');
+  const isDark = saved === null ? true : saved === 'true'; // dashboard escuro é o padrão
   document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
   const btn = document.getElementById('btnDarkMode');
   if (btn) btn.innerHTML = isDark ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
@@ -2240,7 +2315,7 @@ async function buscarProspeccao() {
 
   let cnaesBusca = [cnae];
   if (cnae === 'MISTO') {
-    cnaesBusca = ['4711302','4712100','4761003','4772500','4771701','4771702','4713002','4759899','4755502','4713004'];
+    cnaesBusca = ['4711302','4771701','5611201','4520001','4789004','4761003','4731800','4721102','8630503','6821801'];
   }
 
   resultado.innerHTML = '<p><span class="spinner"></span> Buscando todas as empresas disponíveis na Consulta CNPJ Arcom...</p>';
