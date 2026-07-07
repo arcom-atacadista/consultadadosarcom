@@ -1287,14 +1287,15 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
           <input id="prosCidade" class="regional-input" placeholder="Cidade">
           <input id="prosUF" class="regional-input" placeholder="UF">
           <select id="prosCNAE" class="regional-input">
+            <option value="MISTO">Ramos Diversos</option>
+            <option value="4713004">Loja de Utilidades</option>
             <option value="4711302">Supermercado</option>
             <option value="4771701">Farmácia</option>
             <option value="5611201">Restaurante</option>
             <option value="4520001">Oficina Mecânica</option>
             <option value="4744099">Material Construção</option>
             <option value="4530703">Auto Peças</option>
-            <option value="4721102">Padaria</option>
-            <option value="4722901">Açougue</option>
+            <option value="4721102">Padaria</option>            
             <option value="4711302">Mercado</option>
             <option value="4635403">Distribuidora de Bebidas</option>
             <option value="5510801">Hotel</option>
@@ -1302,31 +1303,14 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
             <option value="9313100">Academia</option>
             <option value="4729699">Casa de Suplementos</option>
             <option value="4761003">Papelaria</option>
-            <option value="4751201">Loja de Informática</option>
-            <option value="4752100">Loja de Celular</option>
-            <option value="4781400">Loja de Roupas</option>
-            <option value="4782201">Loja de Calçados</option>
+            <option value="4751201">Loja de Informática</option>                                    
             <option value="8599601">Auto Escola</option>
             <option value="4930202">Transportadora</option>
-            <option value="4731800">Posto de Combustível</option>
-            <option value="4520006">Borracharia</option>
-            <option value="4520001">Mecânica</option>
-            <option value="4520002">Funilaria</option>
-            <option value="8630504">Dentista</option>
-            <option value="8630503">Clínica Médica</option>
-            <option value="8640202">Laboratório</option>
-            <option value="7500100">Veterinária</option>
-            <option value="4789004">Pet Shop</option>
-            <option value="4120400">Construtora</option>
-            <option value="6821801">Imobiliária</option>
+            <option value="4731800">Posto de Combustível</option>           
+            <option value="4520001">Mecânica</option>            
             <option value="6920601">Contabilidade</option>
-            <option value="6911701">Advocacia</option>
-            <option value="1813001">Gráfica</option>
-            <option value="4729699">Sorveteria</option>
-            <option value="5611203">Lanchonete</option>
-            <option value="5611204">Pizzaria</option>
-            <option value="5611203">Hamburgueria</option>
-            <option value="MISTO">Misto (Ramos Diversos)</option>
+            <option value="6911701">Advocacia</option>                      
+            <option value="5611203">Lanchonete</option>                       
           </select>
         </div>
         <button class="btn btn-primary" style="margin-top:15px" onclick="buscarProspeccao()">
@@ -1372,7 +1356,7 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
         <div style="margin:12px 0 4px">
           <label style="font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer">
             <input type="checkbox" id="chkBuscaExata" style="width:auto">
-            Busca exata (desmarcado = busca aproximada / contém o termo)
+            Busca exata (Deixar sempre marcado!)
           </label>
         </div>
 
@@ -2256,7 +2240,7 @@ async function buscarProspeccao() {
 
   let cnaesBusca = [cnae];
   if (cnae === 'MISTO') {
-    cnaesBusca = ['4711302','4771701','5611201','4520001','4789004','4761003','4731800','4721102','8630503','6821801'];
+    cnaesBusca = ['4711302','4712100','4761003','4772500','4771701','4771702','4713002','4759899','4755502','4713004'];
   }
 
   resultado.innerHTML = '<p><span class="spinner"></span> Buscando todas as empresas disponíveis na Consulta CNPJ Arcom...</p>';
