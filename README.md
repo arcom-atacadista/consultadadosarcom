@@ -95,31 +95,6 @@ Também é preciso configurar no **Console do Firebase**:
 
 ---
 
-## 🔒 Segurança — leia antes de publicar
-
-Este projeto foi pensado pra rodar **atrás de login**, mas hoje as chamadas de API (Arcom, Casa dos Dados, Groq, Tavily) são feitas **direto do navegador**, com as chaves de API escritas em texto puro no HTML. Isso significa que:
-
-- Qualquer pessoa com acesso à página (aprovada ou não) consegue ver essas chaves pelo "Ver código-fonte" do navegador e usá-las por conta própria.
-- Como o app é hospedado no GitHub Pages, esse HTML é público — inclusive se o repositório for público, as chaves ficam versionadas no histórico do Git.
-
-**Recomendação:** antes de usar em produção com dados sensíveis, mover essas chamadas para um back-end simples (Cloudflare Workers, Vercel Functions ou Firebase Functions) que guarde as chaves no servidor, e o front-end apenas chame esse back-end.
-
-Da mesma forma, o controle de acesso (usuário pendente/aprovado, admin) depende inteiramente das **Regras de Segurança do Firestore** — que não fazem parte deste arquivo e precisam ser configuradas no Console do Firebase para impedir que um usuário edite o próprio status de aprovação ou o campo `isAdmin`.
-
-A "cota de consultas por usuário" exibida na interface é apenas um indicador visual — não impede, por si só, que alguém ultrapasse o limite. Um bloqueio de verdade exige validação do lado do servidor.
-
----
-
-## 🗺️ Roadmap / ideias futuras
-
-- Back-end intermediário para proteger as chaves de API.
-- Enforço real de cota de consultas (via Cloud Function).
-- Geocodificação de endereços para um mapa de calor geográfico de verdade.
-- Consulta por CPF/nome de sócio.
-- Notificações por e-mail quando uma solicitação de acesso é aprovada.
-
----
-
 ## 📄 Licença
 
 Uso interno — Arcom Atacadista.
