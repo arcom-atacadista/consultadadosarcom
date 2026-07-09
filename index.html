@@ -1082,9 +1082,71 @@
     }
     .req-approve { background: #007840; }
     .req-deny { background: #D13D29; }
+
+    /* ── TOASTS ── */
+    #toastContainer {
+      position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+      display: flex; flex-direction: column; gap: 10px; max-width: 340px;
+    }
+    .toast {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+      box-shadow: var(--glow); padding: 12px 14px; font-size: 13px; color: var(--text);
+      display: flex; align-items: flex-start; gap: 10px;
+      animation: toastIn .25s ease;
+    }
+    .toast i { margin-top: 1px; }
+    .toast.toast-success { border-left: 3px solid var(--accent); }
+    .toast.toast-success i { color: var(--accent); }
+    .toast.toast-error   { border-left: 3px solid var(--red); }
+    .toast.toast-error i { color: var(--red); }
+    .toast.toast-info    { border-left: 3px solid var(--cyan); }
+    .toast.toast-info i { color: var(--cyan); }
+    .toast.toast-out { animation: toastOut .2s ease forwards; }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes toastOut { from { opacity: 1; } to { opacity: 0; transform: translateX(8px); } }
+
+    /* ── CACHE INDICATOR ── */
+    .cache-tag {
+      font-size: 10px; color: var(--muted); font-weight: 500; margin-left: 6px;
+      white-space: nowrap; cursor: default;
+    }
+    .cache-tag i { margin-right: 3px; }
+
+    /* ── FAVORITE TAGS ── */
+    .fav-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+    .fav-tag-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: rgba(186,230,79,.14); color: var(--accent2); border: 1px solid rgba(186,230,79,.35);
+      border-radius: 99px; padding: 1px 8px; font-size: 10px; font-weight: 600; cursor: default;
+    }
+    [data-theme="dark"] .fav-tag-chip { color: var(--lima); }
+    .fav-tag-add {
+      font-size: 10px; color: var(--muted); border: 1px dashed var(--border-lit); border-radius: 99px;
+      padding: 1px 8px; cursor: pointer; background: transparent;
+    }
+    .fav-tag-add:hover { color: var(--accent); border-color: var(--accent); }
+
+    /* ── PASTE-AND-GO HINT ── */
+    #pasteHint {
+      display: none; align-items: center; gap: 8px; margin-top: 8px; padding: 8px 12px;
+      background: rgba(0,120,64,.08); border: 1px solid rgba(0,120,64,.25); border-radius: var(--radius-sm);
+      font-size: 12px; color: var(--accent); cursor: pointer; font-weight: 600;
+    }
+    [data-theme="dark"] #pasteHint { color: var(--lima); background: rgba(186,230,79,.08); border-color: rgba(186,230,79,.25); }
+    #pasteHint:hover { filter: brightness(1.1); }
+
+    /* ── EXPORT COLUMN PICKER ── */
+    .export-cols {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px;
+      background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+      padding: 12px; margin-bottom: 12px; max-height: 180px; overflow-y: auto;
+    }
+    .export-cols label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); cursor: pointer; }
   </style>
 </head>
 <body>
+
+<div id="toastContainer"></div>
 
 <!-- ═══════════════ TELA DE LOGIN (ACESSO RESTRITO) ═══════════════ -->
 <div id="loginOverlay" class="login-overlay">
@@ -1166,6 +1228,7 @@
     <span>/ CDA (Consulta dados Arcom)</span>
   </a>
   <div class="topbar-spacer"></div>
+  <span id="cotaUsuario" class="tech-pill" style="display:none;margin-right:4px;cursor:default" title="Total de CNPJs consultados por você neste mês"></span>
   <button class="topbar-btn" id="btnAdminPainel" style="display:none" onclick="abrirAdminPainel()" title="Solicitações de acesso"><i class="fas fa-user-clock"></i></button>
   <button class="topbar-btn" id="btnDarkMode" onclick="toggleDarkMode()" title="Alternar tema"><i class="fas fa-moon"></i></button>
   <button class="topbar-btn" onclick="openSettings()" title="Configurações"><i class="fas fa-sliders-h"></i></button>
@@ -1183,6 +1246,10 @@
     </div>
     <div class="modal-body">
       <div id="adminReqList"><p style="color:var(--muted);font-size:13px">Carregando...</p></div>
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+        <p style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px"><i class="fas fa-list-check"></i> Log de consultas (últimas 20)</p>
+        <div id="adminLogList"><p style="color:var(--muted);font-size:13px">Carregando...</p></div>
+      </div>
     </div>
   </div>
 </div>
@@ -1240,6 +1307,9 @@
           <textarea id="input" class="cnpj-textarea"
             placeholder="Cole os CNPJs aqui, um por linha
 Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
+          <div id="pasteHint" onclick="startVerification()">
+            <i class="fas fa-bolt"></i> <span id="pasteHintText"></span>
+          </div>
         </div>
         <div class="action-stack">
           <button class="btn btn-primary" onclick="startVerification()">
@@ -1260,6 +1330,28 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
           <button class="btn btn-purple hidden" id="btnEnrichAll" onclick="enriquecerTodos()">
             <i class="fas fa-lightbulb"></i> Gerar insight (todos)
           </button>
+          <button class="btn btn-purple hidden" id="btnRankingLeads" onclick="gerarRankingLeads()">
+            <i class="fas fa-ranking-star"></i> Ranking de leads (IA)
+          </button>
+        </div>
+      </div>
+
+      <!-- MODAL: RANKING DE LEADS (IA) -->
+      <div class="modal-overlay" id="rankingModal">
+        <div class="modal-box">
+          <div class="modal-head purple-head">
+            <div><p class="modal-head-razao">Ranking de Leads (IA)</p></div>
+            <button class="modal-close" onclick="closeModal('rankingModal')"><i class="fas fa-times"></i></button>
+          </div>
+          <div class="modal-body" id="rankingBody">
+            <div class="enrich-loading">
+              <div class="spinner-lg"></div>
+              <p>Analisando as empresas consultadas e priorizando os melhores leads…</p>
+            </div>
+          </div>
+          <div class="modal-footer-row">
+            <button class="btn btn-ghost" onclick="closeModal('rankingModal')">Fechar</button>
+          </div>
         </div>
       </div>
 
@@ -1330,8 +1422,12 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
 
         <div class="chart-panel">
           <div class="chart-panel-title"><i class="fas fa-chart-pie" style="color:var(--accent);margin-right:6px"></i>Distribuição</div>
-          <div class="chart-wrap">
-            <canvas id="chartSituacao" style="max-width:200px;max-height:200px"></canvas>
+          <div class="chart-wrap" style="min-height:180px">
+            <canvas id="chartSituacao" style="max-width:180px;max-height:180px"></canvas>
+          </div>
+          <div class="chart-panel-title" style="margin-top:18px"><i class="fas fa-chart-bar" style="color:var(--accent);margin-right:6px"></i>Top UFs</div>
+          <div class="chart-wrap" style="min-height:140px">
+            <canvas id="chartUF" style="max-height:140px"></canvas>
           </div>
         </div>
       </div>
@@ -1341,10 +1437,13 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
     <div class="tab-panel" id="tab-prospeccao">
       <div class="card">
         <h2>Prospecção por Cidade e Ramo</h2>
-        <div style="display:grid;grid-template-columns:1fr 100px 1fr;gap:12px;margin-top:15px">
-          <input id="prosCidade" class="regional-input" placeholder="Cidade">
-          <input id="prosUF" class="regional-input" placeholder="UF">
-          <select id="prosCNAE" class="regional-input">
+        <p style="font-size:12px;color:var(--muted);margin-top:6px">Uma cidade por linha. Use "Cidade,UF" (ex: Uberlândia,MG) ou preencha a UF padrão ao lado se todas forem do mesmo estado. Segure Ctrl (ou Cmd no Mac) para selecionar mais de um ramo.</p>
+        <div style="display:grid;grid-template-columns:1fr 100px 1fr;gap:12px;margin-top:15px;align-items:start">
+          <textarea id="prosCidades" class="regional-input cnpj-textarea" style="min-height:110px" placeholder="Uberlândia,MG
+Araguari,MG
+Patos de Minas"></textarea>
+          <input id="prosUF" class="regional-input" placeholder="UF padrão">
+          <select id="prosCNAE" class="regional-input" multiple size="10">
             <option value="4711302">Supermercado</option>
             <option value="4771701">Farmácia</option>
             <option value="5611201">Restaurante</option>
@@ -1387,13 +1486,35 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
             <option value="MISTO">Misto (Ramos Diversos)</option>
           </select>
         </div>
-        <button class="btn btn-primary" style="margin-top:15px" onclick="buscarProspeccao()">
-          <i class="fas fa-search"></i> Buscar Empresas
-        </button>
-        <button class="btn btn-success-outline" style="margin-top:15px" onclick="copiarProspeccao()">
-          <i class="fas fa-copy"></i> Copiar CNPJs
-        </button>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:15px">
+          <button class="btn btn-primary" onclick="buscarProspeccao()">
+            <i class="fas fa-search"></i> Buscar Empresas
+          </button>
+          <button class="btn btn-success-outline" onclick="copiarProspeccao()">
+            <i class="fas fa-copy"></i> Copiar CNPJs
+          </button>
+          <button class="btn btn-ghost hidden" id="btnSalvarListaProspeccao" onclick="salvarListaProspeccao()">
+            <i class="fas fa-bookmark"></i> Salvar como lista
+          </button>
+          <button class="btn btn-ghost" onclick="abrirListasSalvas()">
+            <i class="fas fa-folder-open"></i> Listas salvas
+          </button>
+        </div>
+        <div id="prosConcentracao" style="margin-top:16px"></div>
         <div id="prosResultado" style="margin-top:20px"></div>
+      </div>
+    </div>
+
+    <!-- MODAL: LISTAS SALVAS DE PROSPECÇÃO -->
+    <div class="modal-overlay" id="listasSalvasModal">
+      <div class="modal-box" style="max-width:520px">
+        <div class="modal-head">
+          <div><p class="modal-head-razao">Listas salvas de prospecção</p></div>
+          <button class="modal-close" onclick="closeModal('listasSalvasModal')"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+          <div id="listasSalvasBox"><p style="color:var(--muted);font-size:13px">Nenhuma lista salva ainda.</p></div>
+        </div>
       </div>
     </div>
 
@@ -1474,7 +1595,7 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
           <div class="modal-field"><label>Natureza Jurídica</label><p id="detailNatureza"></p></div>
           <div class="modal-field"><label>Atividade Principal</label><p id="detailAtividade"></p></div>
           <div class="modal-field"><label>Data de Abertura</label><p id="detailDataInicio"></p></div>
-          <div class="modal-field"><label>Capital Social</label><p id="detailCapital"></p></div>
+          <div class="modal-field"><label>Capital Social</label><p id="detailCapital"></p></div> 
         </div>
       </div>
       <div class="modal-section">
@@ -1522,6 +1643,12 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
     </div>
     <div class="modal-footer-row">
       <button class="btn btn-ghost" onclick="closeModal('enrichModal')">Fechar</button>
+      <button class="btn btn-ghost" id="btnWhatsappEnrich" onclick="compartilharInsightWhatsapp()" style="display:none">
+        <i class="fab fa-whatsapp" style="color:#25D366"></i> WhatsApp
+      </button>
+      <button class="btn btn-ghost" id="btnEmailEnrich" onclick="compartilharInsightEmail()" style="display:none">
+        <i class="fas fa-envelope"></i> E-mail
+      </button>
       <button class="btn btn-purple" id="btnExportEnrich" onclick="exportEnrichAtual()" style="display:none">
         <i class="fas fa-download"></i> Exportar insight
       </button>
@@ -1565,6 +1692,8 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
       <button class="modal-close" onclick="closeModal('exportModal')"><i class="fas fa-times"></i></button>
     </div>
     <div class="modal-body">
+      <p style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Colunas (Excel/CSV)</p>
+      <div class="export-cols" id="exportColsPicker"></div>
       <div class="export-grid">
         <button class="export-btn" onclick="exportCSV()"><i class="fas fa-file-excel" style="color:#007840"></i> Excel / CSV</button>
         <button class="export-btn" onclick="exportJSON()"><i class="fas fa-file-code" style="color:#1F4033"></i> JSON</button>
@@ -1654,12 +1783,57 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
 const norm  = s => s.replace(/\D/g,'');
 let rows = [], allData = {}, selectedAPI = 'brasilapi';
 let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
+let favTags = JSON.parse(localStorage.getItem('favTags') || '{}'); // { cnpj: ['tag1','tag2'] }
 let historyLog = JSON.parse(localStorage.getItem('cnpjHistory')) || [];
-let chart = null, currentDetailsCNPJ = null;
+let chart = null, chartUF = null, currentDetailsCNPJ = null;
 let enrichData = {}; // cnpj -> insight comercial gerado pela IA (Groq)
 let currentEnrichCNPJ = null;
 let erroCNPJs = []; // lista de {cnpj, motivo} que não foram consultados com sucesso
 let mapaEnderecoAtual = ''; // endereço em exibição no modal de mapa
+
+// ── TOASTS ──────────────────────────────────────────────────────────────────
+function showToast(msg, type) {
+  type = type || 'info';
+  const container = document.getElementById('toastContainer');
+  if (!container) { return; }
+  const icon = type === 'success' ? 'fa-circle-check' : type === 'error' ? 'fa-circle-exclamation' : 'fa-circle-info';
+  const el = document.createElement('div');
+  el.className = 'toast toast-' + type;
+  el.innerHTML = `<i class="fas ${icon}"></i><span>${msg}</span>`;
+  container.appendChild(el);
+  setTimeout(() => {
+    el.classList.add('toast-out');
+    setTimeout(() => el.remove(), 220);
+  }, 4200);
+}
+
+// ── ATALHOS DE TECLADO ────────────────────────────────────────────────────
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    const activeEl = document.activeElement;
+    if (activeEl && activeEl.id === 'input') { e.preventDefault(); startVerification(); }
+  }
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+  }
+});
+
+// ── "COLAR E IR": detecta CNPJs colados e sugere verificar na hora ──────────
+document.addEventListener('DOMContentLoaded', () => {
+  const inputEl = document.getElementById('input');
+  const hint = document.getElementById('pasteHint');
+  const hintText = document.getElementById('pasteHintText');
+  if (!inputEl || !hint) return;
+  inputEl.addEventListener('input', () => {
+    const encontrados = parseCNPJs(inputEl.value);
+    if (encontrados.length > 0) {
+      hintText.textContent = `${encontrados.length} CNPJ${encontrados.length>1?'s':''} detectado${encontrados.length>1?'s':''} — clique para verificar`;
+      hint.style.display = 'flex';
+    } else {
+      hint.style.display = 'none';
+    }
+  });
+});
 
 // ── TABS ────────────────────────────────────────────────────────────────────
 function showTab(name, el) {
@@ -1676,7 +1850,7 @@ document.querySelectorAll('.modal-overlay').forEach(el => {
   el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
 });
 function openSettings() { openModal('settingsModal'); }
-function showExportMenu() { openModal('exportModal'); }
+function showExportMenu() { renderExportColsPicker(); openModal('exportModal'); }
 
 // ── API SELECT ───────────────────────────────────────────────────────────────
 function selectAPI(api) {
@@ -1851,6 +2025,31 @@ function badgeClass(sit) {
   return '';
 }
 
+// ── CACHE DE CONSULTAS (evita reconsultar a mesma API pro mesmo CNPJ em menos de 24h) ──
+const CACHE_VALIDADE_MS = 24 * 60 * 60 * 1000; // 24 horas
+function getCnpjCache() { try { return JSON.parse(localStorage.getItem('cnpjCache') || '{}'); } catch { return {}; } }
+function setCnpjCache(cache) { localStorage.setItem('cnpjCache', JSON.stringify(cache)); }
+function getCachedResult(cnpj, api) {
+  const cache = getCnpjCache();
+  const entry = cache[cnpj];
+  if (!entry || entry.api !== api) return null;
+  if (Date.now() - entry.ts > CACHE_VALIDADE_MS) return null;
+  return entry;
+}
+function saveToCache(cnpj, api, result) {
+  const cache = getCnpjCache();
+  cache[cnpj] = { api, result, ts: Date.now() };
+  setCnpjCache(cache);
+}
+function formatRelativeTime(ts) {
+  const diffMin = Math.round((Date.now() - ts) / 60000);
+  if (diffMin < 1) return 'agora mesmo';
+  if (diffMin < 60) return `há ${diffMin} min`;
+  const diffH = Math.round(diffMin / 60);
+  if (diffH < 24) return `há ${diffH}h`;
+  return `há ${Math.round(diffH / 24)}d`;
+}
+
 // ── HISTORY ──────────────────────────────────────────────────────────────────
 function addToHistory(cnpj, razao) {
   historyLog = historyLog.filter(h => h.cnpj !== cnpj);
@@ -1908,6 +2107,7 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 const usersCol = db.collection('usuarios'); // uma doc por usuário, id = uid, campos: nome, email, motivo, status, criadoEm
+const logsCol = db.collection('consultas_log'); // uma doc por lote de verificação, campos: uid, email, cnpjs, quantidade, criadoEm
 
 function mostrarTelaLogin() {
   document.getElementById('loginOverlay').style.display = 'flex';
@@ -1948,6 +2148,7 @@ async function mostrarApp(userDoc) {
   // Admin = e-mail fixo (super admin) OU campo isAdmin=true no Firestore (promovido pelo painel)
   const isAdmin = (auth.currentUser && auth.currentUser.email === ADMIN_EMAIL) || !!(userDoc && userDoc.isAdmin);
   document.getElementById('btnAdminPainel').style.display = isAdmin ? '' : 'none';
+  atualizarCotaUsuario();
 }
 
 // Reage a qualquer mudança de login (login, logout, refresh da página)
@@ -2033,6 +2234,7 @@ function logout() {
 async function abrirAdminPainel() {
   openModal('adminModal');
   await renderAdminPainel();
+  await renderLogConsultasAdmin();
 }
 
 async function renderAdminPainel() {
@@ -2081,6 +2283,70 @@ async function definirAdmin(uid, valor) {
   if (!valor && !confirm('Remover o acesso de admin deste usuário?')) return;
   await usersCol.doc(uid).update({ isAdmin: valor });
   await renderAdminPainel();
+}
+
+// ── LOG DE CONSULTAS + COTA POR USUÁRIO ─────────────────────────────────────
+// Grava 1 documento por lote de verificação (não 1 por CNPJ, pra não pesar
+// demais no Firestore). Serve pra saber quem consultou o quê e mostrar uma
+// cota mensal de uso. IMPORTANTE: é só um indicador visual — não bloqueia o
+// usuário sozinho; um bloqueio de verdade precisaria ser reforçado do lado do
+// servidor (ex: Cloud Function ou regra do Firestore), não só no front-end.
+async function registrarLogConsulta(cnpjs) {
+  try {
+    if (!auth.currentUser || !cnpjs || !cnpjs.length) return;
+    await logsCol.add({
+      uid: auth.currentUser.uid,
+      email: auth.currentUser.email,
+      cnpjs: cnpjs,
+      quantidade: cnpjs.length,
+      criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    atualizarCotaUsuario();
+  } catch (e) {
+    console.error('Erro ao registrar log de consulta:', e);
+  }
+}
+
+async function atualizarCotaUsuario() {
+  const el = document.getElementById('cotaUsuario');
+  if (!el || !auth.currentUser) return;
+  try {
+    const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0,0,0,0);
+    const snap = await logsCol.where('uid', '==', auth.currentUser.uid).get();
+    let total = 0;
+    snap.forEach(doc => {
+      const d = doc.data();
+      const ts = d.criadoEm && d.criadoEm.toDate ? d.criadoEm.toDate() : null;
+      if (!ts || ts >= inicioMes) total += (d.quantidade || 0);
+    });
+    el.innerHTML = `<i class="fas fa-gauge"></i> ${total} consulta(s) este mês`;
+    el.style.display = 'inline-flex';
+  } catch (e) {
+    console.error('Erro ao calcular cota de uso:', e);
+  }
+}
+
+// Lista as últimas consultas de todos os usuários (só pra admin, exibido no painel de administração).
+async function renderLogConsultasAdmin() {
+  const box = document.getElementById('adminLogList');
+  if (!box) return;
+  box.innerHTML = '<p style="color:var(--muted);font-size:13px">Carregando...</p>';
+  try {
+    const snap = await logsCol.orderBy('criadoEm', 'desc').limit(20).get();
+    if (snap.empty) { box.innerHTML = '<p style="color:var(--muted);font-size:13px">Nenhuma consulta registrada ainda.</p>'; return; }
+    box.innerHTML = snap.docs.map(doc => {
+      const d = doc.data();
+      const ts = d.criadoEm && d.criadoEm.toDate ? d.criadoEm.toDate().toLocaleString('pt-BR') : '—';
+      return `<div class="req-item">
+        <div class="req-item-info">
+          <strong>${d.email || '—'}</strong>
+          <p>${d.quantidade || 0} CNPJ(s) consultado(s) · ${ts}</p>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    box.innerHTML = `<p style="color:var(--muted);font-size:13px">Erro ao carregar log: ${e.message}</p>`;
+  }
 }
 
 // ── API CALLS ─────────────────────────────────────────────────────────────────
@@ -2304,71 +2570,193 @@ async function buscarTodosEstabelecimentosArcom({ uf, municipioCodigo, cnae }, o
 }
 
 let prospeccaoCNPJs = [];
+let prospeccaoUltimoResultado = []; // [{cnpj, razao, atividade, cidade, uf, bairro}]
+
+function parseCidadesProspeccao(texto, ufPadrao) {
+  return texto.split('\n').map(l => l.trim()).filter(Boolean).map(linha => {
+    const partes = linha.split(',');
+    const cidade = partes[0].trim();
+    const uf = (partes[1] || ufPadrao || '').trim().toUpperCase();
+    return { cidade, uf };
+  });
+}
 
 async function buscarProspeccao() {
-  const cidade = document.getElementById('prosCidade').value.trim();
-  const uf = document.getElementById('prosUF').value.trim();
-  const cnae = document.getElementById('prosCNAE').value;
+  const cidadesRaw = document.getElementById('prosCidades').value.trim();
+  const ufPadrao = document.getElementById('prosUF').value.trim();
+  const cnaeSelect = document.getElementById('prosCNAE');
+  const cnaesSelecionados = Array.from(cnaeSelect.selectedOptions).map(o => o.value);
   const resultado = document.getElementById('prosResultado');
+  const concentracao = document.getElementById('prosConcentracao');
 
-  if (!cidade || !uf) { resultado.innerHTML = '<p>Informe cidade e UF.</p>'; return; }
+  concentracao.innerHTML = '';
+  document.getElementById('btnSalvarListaProspeccao').classList.add('hidden');
 
-  let cnaesBusca = [cnae];
-  if (cnae === 'MISTO') {
-    cnaesBusca = ['4711302','4771701','5611201','4520001','4789004','4761003','4731800','4721102','8630503','6821801'];
+  if (!cidadesRaw) { resultado.innerHTML = '<p>Informe ao menos uma cidade (uma por linha).</p>'; return; }
+  if (!cnaesSelecionados.length) { resultado.innerHTML = '<p>Selecione ao menos um ramo (segure Ctrl/Cmd pra escolher vários).</p>'; return; }
+
+  const cidades = parseCidadesProspeccao(cidadesRaw, ufPadrao);
+  const semUF = cidades.filter(c => !c.uf);
+  if (semUF.length) {
+    resultado.innerHTML = `<p>Informe a UF para: <strong>${semUF.map(c=>c.cidade).join(', ')}</strong> — use o formato "Cidade,UF" ou preencha o campo "UF padrão".</p>`;
+    return;
   }
 
-  resultado.innerHTML = '<p><span class="spinner"></span> Buscando todas as empresas disponíveis na Consulta CNPJ Arcom...</p>';
+  let cnaesBusca = [];
+  cnaesSelecionados.forEach(c => {
+    if (c === 'MISTO') cnaesBusca.push('4711302','4771701','5611201','4520001','4789004','4761003','4731800','4721102','8630503','6821801');
+    else cnaesBusca.push(c);
+  });
+  cnaesBusca = [...new Set(cnaesBusca)];
+
+  resultado.innerHTML = '<p><span class="spinner"></span> Iniciando busca…</p>';
   prospeccaoCNPJs = [];
+  const vistos = new Set();
+  const empresasEncontradas = [];
 
   try {
-    const municipio = await resolverMunicipioRF(cidade);
-
-    let empresas = [];
-    for (const c of cnaesBusca) {
-      const pagina = await buscarTodosEstabelecimentosArcom(
-        { uf, municipioCodigo: municipio.codigo, cnae: c },
-        (paginaAtual, encontradasNesteCnae) => {
-          resultado.innerHTML = `<p><span class="spinner"></span> Buscando em ${municipio.descricao}/${uf.toUpperCase()}… (página ${paginaAtual + 1} · ${empresas.length + encontradasNesteCnae} encontradas até agora)</p>`;
-        }
-      );
-      empresas = empresas.concat(pagina);
+    for (const { cidade, uf } of cidades) {
+      const municipio = await resolverMunicipioRF(cidade);
+      for (const cnae of cnaesBusca) {
+        const pagina = await buscarTodosEstabelecimentosArcom(
+          { uf, municipioCodigo: municipio.codigo, cnae },
+          (paginaAtual, encontradasNesteCnae) => {
+            resultado.innerHTML = `<p><span class="spinner"></span> Buscando em ${municipio.descricao}/${uf}… (${empresasEncontradas.length + encontradasNesteCnae} encontradas até agora)</p>`;
+          }
+        );
+        pagina.forEach(emp => {
+          const cnpjLimpo = (emp.cnpj || '').replace(/\D/g, '');
+          if (!cnpjLimpo || vistos.has(cnpjLimpo)) return;
+          vistos.add(cnpjLimpo);
+          empresasEncontradas.push({
+            cnpj: cnpjLimpo,
+            razao: emp.razao_social || '—',
+            atividade: (emp.cnae_fiscal_principal && emp.cnae_fiscal_principal.descricao) || '—',
+            bairro: emp.bairro || '—',
+            cidade: municipio.descricao,
+            uf
+          });
+        });
+      }
     }
-
-    // dedup por CNPJ (o modo "Misto" pode repetir empresas entre CNAEs)
-    const vistos = new Set();
-    empresas = empresas.filter(emp => {
-      const cnpjLimpo = (emp.cnpj || '').replace(/\D/g, '');
-      if (!cnpjLimpo || vistos.has(cnpjLimpo)) return false;
-      vistos.add(cnpjLimpo);
-      return true;
-    });
-
-    if (!empresas.length) {
-      resultado.innerHTML = `<p>Nenhum prospect (empresa ativa e ainda não cliente) encontrado em ${municipio.descricao}/${uf.toUpperCase()} para esse ramo.</p>`;
-      return;
-    }
-
-    let h = `<p style="font-size:12px;color:var(--muted);margin-bottom:10px">
-        ${empresas.length} prospect(s) encontrado(s) em <strong>${municipio.descricao}/${uf.toUpperCase()}</strong> — todas as empresas ativas que ainda não são clientes Arcom.
-      </p><table style="width:100%"><thead><tr><th>CNPJ</th><th>Razão Social</th><th>Atividade</th></tr></thead><tbody>`;
-    empresas.forEach(emp => {
-      const cnpj = (emp.cnpj || '').replace(/\D/g, '');
-      prospeccaoCNPJs.push(cnpj);
-      const atividade = (emp.cnae_fiscal_principal && emp.cnae_fiscal_principal.descricao) || '—';
-      h += `<tr><td>${fmt(cnpj)}</td><td>${emp.razao_social || '-'}</td><td style="font-size:12px;color:var(--muted)">${atividade}</td></tr>`;
-    });
-    h += '</tbody></table>';
-    resultado.innerHTML = h;
   } catch (e) {
     resultado.innerHTML = `<p>${e.message || 'Erro ao consultar a Consulta CNPJ Arcom.'}</p>`;
+    showToast(e.message || 'Erro na prospecção', 'error');
+    return;
   }
+
+  if (!empresasEncontradas.length) {
+    resultado.innerHTML = `<p>Nenhum prospect (empresa ativa e ainda não cliente) encontrado para os critérios informados.</p>`;
+    return;
+  }
+
+  prospeccaoUltimoResultado = empresasEncontradas;
+  prospeccaoCNPJs = empresasEncontradas.map(e => e.cnpj);
+  renderProspeccaoResultado(empresasEncontradas);
+  renderConcentracaoBairro(empresasEncontradas);
+  document.getElementById('btnSalvarListaProspeccao').classList.remove('hidden');
+  showToast(`${empresasEncontradas.length} prospect(s) encontrado(s)`, 'success');
+}
+
+function renderProspeccaoResultado(empresas) {
+  const resultado = document.getElementById('prosResultado');
+  const cidadesEnvolvidas = [...new Set(empresas.map(e => `${e.cidade}/${e.uf}`))];
+  let h = `<p style="font-size:12px;color:var(--muted);margin-bottom:10px">
+      ${empresas.length} prospect(s) encontrado(s) em <strong>${cidadesEnvolvidas.join(', ')}</strong> — empresas ativas que ainda não são clientes Arcom.
+    </p><table style="width:100%"><thead><tr><th>CNPJ</th><th>Razão Social</th><th>Cidade</th><th>Atividade</th></tr></thead><tbody>`;
+  empresas.forEach(emp => {
+    h += `<tr><td>${fmt(emp.cnpj)}</td><td>${emp.razao}</td><td style="font-size:12px;color:var(--muted)">${emp.cidade}/${emp.uf}</td><td style="font-size:12px;color:var(--muted)">${emp.atividade}</td></tr>`;
+  });
+  h += '</tbody></table>';
+  resultado.innerHTML = h;
+}
+
+// Alternativa leve a um mapa de calor geográfico (que exigiria geocodificação):
+// ranking de concentração por bairro/cidade a partir do próprio retorno da API.
+function renderConcentracaoBairro(empresas) {
+  const box = document.getElementById('prosConcentracao');
+  if (!box) return;
+  const porBairro = {};
+  empresas.forEach(e => {
+    const chave = (e.bairro && e.bairro !== '—') ? `${e.bairro} — ${e.cidade}/${e.uf}` : `${e.cidade}/${e.uf}`;
+    porBairro[chave] = (porBairro[chave] || 0) + 1;
+  });
+  const top = Object.entries(porBairro).sort((a,b)=>b[1]-a[1]).slice(0, 8);
+  const max = top.length ? top[0][1] : 1;
+  box.innerHTML = `
+    <div class="chart-panel-title"><i class="fas fa-fire" style="color:var(--accent);margin-right:6px"></i>Concentração por bairro/cidade</div>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+      ${top.map(([nome,qtd]) => `
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;background:var(--surface2);border-radius:6px;overflow:hidden;height:18px">
+            <div style="width:${Math.max(6,(qtd/max)*100)}%;background:var(--accent);height:100%"></div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);white-space:nowrap;min-width:160px">${nome} · ${qtd}</div>
+        </div>`).join('')}
+    </div>`;
 }
 
 function copiarProspeccao() {
-  if (!prospeccaoCNPJs.length) { alert('Nenhum CNPJ encontrado.'); return; }
+  if (!prospeccaoCNPJs.length) { showToast('Nenhum CNPJ encontrado.','error'); return; }
   navigator.clipboard.writeText(prospeccaoCNPJs.join('\n'));
-  alert(`${prospeccaoCNPJs.length} CNPJs copiados`);
+  showToast(`${prospeccaoCNPJs.length} CNPJs copiados`,'success');
+}
+
+// ── LISTAS SALVAS DE PROSPECÇÃO ─────────────────────────────────────────────
+function getListasSalvas() { try { return JSON.parse(localStorage.getItem('prospeccaoListasSalvas') || '[]'); } catch { return []; } }
+function setListasSalvas(lista) { localStorage.setItem('prospeccaoListasSalvas', JSON.stringify(lista)); }
+
+function salvarListaProspeccao() {
+  if (!prospeccaoUltimoResultado.length) { showToast('Nenhum resultado para salvar.','error'); return; }
+  const nome = prompt('Nome da lista (ex: "Farmácias - Uberlândia - Jan/2026"):');
+  if (!nome || !nome.trim()) return;
+  const listas = getListasSalvas();
+  listas.unshift({ nome: nome.trim(), ts: Date.now(), empresas: prospeccaoUltimoResultado });
+  setListasSalvas(listas);
+  showToast('Lista salva com sucesso!','success');
+}
+
+function abrirListasSalvas() {
+  renderListasSalvas();
+  openModal('listasSalvasModal');
+}
+
+function renderListasSalvas() {
+  const box = document.getElementById('listasSalvasBox');
+  const listas = getListasSalvas();
+  if (!listas.length) { box.innerHTML = '<p style="color:var(--muted);font-size:13px">Nenhuma lista salva ainda.</p>'; return; }
+  box.innerHTML = listas.map((lista, i) => `
+    <div class="req-item">
+      <div class="req-item-info">
+        <strong>${lista.nome}</strong>
+        <p>${lista.empresas.length} empresa(s) · salva em ${new Date(lista.ts).toLocaleString('pt-BR')}</p>
+      </div>
+      <div class="req-item-actions">
+        <button class="req-approve" title="Carregar" onclick="carregarListaSalva(${i})"><i class="fas fa-folder-open"></i></button>
+        <button class="req-deny" title="Excluir" onclick="excluirListaSalva(${i})"><i class="fas fa-trash"></i></button>
+      </div>
+    </div>`).join('');
+}
+
+function carregarListaSalva(indice) {
+  const listas = getListasSalvas();
+  const lista = listas[indice];
+  if (!lista) return;
+  prospeccaoUltimoResultado = lista.empresas;
+  prospeccaoCNPJs = lista.empresas.map(e => e.cnpj);
+  renderProspeccaoResultado(lista.empresas);
+  renderConcentracaoBairro(lista.empresas);
+  document.getElementById('btnSalvarListaProspeccao').classList.remove('hidden');
+  closeModal('listasSalvasModal');
+  showToast(`Lista "${lista.nome}" carregada`,'success');
+}
+
+function excluirListaSalva(indice) {
+  if (!confirm('Excluir esta lista salva?')) return;
+  const listas = getListasSalvas();
+  listas.splice(indice, 1);
+  setListasSalvas(listas);
+  renderListasSalvas();
 }
 
 // ── BUSCA POR RAZÃO SOCIAL (Casa dos Dados) ─────────────────────────────────
@@ -2547,6 +2935,8 @@ function updateStats(t,b,i,s,e) {
 }
 
 async function startVerification() {
+  const hintEl = document.getElementById('pasteHint');
+  if (hintEl) hintEl.style.display = 'none';
   const tbody = document.getElementById('tbody');
   tbody.innerHTML = ''; rows = []; allData = {}; enrichData = {}; erroCNPJs = [];
   const list = parseCNPJs(document.getElementById('input').value);
@@ -2569,7 +2959,7 @@ async function startVerification() {
   });
   updateStats(total,baix,inap,susp,erro);
 
-  function renderLinha(cnpj, result) {
+  function renderLinha(cnpj, result, cacheInfo) {
     allData[cnpj]=result; total++;
     if (result.situacao.includes('INAPTA')) inap++;
     else if (result.situacao.includes('BAIXADA')) baix++;
@@ -2577,10 +2967,13 @@ async function startVerification() {
     rows.push([fmt(cnpj),result.razao,result.situacao]);
     const bc=badgeClass(result.situacao);
     const isFav=favorites.includes(cnpj)?'⭐':'☆';
+    const cacheTagHtml = cacheInfo
+      ? `<span class="cache-tag" title="Resultado em cache — consultado em ${new Date(cacheInfo.ts).toLocaleString('pt-BR')}"><i class="fas fa-clock-rotate-left"></i>cache · ${formatRelativeTime(cacheInfo.ts)}</span>`
+      : '';
     tbody.innerHTML+=`<tr id="row-${cnpj}">
       <td class="td-fav" onclick="toggleFavorite('${cnpj}',event)">${isFav}</td>
       <td class="td-cnpj">${fmt(cnpj)}</td>
-      <td class="td-razao">${result.razao}</td>
+      <td class="td-razao">${result.razao}${cacheTagHtml}</td>
       <td><span class="badge ${bc}">${result.situacao}</span></td>
       <td style="color:var(--muted);font-size:12px">${selectedAPI==='arcom' ? (result.clienteArcom==='Sim' ? '<span class="badge badge-ativa">Sim</span>' : result.clienteArcom==='Não' ? '<span class="badge badge-baixada">Não</span>' : '—') : result.porte}</td>
       <td style="color:var(--muted);font-size:12px;font-family:var(--mono)">${result.uf}</td>
@@ -2592,6 +2985,7 @@ async function startVerification() {
     </tr>`;
     updateStats(total,baix,inap,susp,erro);
     addToHistory(cnpj,result.razao);
+    renderFavTags(cnpj);
   }
 
   function renderErro(cnpj, mensagem) {
@@ -2605,34 +2999,48 @@ async function startVerification() {
   }
 
   if (selectedAPI === 'arcom' && validos.length > 1) {
-    // ── MAIS DE 1 CNPJ na API Arcom → usa /v1/cnpj/batch (sempre cliente:true) ──
-    try {
-      await consultarLoteArcom(validos, (loteAtual, totalLotes, tamanhoLote) => {
-        document.getElementById('status').textContent = totalLotes > 1
-          ? `Consultando lote ${loteAtual+1}/${totalLotes} (${tamanhoLote} CNPJs)…`
-          : `Consultando lote de ${tamanhoLote} CNPJs…`;
-        document.getElementById('barFill').style.width=((loteAtual/totalLotes)*100)+'%';
-        document.getElementById('percentage').textContent=Math.round((loteAtual/totalLotes)*100)+'%';
-      }).then(resultados => {
-        resultados.forEach(item => {
-          if (item.error) { renderErro(item.cnpj, item.error); return; }
-          if (!item.found) { renderErro(item.cnpj, 'CNPJ não encontrado'); return; }
-          renderLinha(item.cnpj, mapArcomRecord(item.data, item.ja_cliente));
+    // ── MAIS DE 1 CNPJ na API Arcom → usa cache para os já conhecidos e /v1/cnpj/batch pro resto ──
+    const jaEmCache = [];
+    const precisaBuscar = [];
+    validos.forEach(cnpj => {
+      const cached = getCachedResult(cnpj, 'arcom');
+      if (cached) jaEmCache.push(cnpj); else precisaBuscar.push(cnpj);
+    });
+    jaEmCache.forEach(cnpj => renderLinha(cnpj, getCachedResult(cnpj,'arcom').result, getCachedResult(cnpj,'arcom')));
+    if (precisaBuscar.length) {
+      try {
+        await consultarLoteArcom(precisaBuscar, (loteAtual, totalLotes, tamanhoLote) => {
+          document.getElementById('status').textContent = totalLotes > 1
+            ? `Consultando lote ${loteAtual+1}/${totalLotes} (${tamanhoLote} CNPJs)…`
+            : `Consultando lote de ${tamanhoLote} CNPJs…`;
+          document.getElementById('barFill').style.width=((loteAtual/totalLotes)*100)+'%';
+          document.getElementById('percentage').textContent=Math.round((loteAtual/totalLotes)*100)+'%';
+        }).then(resultados => {
+          resultados.forEach(item => {
+            if (item.error) { renderErro(item.cnpj, item.error); return; }
+            if (!item.found) { renderErro(item.cnpj, 'CNPJ não encontrado'); return; }
+            const result = mapArcomRecord(item.data, item.ja_cliente);
+            saveToCache(item.cnpj, 'arcom', result);
+            renderLinha(item.cnpj, result);
+          });
         });
-      });
-    } catch(e) {
-      validos.forEach(cnpj => renderErro(cnpj, e.message || 'Erro na consulta em lote'));
+      } catch(e) {
+        precisaBuscar.forEach(cnpj => renderErro(cnpj, e.message || 'Erro na consulta em lote'));
+      }
     }
   } else {
-    // ── 1 único CNPJ, ou API diferente da Arcom → consulta individual, como antes ──
+    // ── 1 único CNPJ, ou API diferente da Arcom → consulta individual (com cache) ──
     for (let n=0; n<validos.length; n++) {
       const cnpj = validos[n];
       document.getElementById('status').textContent=`Consultando ${fmt(cnpj)} (${n+1}/${validos.length})`;
       document.getElementById('barFill').style.width=((n/validos.length)*100)+'%';
       document.getElementById('percentage').textContent=Math.round((n/validos.length)*100)+'%';
+      const cached = getCachedResult(cnpj, selectedAPI);
+      if (cached) { renderLinha(cnpj, cached.result, cached); continue; }
       if (n>0) await new Promise(r=>setTimeout(r,300));
       try {
         const result = selectedAPI==='brasilapi'?await consultarBrasilAPI(cnpj):selectedAPI==='opencnpj'?await consultarOpenCNPJ(cnpj):await consultarNovaAPI(cnpj);
+        saveToCache(cnpj, selectedAPI, result);
         renderLinha(cnpj, result);
       } catch(e) {
         renderErro(cnpj, e.message||'Erro na consulta');
@@ -2643,10 +3051,15 @@ async function startVerification() {
   document.getElementById('barFill').style.width='100%';
   document.getElementById('percentage').textContent='100%';
   document.getElementById('status').textContent=`✓ Concluído — ${total} CNPJs consultados`;
+  showToast(`Consulta concluída: ${total} CNPJ(s) processados${erro?`, ${erro} com erro`:''}`, erro ? 'info' : 'success');
   updateChart();
   document.getElementById('btnExport').classList.remove('hidden');
-  if (Object.keys(allData).length) document.getElementById('btnEnrichAll').classList.remove('hidden');
+  if (Object.keys(allData).length) {
+    document.getElementById('btnEnrichAll').classList.remove('hidden');
+    document.getElementById('btnRankingLeads').classList.remove('hidden');
+  }
   document.getElementById('btnCopiarErros').classList.toggle('hidden', erroCNPJs.length===0);
+  registrarLogConsulta(Object.keys(allData));
 }
 
 function openDetailsModal(cnpj) {
@@ -2703,11 +3116,14 @@ function updateChart() {
   const ctx=document.getElementById('chartSituacao');
   if(!ctx) return;
   const stats={ATIVA:0,INAPTA:0,BAIXADA:0,SUSPENSA:0};
+  const ufCount={};
   Object.values(allData).forEach(d=>{
     if(d.situacao.includes('ATIVA')) stats.ATIVA++;
     else if(d.situacao.includes('INAPTA')) stats.INAPTA++;
     else if(d.situacao.includes('BAIXADA')) stats.BAIXADA++;
     else if(d.situacao.includes('SUSPENSA')) stats.SUSPENSA++;
+    const uf=(d.uf||'—').trim()||'—';
+    ufCount[uf]=(ufCount[uf]||0)+1;
   });
   if(chart) chart.destroy();
   chart=new Chart(ctx.getContext('2d'),{
@@ -2723,12 +3139,74 @@ function updateChart() {
       plugins:{legend:{labels:{color:'#636466',font:{family:'Red Hat Display',size:12}}}}
     }
   });
+  updateUFChart(ufCount);
+}
+
+function updateUFChart(ufCount) {
+  const ctx = document.getElementById('chartUF');
+  if (!ctx) return;
+  const entries = Object.entries(ufCount).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  if (chartUF) chartUF.destroy();
+  chartUF = new Chart(ctx.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: entries.map(e=>e[0]),
+      datasets: [{ data: entries.map(e=>e[1]), backgroundColor: '#007840', borderRadius: 4, maxBarThickness: 22 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#636466', font: { size: 11 }, stepSize: 1 }, grid: { display: false } },
+        y: { ticks: { color: '#636466', font: { size: 11 } }, grid: { display: false } }
+      }
+    }
+  });
 }
 
 function toggleFavorite(cnpj,e) {
   e.stopPropagation();
-  favorites=favorites.includes(cnpj)?favorites.filter(f=>f!==cnpj):[...favorites,cnpj];
+  const jaFav = favorites.includes(cnpj);
+  favorites = jaFav ? favorites.filter(f=>f!==cnpj) : [...favorites, cnpj];
   localStorage.setItem('favorites',JSON.stringify(favorites));
+  const cell = e.target.closest('.td-fav');
+  if (cell) cell.textContent = favorites.includes(cnpj) ? '⭐' : '☆';
+  renderFavTags(cnpj);
+  showToast(favorites.includes(cnpj) ? 'Adicionado aos favoritos' : 'Removido dos favoritos', 'info');
+}
+
+// ── ETIQUETAS DE FAVORITOS ──────────────────────────────────────────────────
+function renderFavTags(cnpj) {
+  const row = document.getElementById('row-'+cnpj);
+  if (!row) return;
+  const razaoCell = row.querySelector('.td-razao');
+  if (!razaoCell) return;
+  let tagsBox = razaoCell.querySelector('.fav-tags');
+  if (!favorites.includes(cnpj)) { if (tagsBox) tagsBox.remove(); return; }
+  if (!tagsBox) {
+    tagsBox = document.createElement('div');
+    tagsBox.className = 'fav-tags';
+    razaoCell.appendChild(tagsBox);
+  }
+  const tags = favTags[cnpj] || [];
+  tagsBox.innerHTML = tags.map(t => `<span class="fav-tag-chip">${t} <i class="fas fa-xmark" style="cursor:pointer" onclick="removeFavTag('${cnpj}',${JSON.stringify(t)},event)"></i></span>`).join('')
+    + `<button class="fav-tag-add" onclick="addFavTag('${cnpj}',event)">+ tag</button>`;
+}
+function addFavTag(cnpj, e) {
+  e.stopPropagation();
+  const tag = prompt('Nova etiqueta (ex: quente, não atende, já é cliente):');
+  if (!tag || !tag.trim()) return;
+  favTags[cnpj] = favTags[cnpj] || [];
+  if (!favTags[cnpj].includes(tag.trim())) favTags[cnpj].push(tag.trim());
+  localStorage.setItem('favTags', JSON.stringify(favTags));
+  renderFavTags(cnpj);
+}
+function removeFavTag(cnpj, tag, e) {
+  e.stopPropagation();
+  favTags[cnpj] = (favTags[cnpj]||[]).filter(t => t !== tag);
+  localStorage.setItem('favTags', JSON.stringify(favTags));
+  renderFavTags(cnpj);
 }
 
 function clearAll() {
@@ -2736,20 +3214,24 @@ function clearAll() {
   document.getElementById('tbody').innerHTML=`<tr><td colspan="7"><div class="empty-state"><i class="fas fa-search"></i><p>Nenhuma consulta realizada</p></div></td></tr>`;
   document.getElementById('btnExport').classList.add('hidden');
   document.getElementById('btnEnrichAll').classList.add('hidden');
+  document.getElementById('btnRankingLeads').classList.add('hidden');
   document.getElementById('btnCopiarErros').classList.add('hidden');
   updateStats(0,0,0,0,0);
   document.getElementById('barFill').style.width='0%';
   document.getElementById('percentage').textContent='0%';
   document.getElementById('status').textContent='Aguardando entrada…';
   allData={}; rows=[]; enrichData={}; erroCNPJs=[];
+  if (chart) { chart.destroy(); chart=null; }
+  if (chartUF) { chartUF.destroy(); chartUF=null; }
+  const hint=document.getElementById('pasteHint'); if (hint) hint.style.display='none';
 }
 
 function copiarCNPJsErro() {
-  if(!erroCNPJs.length){alert('Nenhum CNPJ com erro encontrado.');return;}
+  if(!erroCNPJs.length){showToast('Nenhum CNPJ com erro encontrado.','error');return;}
   const lista = erroCNPJs.map(e=>e.cnpj.replace(/\D/g,''));
   navigator.clipboard.writeText(lista.join('\n'))
-    .then(()=>alert(`✅ ${lista.length} CNPJ(s) com erro copiados!`))
-    .catch(()=>alert('Erro ao copiar.'));
+    .then(()=>showToast(`${lista.length} CNPJ(s) com erro copiados!`,'success'))
+    .catch(()=>showToast('Erro ao copiar.','error'));
 }
 
 function copiarCNPJsProblema() {
@@ -2759,10 +3241,10 @@ function copiarCNPJsProblema() {
     if(sit.includes('INAPTA')||sit.includes('SUSPENSA')||sit.includes('BAIXADA'))
       cnpjsProblema.push(cnpj.replace(/\D/g,''));
   }
-  if(!cnpjsProblema.length){alert('Nenhum CNPJ problemático encontrado.');return;}
+  if(!cnpjsProblema.length){showToast('Nenhum CNPJ problemático encontrado.','error');return;}
   navigator.clipboard.writeText(cnpjsProblema.join('\n'))
-    .then(()=>alert(`✅ ${cnpjsProblema.length} CNPJs copiados!`))
-    .catch(()=>alert('Erro ao copiar.'));
+    .then(()=>showToast(`${cnpjsProblema.length} CNPJs copiados!`,'success'))
+    .catch(()=>showToast('Erro ao copiar.','error'));
 }
 
 // ── MAPA (endereço do CNPJ consultado) ─────────────────────────────────────
@@ -2806,7 +3288,7 @@ function abrirMapaExterno() {
 // pessoal/interno da equipe isso costuma ser aceitável; para publicar para
 // terceiros, o ideal é colocar essas chamadas atrás de um proxy simples
 // (ex.: Cloudflare Worker) para não expor as chaves.
-const GROQ_API_KEY = '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';
+const GROQ_API_KEY = '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';
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
@@ -3018,6 +3500,8 @@ async function enriquecerDados(cnpj) {
   document.getElementById('enrichCNPJ').textContent = fmt(cnpj);
   document.getElementById('enrichRazao').textContent = data.razao;
   document.getElementById('btnExportEnrich').style.display = 'none';
+  document.getElementById('btnWhatsappEnrich').style.display = 'none';
+  document.getElementById('btnEmailEnrich').style.display = 'none';
   document.getElementById('enrichBody').innerHTML = `
     <div class="enrich-loading">
       <div class="spinner-lg"></div>
@@ -3035,6 +3519,8 @@ async function enriquecerDados(cnpj) {
     if (currentEnrichCNPJ === cnpj) {
       document.getElementById('enrichBody').innerHTML = renderEnrichBody(cnpj, enrichData[cnpj]);
       document.getElementById('btnExportEnrich').style.display = 'inline-flex';
+      document.getElementById('btnWhatsappEnrich').style.display = 'inline-flex';
+      document.getElementById('btnEmailEnrich').style.display = 'inline-flex';
     }
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check"></i> Insight gerado'; btn.classList.add('badge-purple'); }
   } catch (e) {
@@ -3043,6 +3529,35 @@ async function enriquecerDados(cnpj) {
     }
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-lightbulb"></i> Tentar novamente'; }
   }
+}
+
+// ── COMPARTILHAR INSIGHT (WhatsApp / E-mail) ────────────────────────────────
+function montarResumoInsightTexto(cnpj) {
+  const empresa = allData[cnpj];
+  const dados = enrichData[cnpj];
+  if (!empresa || !dados) return '';
+  const linhas = [
+    `*${empresa.razao}* (${fmt(cnpj)})`,
+    dados.resumo ? `\n${dados.resumo}` : '',
+    dados.abordagem_sugerida ? `\n*Abordagem sugerida:* ${dados.abordagem_sugerida}` : '',
+    (dados.pontos_fortes && dados.pontos_fortes.length) ? `\n*Pontos fortes:* ${dados.pontos_fortes.join('; ')}` : ''
+  ];
+  return linhas.filter(Boolean).join('\n');
+}
+function compartilharInsightWhatsapp() {
+  if (!currentEnrichCNPJ) return;
+  const texto = montarResumoInsightTexto(currentEnrichCNPJ);
+  if (!texto) { showToast('Gere o insight antes de compartilhar.','error'); return; }
+  window.open('https://wa.me/?text=' + encodeURIComponent(texto), '_blank');
+}
+function compartilharInsightEmail() {
+  if (!currentEnrichCNPJ) return;
+  const empresa = allData[currentEnrichCNPJ];
+  const texto = montarResumoInsightTexto(currentEnrichCNPJ);
+  if (!texto) { showToast('Gere o insight antes de compartilhar.','error'); return; }
+  const assunto = encodeURIComponent(`Insight comercial — ${empresa ? empresa.razao : fmt(currentEnrichCNPJ)}`);
+  const corpo = encodeURIComponent(texto.replace(/\*/g, ''));
+  window.location.href = `mailto:?subject=${assunto}&body=${corpo}`;
 }
 
 async function enriquecerTodos() {
@@ -3074,6 +3589,76 @@ function exportEnrichAtual() {
   exportarInsightsCSV([currentEnrichCNPJ]);
 }
 
+// ── RANKING DE LEADS (IA) ────────────────────────────────────────────────────
+// Manda o resumo das empresas já consultadas pra IA priorizar, num único
+// request (mais rápido e mais barato do que gerar insight individual de cada uma).
+async function gerarRankingLeads() {
+  const cnpjs = Object.keys(allData);
+  if (!cnpjs.length) { showToast('Nenhuma empresa consultada ainda.','error'); return; }
+  if (!GROQ_API_KEY) { showToast('Configure a GROQ_API_KEY para usar o ranking com IA.','error'); return; }
+
+  document.getElementById('rankingBody').innerHTML = `
+    <div class="enrich-loading">
+      <div class="spinner-lg"></div>
+      <p>Analisando ${cnpjs.length} empresa(s) e priorizando os melhores leads…</p>
+    </div>`;
+  openModal('rankingModal');
+
+  const listaResumo = cnpjs.slice(0, 60).map(cnpj => {
+    const d = allData[cnpj];
+    return `${cnpj}|${d.razao}|${d.situacao}|${d.porte}|${d.atividade}|${d.municipio || ''}/${d.uf}|capital:${d.capitalSocial}`;
+  }).join('\n');
+
+  const prompt = `Você é um analista comercial. Abaixo está uma lista de empresas (formato: CNPJ|Razão Social|Situação|Porte|Atividade|Cidade/UF|Capital Social), uma por linha:
+
+${listaResumo}
+
+Priorize as empresas mais promissoras como leads comerciais (considere: situação ATIVA é obrigatória para ser um bom lead, porte maior e capital social maior tendem a ser melhores, atividade compatível com potencial de compra recorrente). Responda APENAS com um JSON válido, sem markdown, no formato:
+{"ranking":[{"cnpj":"...","razao":"...","posicao":1,"motivo":"frase curta explicando por que é um bom lead"}]}
+Inclua no máximo os 15 melhores, ordenados do melhor para o pior.`;
+
+  try {
+    const response = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages: [
+          { role: 'system', content: 'Você responde sempre em português do Brasil e apenas com JSON válido, sem texto adicional e sem markdown.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.3,
+        response_format: { type: 'json_object' }
+      })
+    });
+    if (!response.ok) throw new Error(`Groq HTTP ${response.status}`);
+    const data = await response.json();
+    const texto = data.choices?.[0]?.message?.content || '{}';
+    const parsed = JSON.parse(texto);
+    renderRankingLeads(parsed.ranking || []);
+  } catch (e) {
+    document.getElementById('rankingBody').innerHTML = `<div class="alert alert-danger">Erro ao gerar ranking: ${e.message}</div>`;
+  }
+}
+
+function renderRankingLeads(ranking) {
+  const box = document.getElementById('rankingBody');
+  if (!ranking.length) { box.innerHTML = '<p style="color:var(--muted);font-size:13px">Não foi possível montar um ranking com os dados disponíveis.</p>'; return; }
+  box.innerHTML = `<div style="display:flex;flex-direction:column;gap:10px">
+    ${ranking.map(item => `
+      <div class="req-item" style="align-items:flex-start">
+        <div class="req-item-info">
+          <strong>#${item.posicao} — ${item.razao || '—'}</strong> <span class="td-cnpj">${item.cnpj ? fmt(String(item.cnpj).replace(/\D/g,'')) : ''}</span>
+          <p>${item.motivo || ''}</p>
+        </div>
+        <div class="req-item-actions">
+          ${allData[String(item.cnpj).replace(/\D/g,'')] ? `<button class="req-approve" title="Ver detalhes" onclick="closeModal('rankingModal');openDetailsModal('${String(item.cnpj).replace(/\D/g,'')}')"><i class="fas fa-eye"></i></button>` : ''}
+        </div>
+      </div>`).join('')}
+  </div>
+  <div class="enrich-source-note" style="margin-top:12px"><i class="fas fa-circle-info"></i> Ranking gerado por IA (Groq) com base nos dados públicos já consultados. Use como apoio à priorização, não como decisão final.</div>`;
+}
+
 function exportarInsightsCSV(cnpjsFiltro) {
   const lista = cnpjsFiltro || Object.keys(enrichData);
   let csv = 'CNPJ,Razão Social,Resumo,Pontos Fortes,Sinais de Atenção,Abordagem Sugerida,Perguntas de Qualificação,Confiança dos Dados\n';
@@ -3102,10 +3687,37 @@ function buildExportData() {
   }
   return {empresas,socios};
 }
+
+// ── SELEÇÃO DE COLUNAS PARA EXPORTAÇÃO (Excel/CSV) ──────────────────────────
+const EXPORT_COLUMNS = ['CNPJ','Razão Social','Nome Fantasia','Situação','Porte','Natureza Jurídica','Atividade Principal','Data de Abertura','Capital Social','Endereço Completo','CEP','UF','Telefone','E-mail','Quantidade de Sócios','API Utilizada'];
+function getExportColsSelecionadas() {
+  const saved = JSON.parse(localStorage.getItem('exportColsSelecionadas') || 'null');
+  return (saved && saved.length === EXPORT_COLUMNS.length) ? saved : EXPORT_COLUMNS.map(()=>true);
+}
+function renderExportColsPicker() {
+  const box = document.getElementById('exportColsPicker');
+  if (!box) return;
+  const sel = getExportColsSelecionadas();
+  box.innerHTML = EXPORT_COLUMNS.map((col,i)=>
+    `<label><input type="checkbox" data-col-idx="${i}" ${sel[i]?'checked':''} onchange="salvarExportColsSelecionadas()"> ${col}</label>`
+  ).join('');
+}
+function salvarExportColsSelecionadas() {
+  const box = document.getElementById('exportColsPicker');
+  if (!box) return;
+  const sel = EXPORT_COLUMNS.map(()=>true);
+  box.querySelectorAll('input[type=checkbox]').forEach(c => sel[Number(c.dataset.colIdx)] = c.checked);
+  localStorage.setItem('exportColsSelecionadas', JSON.stringify(sel));
+}
+function filtrarColunasExport(linhas) {
+  const sel = getExportColsSelecionadas();
+  return linhas.map(row => row.filter((_,i)=>sel[i]));
+}
 function exportCSV() {
   const {empresas,socios}=buildExportData();
+  const empresasFiltradas = filtrarColunasExport(empresas);
   const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(empresas),'Empresas');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(empresasFiltradas),'Empresas');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(socios),'Sócios');
   if (Object.keys(enrichData).length) {
     const insights=[['CNPJ','Razão Social','Resumo','Pontos Fortes','Sinais de Atenção','Abordagem Sugerida','Perguntas de Qualificação','Confiança dos Dados']];
@@ -3118,6 +3730,7 @@ function exportCSV() {
   }
   XLSX.writeFile(wb,'Consulta_CNPJ_'+new Date().toISOString().split('T')[0]+'.xlsx');
   closeModal('exportModal');
+  showToast('Planilha exportada com sucesso!','success');
 }
 function exportJSON() {
   const merged = {};
@@ -3130,6 +3743,7 @@ function exportJSON() {
   a.download='resultado_'+new Date().toISOString().split('T')[0]+'.json';
   a.click();
   closeModal('exportModal');
+  showToast('JSON exportado com sucesso!','success');
 }
 function exportPDF() {
   let html='<h1 style="font-family:sans-serif;margin-bottom:16px">Relatório CNPJ — VERIFICADOR</h1><table border="1" cellpadding="10" style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:12px"><tr style="background:#f0f0f0"><th>CNPJ</th><th>Razão Social</th><th>Situação</th><th>Porte</th><th>UF</th></tr>';
@@ -3138,6 +3752,7 @@ function exportPDF() {
   const el=document.createElement('div');el.innerHTML=html;
   html2pdf().set({margin:10,filename:'resultado_'+new Date().toISOString().split('T')[0]+'.pdf'}).from(el).save();
   closeModal('exportModal');
+  showToast('PDF gerado com sucesso!','success');
 }
 
 function delay(ms){return new Promise(r=>setTimeout(r,ms));}
@@ -3155,6 +3770,7 @@ function delay(ms){return new Promise(r=>setTimeout(r,ms));}
   <div class="chat-header">
     <span class="dot-live"></span>
     <strong>Chat com IA</strong>
+    <button class="chat-close" title="Limpar conversa" onclick="limparChatHistorico()" style="margin-left:auto;margin-right:4px"><i class="fas fa-trash" style="font-size:12px"></i></button>
     <button class="chat-close" onclick="chatToggle()"><i class="fas fa-times"></i></button>
   </div>
   <div id="chatMessages"><div class="chat-empty">Pergunte qualquer coisa — ou peça um resumo das empresas que você já consultou nesta sessão.</div></div>
@@ -3168,12 +3784,27 @@ function delay(ms){return new Promise(r=>setTimeout(r,ms));}
 // ── CHAT COM IA (Groq) ────────────────────────────────────────────────────
 // Reaproveita a mesma chave/endpoint/modelo já configurados para o botão
 // "Insight IA" (constantes GROQ_API_KEY, GROQ_API_URL, GROQ_MODEL, definidas
-// mais acima no arquivo). O histórico da conversa fica só na memória da aba
-// — se recarregar a página, a conversa reinicia do zero.
+// mais acima no arquivo). O histórico da conversa fica salvo no navegador
+// (localStorage), então sobrevive a um recarregamento de página.
 
-let chatHistorico = []; // [{role:'user'|'assistant', texto}]
+const CHAT_HISTORICO_MAX = 40; // limite de mensagens guardadas
+let chatHistorico = carregarChatHistorico();
 let chatAberto = false;
 let chatCarregando = false;
+
+function carregarChatHistorico(){
+  try { return JSON.parse(localStorage.getItem('chatHistorico') || '[]'); }
+  catch { return []; }
+}
+function salvarChatHistorico(){
+  localStorage.setItem('chatHistorico', JSON.stringify(chatHistorico.slice(-CHAT_HISTORICO_MAX)));
+}
+function limparChatHistorico(){
+  if (chatHistorico.length && !confirm('Limpar toda a conversa com a IA?')) return;
+  chatHistorico = [];
+  salvarChatHistorico();
+  renderMensagensChat();
+}
 
 function escapeHtml(str){
   const d = document.createElement('div');
@@ -3262,6 +3893,7 @@ async function chatEnviar(){
   const texto = input.value.trim();
   if(!texto || chatCarregando) return;
   chatHistorico.push({ role:'user', texto });
+  salvarChatHistorico();
   input.value = '';
   chatCarregando = true;
   renderMensagensChat();
@@ -3273,11 +3905,14 @@ async function chatEnviar(){
   } catch(e) {
     chatHistorico.push({ role:'assistant', texto: `⚠️ Erro ao falar com a IA: ${e.message}` });
   }
+  salvarChatHistorico();
   chatCarregando = false;
   btn.disabled = false;
   renderMensagensChat();
   input.focus();
 }
+
+renderMensagensChat(); // exibe o histórico salvo assim que a página carrega
 </script>
 
 </body>
