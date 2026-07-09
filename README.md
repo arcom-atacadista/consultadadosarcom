@@ -95,15 +95,6 @@ Também é preciso configurar no **Console do Firebase**:
 
 ---
 
-## 🗺️ Roadmap / ideias futuras
-
-- Enforço real de cota de consultas.
-- Geocodificação de endereços para um mapa de calor geográfico de verdade.
-- Consulta por CPF/nome de sócio.
-- Notificações por e-mail quando uma solicitação de acesso é aprovada.
-
----
-
 ## 📄 Licença
 
 Uso interno — Arcom Atacadista.
