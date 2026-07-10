@@ -2827,23 +2827,44 @@ function excluirListaSalva(indice) {
 const preCadastrosCol = db.collection('preCadastros');
 let preCadastroCNPJAtual = null;
 
+// Normaliza os dados de origem — o mesmo CNPJ pode vir da busca de Prospecção
+// (prospeccaoUltimoResultado) ou de uma consulta na aba Consulta CNPJ (allData).
+// A consulta traz telefone/e-mail reais e sócios; a prospecção não.
+function dadosParaPreCadastro(cnpj) {
+  const prospect = prospeccaoUltimoResultado.find(e => e.cnpj === cnpj);
+  if (prospect) {
+    return { razao: prospect.razao, atividade: prospect.atividade, municipio: prospect.cidade, uf: prospect.uf, telefone: '', email: '', nomeSugerido: '' };
+  }
+  const consulta = typeof allData !== 'undefined' ? allData[cnpj] : null;
+  if (consulta) {
+    const semTraco = v => (v && v !== '—') ? v : '';
+    const primeiroSocio = (consulta.socios || [])[0];
+    return {
+      razao: consulta.razao, atividade: consulta.atividade, municipio: consulta.municipio, uf: consulta.uf,
+      telefone: semTraco(consulta.telefone), email: semTraco(consulta.email),
+      nomeSugerido: primeiroSocio ? (primeiroSocio.nome_socio || primeiroSocio.nome || '') : ''
+    };
+  }
+  return null;
+}
+
 function abrirPreCadastro(cnpj) {
-  const emp = prospeccaoUltimoResultado.find(e => e.cnpj === cnpj);
+  const emp = dadosParaPreCadastro(cnpj);
   if (!emp) return;
   preCadastroCNPJAtual = cnpj;
   document.getElementById('preCadastroCNPJ').textContent = fmt(cnpj);
   document.getElementById('preCadastroRazao').textContent = emp.razao;
-  document.getElementById('preCadastroNome').value = '';
-  document.getElementById('preCadastroTelefone').value = '';
+  document.getElementById('preCadastroNome').value = emp.nomeSugerido || '';
+  document.getElementById('preCadastroTelefone').value = emp.telefone || '';
   document.getElementById('preCadastroWhatsapp').value = '';
-  document.getElementById('preCadastroEmail').value = '';
+  document.getElementById('preCadastroEmail').value = emp.email || '';
   openModal('preCadastroModal');
 }
 
 async function salvarPreCadastro() {
   const cnpj = preCadastroCNPJAtual;
   if (!cnpj) return;
-  const emp = prospeccaoUltimoResultado.find(e => e.cnpj === cnpj) || {};
+  const emp = dadosParaPreCadastro(cnpj) || {};
   const nome = document.getElementById('preCadastroNome').value.trim();
   const telefone = document.getElementById('preCadastroTelefone').value.trim();
   const whatsapp = document.getElementById('preCadastroWhatsapp').value.trim();
@@ -2857,7 +2878,7 @@ async function salvarPreCadastro() {
   try {
     await preCadastrosCol.add({
       cnpj, razao: emp.razao || '—', atividade: emp.atividade || '—',
-      municipio: emp.cidade || '—', uf: emp.uf || '—',
+      municipio: emp.municipio || '—', uf: emp.uf || '—',
       contato: { nome, telefone, whatsapp, email },
       criadoPor: (auth.currentUser && auth.currentUser.email) || '—',
       criadoEm: firebase.firestore.FieldValue.serverTimestamp()
@@ -3132,6 +3153,7 @@ async function startVerification() {
         <button class="btn-eye" onclick="openDetailsModal('${cnpj}')"><i class="fas fa-eye"></i> Ver</button>
         <button class="btn-eye btn-purple" onclick="enriquecerDados('${cnpj}')" id="enrichBtn-${cnpj}"><i class="fas fa-lightbulb"></i> Insight IA</button>
         <button class="btn-eye" onclick="abrirMapa('${cnpj}')"><i class="fas fa-map-location-dot"></i> Mapa</button>
+        <button class="btn-eye" onclick="abrirPreCadastro('${cnpj}')"><i class="fas fa-user-plus"></i> Pré-cadastrar</button>
       </td>
     </tr>`;
     updateStats(total,baix,inap,susp,erro);
