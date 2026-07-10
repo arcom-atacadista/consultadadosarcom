@@ -1272,17 +1272,9 @@
     <div class="sidebar-label" style="margin-top:20px">Fonte de Dados</div>
     <div class="api-select">
       <p>API selecionada</p>
-      <div class="api-option">
-        <input type="radio" name="api" id="api1" value="brasilapi" checked onchange="selectAPI('brasilapi')">
-        <label for="api1"><strong>BrasilAPI</strong><small>Dados completos RF</small></label>
-      </div>
-      <div class="api-option">
-        <input type="radio" name="api" id="api2" value="opencnpj" onchange="selectAPI('opencnpj')">
-        <label for="api2"><strong>OpenCNPJ</strong><small>Receita Federal direto</small></label>
-      </div>
-      <div class="api-option">
-        <input type="radio" name="api" id="api3" value="arcom" onchange="selectAPI('arcom')">
-        <label for="api3"><strong>Consulta CNPJ Arcom</strong><small>API própria Arcom</small></label>
+      <div class="api-option" style="cursor:default">
+        <i class="fas fa-circle-check" style="color:var(--accent)"></i>
+        <label><strong>Consulta CNPJ Arcom</strong><small>API própria Arcom</small></label>
       </div>
     </div>
 
@@ -1401,7 +1393,7 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
                   <th>CNPJ</th>
                   <th>Razão Social</th>
                   <th>Situação</th>
-                  <th id="thPorteCol">Porte</th>
+                  <th id="thPorteCol">Cliente Arcom</th>
                   <th>UF</th>
                   <th style="width:170px"></th>
                 </tr>
@@ -1595,7 +1587,7 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
         <div class="modal-section-title"><i class="fas fa-building"></i> Informações Básicas</div>
         <div class="modal-grid">
           <div class="modal-field"><label>Situação</label><p><span class="badge" id="detailSituacao"></span></p></div>
-          <div class="modal-field"><label id="detailPorteLabel">Porte</label><p id="detailPorte"></p></div>
+          <div class="modal-field"><label id="detailPorteLabel">Cliente Arcom</label><p id="detailPorte"></p></div>
           <div class="modal-field"><label>Natureza Jurídica</label><p id="detailNatureza"></p></div>
           <div class="modal-field"><label>Atividade Principal</label><p id="detailAtividade"></p></div>
           <div class="modal-field"><label>Data de Abertura</label><p id="detailDataInicio"></p></div>
@@ -1851,7 +1843,7 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
 <script>
 // ── GLOBALS ─────────────────────────────────────────────────────────────────
 const norm  = s => s.replace(/\D/g,'');
-let rows = [], allData = {}, selectedAPI = 'brasilapi';
+let rows = [], allData = {};
 let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
 let favTags = JSON.parse(localStorage.getItem('favTags') || '{}'); // { cnpj: ['tag1','tag2'] }
 let historyLog = JSON.parse(localStorage.getItem('cnpjHistory')) || [];
@@ -1921,13 +1913,6 @@ document.querySelectorAll('.modal-overlay').forEach(el => {
 });
 function openSettings() { openModal('settingsModal'); }
 function showExportMenu() { renderExportColsPicker(); openModal('exportModal'); }
-
-// ── API SELECT ───────────────────────────────────────────────────────────────
-function selectAPI(api) {
-  selectedAPI = api;
-  const th = document.getElementById('thPorteCol');
-  if (th) th.textContent = (api === 'arcom') ? 'Cliente Arcom' : 'Porte';
-}
 
 // ── DARK MODE ─────────────────────────────────────────────────────────────
 function applyDarkModePreference() {
@@ -2418,36 +2403,6 @@ async function renderLogConsultasAdmin() {
   } catch (e) {
     box.innerHTML = `<p style="color:var(--muted);font-size:13px">Erro ao carregar log: ${e.message}</p>`;
   }
-}
-
-// ── API CALLS ─────────────────────────────────────────────────────────────────
-async function consultarBrasilAPI(cnpj) {
-  const r = await fetch('https://brasilapi.com.br/api/cnpj/v1/'+cnpj);
-  const d = await r.json();
-  if (!isValidCNPJ(cnpj)) throw new Error('CNPJ inválido');
-  const sit=String(d.descricao_situacao_cadastral||'').toUpperCase()||'INDEFINIDA';
-  return { situacao:sit, razao:d.razao_social||'—', porte:d.porte||'—',
-    natureza:d.natureza_juridica||'—', atividade:d.cnae_fiscal_descricao||'—',
-    uf:(d.uf||'—').substring(0,2), nomeFantasia:d.nome_fantasia||'—',
-    dataInicio:d.data_inicio_atividade||'—',
-    capitalSocial:d.capital_social?'R$ '+d.capital_social.toLocaleString('pt-BR'):'—',
-    endereco:`${d.logradouro||'—'}, ${d.numero||'—'} - ${d.bairro||'—'}, ${d.municipio||'—'} - ${d.uf||'—'}`,
-    cep:d.cep||'—', telefone:d.telefone1||'—', email:d.email||'—',
-    socios:d.qsa||[], api:'BrasilAPI', municipio:d.municipio||'' };
-}
-async function consultarOpenCNPJ(cnpj) {
-  const r = await fetch('https://api.opencnpj.org/'+cnpj);
-  if (!r.ok) throw new Error('CNPJ não encontrado');
-  const d = await r.json();
-  if (!isValidCNPJ(cnpj)) throw new Error('CNPJ inválido');
-  return { situacao:String(d.situacao_cadastral||'').toUpperCase()||'INDEFINIDA',
-    razao:d.razao_social||'—', porte:d.porte||'—', natureza:d.natureza_juridica||'—',
-    atividade:d.atividade_principal?.[0]?.text||'—', uf:(d.uf||'—').substring(0,2),
-    nomeFantasia:d.nome_fantasia||'—', dataInicio:d.data_abertura||'—',
-    capitalSocial:d.capital_social?'R$ '+d.capital_social.toLocaleString('pt-BR'):'—',
-    endereco:`${d.logradouro||'—'}, ${d.numero||'—'} ${d.bairro||'—'}, ${d.municipio||'—'} - ${d.uf||'—'}`,
-    cep:d.cep||'—', telefone:d.telefone||'—', email:d.email||'—',
-    socios:d.qsa||[], api:'OpenCNPJ', municipio:d.municipio||'' };
 }
 
 // ── CONSULTA CNPJ ARCOM (JWT) ───────────────────────────────────────────────
@@ -3262,7 +3217,7 @@ async function startVerification() {
       <td class="td-cnpj">${fmt(cnpj)}</td>
       <td class="td-razao">${result.razao}${cacheTagHtml}<span data-precad-slot="${cnpj}"></span></td>
       <td><span class="badge ${bc}">${result.situacao}</span></td>
-      <td style="color:var(--muted);font-size:12px">${selectedAPI==='arcom' ? (result.clienteArcom==='Sim' ? '<span class="badge badge-ativa">Sim</span>' : result.clienteArcom==='Não' ? '<span class="badge badge-baixada">Não</span>' : '—') : result.porte}</td>
+      <td style="color:var(--muted);font-size:12px">${result.clienteArcom==='Sim' ? '<span class="badge badge-ativa">Sim</span>' : result.clienteArcom==='Não' ? '<span class="badge badge-baixada">Não</span>' : '—'}</td>
       <td style="color:var(--muted);font-size:12px;font-family:var(--mono)">${result.uf}</td>
       <td class="td-actions">
         <button class="btn-eye" onclick="openDetailsModal('${cnpj}')"><i class="fas fa-eye"></i> Ver</button>
@@ -3287,8 +3242,8 @@ async function startVerification() {
     updateStats(total,baix,inap,susp,erro);
   }
 
-  if (selectedAPI === 'arcom' && validos.length > 1) {
-    // ── MAIS DE 1 CNPJ na API Arcom → usa cache para os já conhecidos e /v1/cnpj/batch pro resto ──
+  if (validos.length > 1) {
+    // ── MAIS DE 1 CNPJ → usa cache para os já conhecidos e /v1/cnpj/batch pro resto ──
     const jaEmCache = [];
     const precisaBuscar = [];
     validos.forEach(cnpj => {
@@ -3318,18 +3273,18 @@ async function startVerification() {
       }
     }
   } else {
-    // ── 1 único CNPJ, ou API diferente da Arcom → consulta individual (com cache) ──
+    // ── 1 único CNPJ → consulta individual (com cache) ──
     for (let n=0; n<validos.length; n++) {
       const cnpj = validos[n];
       document.getElementById('status').textContent=`Consultando ${fmt(cnpj)} (${n+1}/${validos.length})`;
       document.getElementById('barFill').style.width=((n/validos.length)*100)+'%';
       document.getElementById('percentage').textContent=Math.round((n/validos.length)*100)+'%';
-      const cached = getCachedResult(cnpj, selectedAPI);
+      const cached = getCachedResult(cnpj, 'arcom');
       if (cached) { renderLinha(cnpj, cached.result, cached); continue; }
       if (n>0) await new Promise(r=>setTimeout(r,300));
       try {
-        const result = selectedAPI==='brasilapi'?await consultarBrasilAPI(cnpj):selectedAPI==='opencnpj'?await consultarOpenCNPJ(cnpj):await consultarNovaAPI(cnpj);
-        saveToCache(cnpj, selectedAPI, result);
+        const result = await consultarNovaAPI(cnpj);
+        saveToCache(cnpj, 'arcom', result);
         renderLinha(cnpj, result);
       } catch(e) {
         renderErro(cnpj, e.message||'Erro na consulta');
@@ -3360,14 +3315,7 @@ function openDetailsModal(cnpj) {
   document.getElementById('detailRazao').textContent=data.razao;
   const sb=document.getElementById('detailSituacao');
   sb.textContent=data.situacao; sb.className='badge '+bc;
-  const labelPorte=document.getElementById('detailPorteLabel');
-  if(data.api==='Consulta CNPJ Arcom'){
-    labelPorte.textContent='Cliente Arcom';
-    document.getElementById('detailPorte').textContent=data.clienteArcom||'—';
-  }else{
-    labelPorte.textContent='Porte';
-    document.getElementById('detailPorte').textContent=data.porte;
-  }
+  document.getElementById('detailPorte').textContent=data.clienteArcom||'—';
   document.getElementById('detailNatureza').textContent=data.natureza;
   document.getElementById('detailAtividade').textContent=data.atividade;
   document.getElementById('detailDataInicio').textContent=data.dataInicio;

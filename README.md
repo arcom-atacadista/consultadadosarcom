@@ -10,7 +10,7 @@ Aplicação web (single-page, HTML/CSS/JS puro) para consulta, prospecção e en
 
 ### Consulta de CNPJ
 - Consulta individual ou em lote (cole vários CNPJs, um por linha).
-- 3 fontes de dados à escolha: **BrasilAPI**, **OpenCNPJ** e **Consulta CNPJ Arcom** (API própria, com autenticação JWT e suporte a lote de até 1000 CNPJs por chamada).
+- Fonte de dados: **Consulta CNPJ Arcom** (API própria, com autenticação JWT e suporte a lote de até 1000 CNPJs por chamada).
 - Cache local de 24h: reconsultar o mesmo CNPJ na mesma API não gasta uma nova chamada.
 - Validação de CNPJ no cliente (dígito verificador) antes de gastar qualquer chamada de API.
 - Favoritos com etiquetas personalizadas (ex: "quente", "não atende", "já é cliente").
@@ -58,7 +58,7 @@ Aplicação web (single-page, HTML/CSS/JS puro) para consulta, prospecção e en
 | Gráficos | Chart.js |
 | Exportação | SheetJS (xlsx), html2pdf.js |
 | IA | Groq (chat completions) + Tavily (busca na web) |
-| Dados de CNPJ | BrasilAPI, OpenCNPJ, Casa dos Dados, API própria "Consulta CNPJ Arcom" |
+| Dados de CNPJ | API própria "Consulta CNPJ Arcom", Casa dos Dados (busca por razão social) |
 | Hospedagem | GitHub Pages |
 
 Não há back-end, bundler ou dependências de build — é um único arquivo `.html` que roda direto no navegador.
