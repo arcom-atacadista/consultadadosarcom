@@ -1393,6 +1393,9 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
         <button class="btn btn-success-outline" style="margin-top:15px" onclick="copiarProspeccao()">
           <i class="fas fa-copy"></i> Copiar CNPJs
         </button>
+        <button class="btn btn-ghost" style="margin-top:15px" onclick="abrirListaPreCadastros()">
+          <i class="fas fa-address-card"></i> Ver pré-cadastros
+        </button>
         <div id="prosResultado" style="margin-top:20px"></div>
       </div>
     </div>
@@ -1553,6 +1556,64 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
       <button class="btn btn-primary" id="btnAbrirMapaExterno" onclick="abrirMapaExterno()">
         <i class="fas fa-up-right-from-square"></i> Abrir no Google Maps
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: PRÉ-CADASTRO -->
+<div class="modal-overlay" id="preCadastroModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div>
+        <p class="modal-head-cnpj" id="preCadastroCNPJ"></p>
+        <p class="modal-head-razao" id="preCadastroRazao"></p>
+      </div>
+      <button class="modal-close" onclick="closeModal('preCadastroModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-section">
+        <div class="modal-section-title"><i class="fas fa-user-plus"></i> Dados de Contato</div>
+        <div class="modal-grid">
+          <div class="modal-field" style="grid-column:1/-1">
+            <label>Nome do responsável</label>
+            <input id="preCadastroNome" class="regional-input" style="width:100%" placeholder="Nome de quem foi contatado">
+          </div>
+          <div class="modal-field">
+            <label>Telefone</label>
+            <input id="preCadastroTelefone" class="regional-input" style="width:100%" placeholder="(00) 00000-0000">
+          </div>
+          <div class="modal-field">
+            <label>WhatsApp</label>
+            <input id="preCadastroWhatsapp" class="regional-input" style="width:100%" placeholder="(00) 00000-0000">
+          </div>
+          <div class="modal-field" style="grid-column:1/-1">
+            <label>E-mail</label>
+            <input id="preCadastroEmail" class="regional-input" style="width:100%" placeholder="contato@empresa.com">
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer-row">
+      <button class="btn btn-ghost" onclick="closeModal('preCadastroModal')">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarPreCadastro()"><i class="fas fa-check"></i> Salvar pré-cadastro</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: LISTA DE PRÉ-CADASTROS -->
+<div class="modal-overlay" id="listaPreCadastrosModal">
+  <div class="modal-box" style="max-width:900px">
+    <div class="modal-head">
+      <div>
+        <p class="modal-head-razao">Pré-cadastros salvos</p>
+      </div>
+      <button class="modal-close" onclick="closeModal('listaPreCadastrosModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body" id="listaPreCadastrosBody">
+      <p><span class="spinner"></span> Carregando pré-cadastros…</p>
+    </div>
+    <div class="modal-footer-row">
+      <button class="btn btn-ghost" onclick="closeModal('listaPreCadastrosModal')">Fechar</button>
     </div>
   </div>
 </div>
@@ -2304,6 +2365,7 @@ async function buscarTodosEstabelecimentosArcom({ uf, municipioCodigo, cnae }, o
 }
 
 let prospeccaoCNPJs = [];
+let prospeccaoEmpresas = {}; // cnpj -> {razao, atividade, municipio, uf} — usado no pré-cadastro
 
 async function buscarProspeccao() {
   const cidade = document.getElementById('prosCidade').value.trim();
@@ -2320,6 +2382,7 @@ async function buscarProspeccao() {
 
   resultado.innerHTML = '<p><span class="spinner"></span> Buscando todas as empresas disponíveis na Consulta CNPJ Arcom...</p>';
   prospeccaoCNPJs = [];
+  prospeccaoEmpresas = {};
 
   try {
     const municipio = await resolverMunicipioRF(cidade);
@@ -2351,12 +2414,15 @@ async function buscarProspeccao() {
 
     let h = `<p style="font-size:12px;color:var(--muted);margin-bottom:10px">
         ${empresas.length} prospect(s) encontrado(s) em <strong>${municipio.descricao}/${uf.toUpperCase()}</strong> — todas as empresas ativas que ainda não são clientes Arcom.
-      </p><table style="width:100%"><thead><tr><th>CNPJ</th><th>Razão Social</th><th>Atividade</th></tr></thead><tbody>`;
+      </p><table style="width:100%"><thead><tr><th>CNPJ</th><th>Razão Social</th><th>Atividade</th><th></th></tr></thead><tbody>`;
     empresas.forEach(emp => {
       const cnpj = (emp.cnpj || '').replace(/\D/g, '');
       prospeccaoCNPJs.push(cnpj);
       const atividade = (emp.cnae_fiscal_principal && emp.cnae_fiscal_principal.descricao) || '—';
-      h += `<tr><td>${fmt(cnpj)}</td><td>${emp.razao_social || '-'}</td><td style="font-size:12px;color:var(--muted)">${atividade}</td></tr>`;
+      const razao = emp.razao_social || '-';
+      prospeccaoEmpresas[cnpj] = { razao, atividade, municipio: municipio.descricao, uf: uf.toUpperCase() };
+      h += `<tr><td>${fmt(cnpj)}</td><td>${razao}</td><td style="font-size:12px;color:var(--muted)">${atividade}</td>
+        <td><button class="btn-eye" onclick="abrirPreCadastro('${cnpj}')"><i class="fas fa-user-plus"></i> Pré-cadastrar</button></td></tr>`;
     });
     h += '</tbody></table>';
     resultado.innerHTML = h;
@@ -2369,6 +2435,95 @@ function copiarProspeccao() {
   if (!prospeccaoCNPJs.length) { alert('Nenhum CNPJ encontrado.'); return; }
   navigator.clipboard.writeText(prospeccaoCNPJs.join('\n'));
   alert(`${prospeccaoCNPJs.length} CNPJs copiados`);
+}
+
+// ── PRÉ-CADASTRO DE CLIENTES (Firestore) ────────────────────────────────────
+// Lista de acompanhamento comercial da Prospecção — não converte
+// automaticamente em cliente Arcom, isso acontece em outro sistema.
+const preCadastrosCol = db.collection('preCadastros');
+let preCadastroCNPJAtual = null;
+
+function abrirPreCadastro(cnpj) {
+  const emp = prospeccaoEmpresas[cnpj];
+  if (!emp) return;
+  preCadastroCNPJAtual = cnpj;
+  document.getElementById('preCadastroCNPJ').textContent = fmt(cnpj);
+  document.getElementById('preCadastroRazao').textContent = emp.razao;
+  document.getElementById('preCadastroNome').value = '';
+  document.getElementById('preCadastroTelefone').value = '';
+  document.getElementById('preCadastroWhatsapp').value = '';
+  document.getElementById('preCadastroEmail').value = '';
+  openModal('preCadastroModal');
+}
+
+async function salvarPreCadastro() {
+  const cnpj = preCadastroCNPJAtual;
+  if (!cnpj) return;
+  const emp = prospeccaoEmpresas[cnpj] || {};
+  const nome = document.getElementById('preCadastroNome').value.trim();
+  const telefone = document.getElementById('preCadastroTelefone').value.trim();
+  const whatsapp = document.getElementById('preCadastroWhatsapp').value.trim();
+  const email = document.getElementById('preCadastroEmail').value.trim();
+
+  if (!nome && !telefone && !whatsapp && !email) {
+    alert('Informe ao menos um dado de contato.');
+    return;
+  }
+
+  try {
+    await preCadastrosCol.add({
+      cnpj, razao: emp.razao || '—', atividade: emp.atividade || '—',
+      municipio: emp.municipio || '—', uf: emp.uf || '—',
+      contato: { nome, telefone, whatsapp, email },
+      criadoPor: (auth.currentUser && auth.currentUser.email) || '—',
+      criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    closeModal('preCadastroModal');
+    alert('Pré-cadastro salvo com sucesso.');
+  } catch (e) {
+    alert('Erro ao salvar pré-cadastro: ' + (e.message || e));
+  }
+}
+
+async function abrirListaPreCadastros() {
+  openModal('listaPreCadastrosModal');
+  const body = document.getElementById('listaPreCadastrosBody');
+  body.innerHTML = '<p><span class="spinner"></span> Carregando pré-cadastros…</p>';
+  try {
+    const snap = await preCadastrosCol.orderBy('criadoEm', 'desc').limit(200).get();
+    if (snap.empty) {
+      body.innerHTML = '<p>Nenhum pré-cadastro salvo ainda.</p>';
+      return;
+    }
+    let h = `<table style="width:100%"><thead><tr>
+      <th>CNPJ</th><th>Razão Social</th><th>Cidade/UF</th><th>Nome</th><th>Telefone</th><th>WhatsApp</th><th>E-mail</th><th>Cadastrado por</th><th></th>
+    </tr></thead><tbody>`;
+    snap.forEach(doc => {
+      const d = doc.data();
+      const c = d.contato || {};
+      h += `<tr>
+        <td class="td-cnpj">${fmt(d.cnpj || '')}</td>
+        <td>${d.razao || '—'}</td>
+        <td style="font-size:12px;color:var(--muted)">${d.municipio || '—'}/${d.uf || '—'}</td>
+        <td>${c.nome || '—'}</td>
+        <td style="font-family:var(--mono);font-size:12px">${c.telefone || '—'}</td>
+        <td style="font-family:var(--mono);font-size:12px">${c.whatsapp || '—'}</td>
+        <td style="font-size:12px">${c.email || '—'}</td>
+        <td style="font-size:12px;color:var(--muted)">${d.criadoPor || '—'}</td>
+        <td><button class="btn-eye" onclick="removerPreCadastro('${doc.id}')"><i class="fas fa-trash"></i></button></td>
+      </tr>`;
+    });
+    h += '</tbody></table>';
+    body.innerHTML = h;
+  } catch (e) {
+    body.innerHTML = `<p>Erro ao carregar pré-cadastros: ${e.message || e}</p>`;
+  }
+}
+
+async function removerPreCadastro(id) {
+  if (!confirm('Remover este pré-cadastro?')) return;
+  await preCadastrosCol.doc(id).delete();
+  abrirListaPreCadastros();
 }
 
 // ── BUSCA POR RAZÃO SOCIAL (Casa dos Dados) ─────────────────────────────────
