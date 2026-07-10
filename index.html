@@ -1588,10 +1588,25 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
         <div class="modal-grid">
           <div class="modal-field"><label>Situação</label><p><span class="badge" id="detailSituacao"></span></p></div>
           <div class="modal-field"><label id="detailPorteLabel">Cliente Arcom</label><p id="detailPorte"></p></div>
+          <div class="modal-field"><label>Porte</label><p id="detailPorteEmpresa"></p></div>
+          <div class="modal-field"><label>Matriz/Filial</label><p id="detailMatrizFilial"></p></div>
           <div class="modal-field"><label>Natureza Jurídica</label><p id="detailNatureza"></p></div>
           <div class="modal-field"><label>Atividade Principal</label><p id="detailAtividade"></p></div>
           <div class="modal-field"><label>Data de Abertura</label><p id="detailDataInicio"></p></div>
-          <div class="modal-field"><label>Capital Social</label><p id="detailCapital"></p></div> 
+          <div class="modal-field"><label>Data da Situação Cadastral</label><p id="detailDataSituacao"></p></div>
+          <div class="modal-field"><label>Motivo da Situação Cadastral</label><p id="detailMotivoSituacao"></p></div>
+          <div class="modal-field"><label>Capital Social</label><p id="detailCapital"></p></div>
+          <div class="modal-field"><label>Optante Simples Nacional</label><p id="detailSimples"></p></div>
+          <div class="modal-field"><label>Optante MEI</label><p id="detailMei"></p></div>
+          <div class="modal-field" id="detailSituacaoEspecialField" style="grid-column:1/-1;display:none"><label>Situação Especial</label><p id="detailSituacaoEspecial"></p></div>
+        </div>
+        <div id="detailCnaesSecundariosField" style="margin-top:12px;display:none">
+          <label style="font-size:11px;color:var(--muted)">Atividades Secundárias (CNAEs)</label>
+          <div id="detailCnaesSecundarios" style="font-size:13px;margin-top:4px"></div>
+        </div>
+        <div id="detailRegimeTributarioField" style="margin-top:12px;display:none">
+          <label style="font-size:11px;color:var(--muted)">Regime Tributário por Ano</label>
+          <div id="detailRegimeTributario" style="font-size:13px;margin-top:4px"></div>
         </div>
       </div>
       <div class="modal-section">
@@ -1606,6 +1621,8 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
         <div class="modal-section-title"><i class="fas fa-phone"></i> Contato</div>
         <div class="modal-grid">
           <div class="modal-field"><label>Telefone</label><p id="detailTelefone"></p></div>
+          <div class="modal-field"><label>Telefone 2</label><p id="detailTelefone2"></p></div>
+          <div class="modal-field"><label>Fax</label><p id="detailFax"></p></div>
           <div class="modal-field"><label>E-mail</label><p id="detailEmail"></p></div>
         </div>
       </div>
@@ -2082,8 +2099,11 @@ function badgeClass(sit) {
 
 // ── CACHE DE CONSULTAS (evita reconsultar a mesma API pro mesmo CNPJ em menos de 24h) ──
 const CACHE_VALIDADE_MS = 24 * 60 * 60 * 1000; // 24 horas
-function getCnpjCache() { try { return JSON.parse(localStorage.getItem('cnpjCache') || '{}'); } catch { return {}; } }
-function setCnpjCache(cache) { localStorage.setItem('cnpjCache', JSON.stringify(cache)); }
+// v2: bump de versão pra invalidar cache antigo com o mapeamento incorreto
+// da API Arcom (situação/razão/porte liam campos aninhados que não existem
+// na resposta real, que é flat — ver mapArcomRecord).
+function getCnpjCache() { try { return JSON.parse(localStorage.getItem('cnpjCache_v2') || '{}'); } catch { return {}; } }
+function setCnpjCache(cache) { localStorage.setItem('cnpjCache_v2', JSON.stringify(cache)); }
 function getCachedResult(cnpj, api) {
   const cache = getCnpjCache();
   const entry = cache[cnpj];
@@ -2457,40 +2477,55 @@ async function consultarNovaAPI(cnpj) {
 // Converte um CNPJRecord cru da API Arcom no formato usado pela tabela/UI.
 // jaClienteOverride existe porque no /v1/cnpj/batch o campo ja_cliente vem
 // no item (irmão de "data"), não dentro do próprio registro.
+//
+// IMPORTANTE: o retorno real da API é um objeto FLAT (razao_social, porte,
+// natureza_juridica, cnae_fiscal_descricao, municipio, situacao_cadastral
+// numérico + descricao_situacao_cadastral em texto, qsa em vez de socios
+// etc.) — não o formato aninhado (d.empresa.razao_social, d.municipio.descricao
+// etc.) que este mapeamento assumia antes. Isso fazia Situação, Razão Social,
+// Porte, Natureza e Atividade caírem sempre no fallback "—"/"INDEFINIDA".
+function simNaoOuTraco(v) {
+  if (typeof v === 'boolean') return v ? 'Sim' : 'Não';
+  if (typeof v === 'string' && v.trim() !== '') return /^(sim|true|1|s)$/i.test(v.trim()) ? 'Sim' : 'Não';
+  return '—';
+}
+
 function mapArcomRecord(d, jaClienteOverride) {
-  const sit = ((d.situacao_cadastral && d.situacao_cadastral.descricao) || 'INDEFINIDA').toUpperCase();
-  const nomeMunicipio = (d.municipio && d.municipio.descricao) || '';
+  const nomeMunicipio = d.municipio || '';
   const enderecoInicio = [d.logradouro, d.numero].filter(Boolean).join(', ');
+  const complemento = d.complemento ? ` (${d.complemento})` : '';
   const enderecoFim = [d.bairro, nomeMunicipio, d.uf].filter(Boolean).join(', ');
   const endereco = (enderecoInicio || enderecoFim)
-    ? (enderecoInicio + (enderecoFim ? ' - ' + enderecoFim : ''))
+    ? (enderecoInicio + complemento + (enderecoFim ? ' - ' + enderecoFim : ''))
     : '—';
 
-  // ── CLIENTE ARCOM ──
-  let clienteArcomRaw = jaClienteOverride ?? d.ja_cliente ?? (d.empresa && d.empresa.ja_cliente);
-  let clienteArcom = '—';
-  if (typeof clienteArcomRaw === 'boolean') {
-    clienteArcom = clienteArcomRaw ? 'Sim' : 'Não';
-  } else if (typeof clienteArcomRaw === 'string' && clienteArcomRaw.trim() !== '') {
-    clienteArcom = /^(sim|true|1|s)$/i.test(clienteArcomRaw.trim()) ? 'Sim' : 'Não';
-  }
-
   return {
-    situacao: sit,
-    razao: (d.empresa && d.empresa.razao_social) || '—',
-    porte: (d.empresa && d.empresa.porte_empresa && d.empresa.porte_empresa.descricao) || '—',
-    clienteArcom: clienteArcom,
-    natureza: (d.empresa && d.empresa.natureza_juridica && d.empresa.natureza_juridica.descricao) || '—',
-    atividade: (d.cnae_fiscal_principal && d.cnae_fiscal_principal.descricao) || '—',
+    situacao: (d.descricao_situacao_cadastral || 'INDEFINIDA').toUpperCase(),
+    dataSituacaoCadastral: d.data_situacao_cadastral || '—',
+    motivoSituacaoCadastral: d.descricao_motivo_situacao_cadastral || '—',
+    situacaoEspecial: d.situacao_especial || '',
+    dataSituacaoEspecial: d.data_situacao_especial || '',
+    razao: d.razao_social || '—',
+    porte: d.porte || '—',
+    clienteArcom: simNaoOuTraco(jaClienteOverride ?? d.ja_cliente),
+    natureza: d.natureza_juridica || '—',
+    atividade: d.cnae_fiscal_descricao || '—',
+    cnaesSecundarios: d.cnaes_secundarios || [],
+    matrizFilial: d.descricao_identificador_matriz_filial || '—',
     uf: (d.uf || '—').substring(0, 2),
     nomeFantasia: d.nome_fantasia || '—',
     dataInicio: d.data_inicio_atividade || '—',
     capitalSocial: d.capital_social ? 'R$ ' + Number(d.capital_social).toLocaleString('pt-BR') : '—',
     endereco: endereco,
     cep: d.cep || '—',
-    telefone: d.telefone || d.ddd_telefone_1 || '—',
+    telefone: d.ddd_telefone_1 || '—',
+    telefone2: d.ddd_telefone_2 || '—',
+    fax: d.ddd_fax || '—',
     email: d.email || '—',
-    socios: d.socios || [],
+    socios: d.qsa || [],
+    simples: simNaoOuTraco(d.opcao_pelo_simples),
+    mei: simNaoOuTraco(d.opcao_pelo_mei),
+    regimeTributario: d.regime_tributario || [],
     api: 'Consulta CNPJ Arcom',
     municipio: nomeMunicipio
   };
@@ -2657,7 +2692,7 @@ async function buscarProspeccao() {
           empresasEncontradas.push({
             cnpj: cnpjLimpo,
             razao: emp.razao_social || '—',
-            atividade: (emp.cnae_fiscal_principal && emp.cnae_fiscal_principal.descricao) || '—',
+            atividade: emp.cnae_fiscal_descricao || '—',
             bairro: emp.bairro || '—',
             cidade: municipio.descricao,
             uf
@@ -3316,14 +3351,45 @@ function openDetailsModal(cnpj) {
   const sb=document.getElementById('detailSituacao');
   sb.textContent=data.situacao; sb.className='badge '+bc;
   document.getElementById('detailPorte').textContent=data.clienteArcom||'—';
+  document.getElementById('detailPorteEmpresa').textContent=data.porte||'—';
+  document.getElementById('detailMatrizFilial').textContent=data.matrizFilial||'—';
   document.getElementById('detailNatureza').textContent=data.natureza;
   document.getElementById('detailAtividade').textContent=data.atividade;
   document.getElementById('detailDataInicio').textContent=data.dataInicio;
+  document.getElementById('detailDataSituacao').textContent=data.dataSituacaoCadastral||'—';
+  document.getElementById('detailMotivoSituacao').textContent=data.motivoSituacaoCadastral||'—';
   document.getElementById('detailCapital').textContent=data.capitalSocial;
+  document.getElementById('detailSimples').textContent=data.simples||'—';
+  document.getElementById('detailMei').textContent=data.mei||'—';
+  const situacaoEspecialField=document.getElementById('detailSituacaoEspecialField');
+  if (data.situacaoEspecial) {
+    situacaoEspecialField.style.display='';
+    document.getElementById('detailSituacaoEspecial').textContent=data.situacaoEspecial + (data.dataSituacaoEspecial ? ` (${data.dataSituacaoEspecial})` : '');
+  } else {
+    situacaoEspecialField.style.display='none';
+  }
+  const cnaesField=document.getElementById('detailCnaesSecundariosField');
+  if (data.cnaesSecundarios && data.cnaesSecundarios.length) {
+    cnaesField.style.display='';
+    document.getElementById('detailCnaesSecundarios').innerHTML=data.cnaesSecundarios.map(c=>`<div>${c.codigo||''} — ${c.descricao||''}</div>`).join('');
+  } else {
+    cnaesField.style.display='none';
+  }
+  const regimeField=document.getElementById('detailRegimeTributarioField');
+  if (data.regimeTributario && data.regimeTributario.length) {
+    regimeField.style.display='';
+    document.getElementById('detailRegimeTributario').innerHTML=data.regimeTributario
+      .slice().sort((a,b)=>(b.ano||0)-(a.ano||0))
+      .map(r=>`<div>${r.ano||''} — ${r.forma_de_tributacao||'—'}</div>`).join('');
+  } else {
+    regimeField.style.display='none';
+  }
   document.getElementById('detailEndereco').textContent=data.endereco;
   document.getElementById('detailCEP').textContent=data.cep;
   document.getElementById('detailUF').textContent=data.uf;
   document.getElementById('detailTelefone').textContent=data.telefone||'—';
+  document.getElementById('detailTelefone2').textContent=data.telefone2||'—';
+  document.getElementById('detailFax').textContent=data.fax||'—';
   document.getElementById('detailEmail').textContent=data.email||'—';
   document.getElementById('detailSocios').innerHTML=renderSociosHTML(data.socios);
   openModal('detailsModal');
@@ -3335,6 +3401,8 @@ function renderSociosHTML(socios) {
     <div class="socio-card">
       <strong>${s.nome_socio||s.nome||'Não informado'}</strong>
       <small>${s.qualificacao_socio||s.qualificacao||'Qualificação não informada'}</small>
+      ${s.data_entrada_sociedade ? `<small>Desde ${s.data_entrada_sociedade}</small>` : ''}
+      ${s.faixa_etaria ? `<small>${s.faixa_etaria}</small>` : ''}
     </div>`).join('')+'</div>';
 }
 
@@ -3914,19 +3982,26 @@ function exportarInsightsCSV(cnpjsFiltro) {
   a.click();
 }
 
+const EXPORT_COLUMNS = ['CNPJ','Razão Social','Nome Fantasia','Situação','Data Situação Cadastral','Motivo Situação Cadastral','Situação Especial','Cliente Arcom','Porte','Matriz/Filial','Natureza Jurídica','Atividade Principal','Atividades Secundárias','Data de Abertura','Capital Social','Optante Simples Nacional','Optante MEI','Endereço Completo','CEP','UF','Telefone','Telefone 2','Fax','E-mail','Quantidade de Sócios','API Utilizada'];
+
 function buildExportData() {
-  const empresas=[['CNPJ','Razão Social','Nome Fantasia','Situação','Porte','Natureza Jurídica','Atividade Principal','Data de Abertura','Capital Social','Endereço Completo','CEP','UF','Telefone','E-mail','Quantidade de Sócios','API Utilizada']];
-  const socios=[['CNPJ','Razão Social','Nome do Sócio','Qualificação']];
+  const empresas=[EXPORT_COLUMNS];
+  const socios=[['CNPJ','Razão Social','Nome do Sócio','Qualificação','Faixa Etária','Data de Entrada']];
   for(const cnpj in allData){
     const d=allData[cnpj];
-    empresas.push([fmt(cnpj),d.razao||'',d.nomeFantasia||'',d.situacao||'',d.porte||'',d.natureza||'',d.atividade||'',d.dataInicio||'',d.capitalSocial||'',d.endereco||'',d.cep||'',d.uf||'',d.telefone||'',d.email||'',d.socios?d.socios.length:0,d.api||'']);
-    if(d.socios?.length) d.socios.forEach(s=>socios.push([fmt(cnpj),d.razao||'',s.nome_socio||s.nome||'',s.qualificacao_socio||s.qualificacao||'']));
+    const cnaesSecundarios=(d.cnaesSecundarios||[]).map(c=>`${c.codigo||''} - ${c.descricao||''}`).join('; ');
+    empresas.push([
+      fmt(cnpj),d.razao||'',d.nomeFantasia||'',d.situacao||'',d.dataSituacaoCadastral||'',d.motivoSituacaoCadastral||'',
+      d.situacaoEspecial||'',d.clienteArcom||'',d.porte||'',d.matrizFilial||'',d.natureza||'',d.atividade||'',cnaesSecundarios,
+      d.dataInicio||'',d.capitalSocial||'',d.simples||'',d.mei||'',d.endereco||'',d.cep||'',d.uf||'',
+      d.telefone||'',d.telefone2||'',d.fax||'',d.email||'',d.socios?d.socios.length:0,d.api||''
+    ]);
+    if(d.socios?.length) d.socios.forEach(s=>socios.push([fmt(cnpj),d.razao||'',s.nome_socio||s.nome||'',s.qualificacao_socio||s.qualificacao||'',s.faixa_etaria||'',s.data_entrada_sociedade||'']));
   }
   return {empresas,socios};
 }
 
 // ── SELEÇÃO DE COLUNAS PARA EXPORTAÇÃO (Excel/CSV) ──────────────────────────
-const EXPORT_COLUMNS = ['CNPJ','Razão Social','Nome Fantasia','Situação','Porte','Natureza Jurídica','Atividade Principal','Data de Abertura','Capital Social','Endereço Completo','CEP','UF','Telefone','E-mail','Quantidade de Sócios','API Utilizada'];
 function getExportColsSelecionadas() {
   const saved = JSON.parse(localStorage.getItem('exportColsSelecionadas') || 'null');
   return (saved && saved.length === EXPORT_COLUMNS.length) ? saved : EXPORT_COLUMNS.map(()=>true);
