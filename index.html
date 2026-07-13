@@ -1868,6 +1868,7 @@ let enrichData = {}; // cnpj -> insight comercial gerado pela IA (Groq)
 let currentEnrichCNPJ = null;
 let erroCNPJs = []; // lista de {cnpj, motivo} que não foram consultados com sucesso
 let mapaEnderecoAtual = ''; // endereço em exibição no modal de mapa
+let mapaQueryAtual = '';     // o que abre no Google Maps: "lat,lng" (RF) quando há coordenadas, senão o texto do endereço
 
 // ── TOASTS ──────────────────────────────────────────────────────────────────
 function showToast(msg, type) {
@@ -2098,11 +2099,11 @@ function badgeClass(sit) {
 
 // ── CACHE DE CONSULTAS (evita reconsultar a mesma API pro mesmo CNPJ em menos de 24h) ──
 const CACHE_VALIDADE_MS = 24 * 60 * 60 * 1000; // 24 horas
-// v2: bump de versão pra invalidar cache antigo com o mapeamento incorreto
-// da API Arcom (situação/razão/porte liam campos aninhados que não existem
-// na resposta real, que é flat — ver mapArcomRecord).
-function getCnpjCache() { try { return JSON.parse(localStorage.getItem('cnpjCache_v2') || '{}'); } catch { return {}; } }
-function setCnpjCache(cache) { localStorage.setItem('cnpjCache_v2', JSON.stringify(cache)); }
+// v3: bump de versão pra invalidar cache da consulta individual que ficou
+// salvo em branco/"INDEFINIDA" enquanto ela usava o mapeador "flat" errado.
+// Agora consulta individual e em lote usam o mesmo formato (mapArcomBatchRecord).
+function getCnpjCache() { try { return JSON.parse(localStorage.getItem('cnpjCache_v3') || '{}'); } catch { return {}; } }
+function setCnpjCache(cache) { localStorage.setItem('cnpjCache_v3', JSON.stringify(cache)); }
 function getCachedResult(cnpj, api) {
   const cache = getCnpjCache();
   const entry = cache[cnpj];
@@ -2452,44 +2453,23 @@ async function obterArcomToken(forcar) {
   return arcomToken;
 }
 
-// REVERTIDO (ver commit seguinte): tentamos rotear a consulta individual
-// pelo endpoint de lote pra resolver o "Cliente Arcom" sempre "—", mas o
-// /v1/cnpj/batch retorna os dados da empresa em um formato diferente do
-// GET /v1/cnpj/{cnpj} (ex: município como objeto, não string — o restante
-// dos campos ficou em branco). Voltando ao GET direto até termos uma
-// amostra real da resposta do endpoint de lote pra mapear os dois formatos
-// corretamente.
+// Consulta individual: usa o mesmo endpoint de lote (/v1/cnpj/batch) com um
+// único CNPJ. O GET /v1/cnpj/{cnpj} + mapArcomRecord (formato "flat") vinha
+// deixando todos os campos em branco/"INDEFINIDA" porque a resposta REAL da
+// API Arcom é aninhada (empresa.razao_social, municipio.descricao,
+// situacao_cadastral.descricao, socios, simples.opcao_simples etc.) — o mesmo
+// formato do lote, já confirmado com amostra real e tratado por
+// mapArcomBatchRecord. Rotear por aqui também traz o "Cliente Arcom"
+// (ja_cliente) na consulta individual, que o GET não devolvia.
 async function consultarNovaAPI(cnpj) {
   if (!isValidCNPJ(cnpj)) throw new Error('CNPJ inválido');
-  let token = await obterArcomToken(false);
-  let r = await fetch(ARCOM_API_BASE_URL + '/v1/cnpj/' + cnpj + '?cliente=true', {
-    headers: { 'Authorization': 'Bearer ' + token }
-  });
-  if (r.status === 401) {
-    token = await obterArcomToken(true);
-    r = await fetch(ARCOM_API_BASE_URL + '/v1/cnpj/' + cnpj + '?cliente=true', {
-      headers: { 'Authorization': 'Bearer ' + token }
-    });
-  }
-  if (!r.ok) {
-    if (r.status === 404) throw new Error('CNPJ não encontrado');
-    if (r.status === 422) throw new Error('CNPJ inválido');
-    throw new Error('Erro na Consulta CNPJ Arcom (HTTP ' + r.status + ')');
-  }
-  const d = await r.json();
-  return mapArcomRecord(d);
+  const [item] = await consultarLoteArcomBruto([cnpj]);
+  if (!item) throw new Error('Erro na Consulta CNPJ Arcom: resposta vazia');
+  if (item.error) throw new Error(item.error);
+  if (!item.found) throw new Error('CNPJ não encontrado');
+  return mapArcomBatchRecord(item.data, item.ja_cliente);
 }
 
-// Converte um CNPJRecord cru da API Arcom no formato usado pela tabela/UI.
-// jaClienteOverride existe porque no /v1/cnpj/batch o campo ja_cliente vem
-// no item (irmão de "data"), não dentro do próprio registro.
-//
-// IMPORTANTE: o retorno real da API é um objeto FLAT (razao_social, porte,
-// natureza_juridica, cnae_fiscal_descricao, municipio, situacao_cadastral
-// numérico + descricao_situacao_cadastral em texto, qsa em vez de socios
-// etc.) — não o formato aninhado (d.empresa.razao_social, d.municipio.descricao
-// etc.) que este mapeamento assumia antes. Isso fazia Situação, Razão Social,
-// Porte, Natureza e Atividade caírem sempre no fallback "—"/"INDEFINIDA".
 function simNaoOuTraco(v) {
   if (typeof v === 'boolean') return v ? 'Sim' : 'Não';
   if (typeof v === 'number') return v !== 0 ? 'Sim' : 'Não';
@@ -2503,56 +2483,14 @@ function simNaoBadgeHTML(label) {
   return '—';
 }
 
-function mapArcomRecord(d) {
-  const nomeMunicipio = d.municipio || '';
-  const enderecoInicio = [d.logradouro, d.numero].filter(Boolean).join(', ');
-  const complemento = d.complemento ? ` (${d.complemento})` : '';
-  const enderecoFim = [d.bairro, nomeMunicipio, d.uf].filter(Boolean).join(', ');
-  const endereco = (enderecoInicio || enderecoFim)
-    ? (enderecoInicio + complemento + (enderecoFim ? ' - ' + enderecoFim : ''))
-    : '—';
-
-  return {
-    situacao: (d.descricao_situacao_cadastral || 'INDEFINIDA').toUpperCase(),
-    dataSituacaoCadastral: d.data_situacao_cadastral || '—',
-    motivoSituacaoCadastral: d.descricao_motivo_situacao_cadastral || '—',
-    situacaoEspecial: d.situacao_especial || '—',
-    dataSituacaoEspecial: d.data_situacao_especial || '—',
-    razao: d.razao_social || '—',
-    porte: d.porte || '—',
-    clienteArcom: simNaoOuTraco(d.ja_cliente),
-    natureza: d.natureza_juridica || '—',
-    atividade: d.cnae_fiscal_descricao || '—',
-    cnaesSecundarios: d.cnaes_secundarios || [],
-    matrizFilial: d.descricao_identificador_matriz_filial || '—',
-    uf: (d.uf || '—').substring(0, 2),
-    nomeFantasia: d.nome_fantasia || '—',
-    dataInicio: d.data_inicio_atividade || '—',
-    capitalSocial: d.capital_social != null ? 'R$ ' + Number(d.capital_social).toLocaleString('pt-BR') : '—',
-    endereco: endereco,
-    cep: d.cep || '—',
-    telefone: d.ddd_telefone_1 || '—',
-    telefone2: d.ddd_telefone_2 || '—',
-    fax: d.ddd_fax || '—',
-    email: d.email || '—',
-    socios: d.qsa || [],
-    simples: simNaoOuTraco(d.opcao_pelo_simples),
-    mei: simNaoOuTraco(d.opcao_pelo_mei),
-    regimeTributario: d.regime_tributario || [],
-    api: 'Consulta CNPJ Arcom',
-    municipio: nomeMunicipio
-  };
-}
-
-// Mapeia o formato de /v1/cnpj/batch — bem diferente do GET /v1/cnpj/{cnpj}
-// que mapArcomRecord acima trata. Confirmado com uma amostra real: aqui
-// matriz_filial, situacao_cadastral, motivo_situacao_cadastral,
-// cnae_fiscal_principal, município e natureza_juridica vêm como objetos
-// {codigo, descricao}; razão social/porte/natureza/capital social vêm
-// dentro de "empresa"; sócios e o status de Simples/MEI têm formato
-// próprio. Normaliza tudo pro mesmo formato interno que mapArcomRecord
-// produz, pra o resto do app (tabela, modal, exportações) não precisar
-// saber de qual endpoint o registro veio.
+// Mapeia o formato real da API Arcom (/v1/cnpj/batch, usado tanto na consulta
+// individual quanto na em lote). Confirmado com amostra real: matriz_filial,
+// situacao_cadastral, motivo_situacao_cadastral, cnae_fiscal_principal,
+// município e natureza_juridica vêm como objetos {codigo, descricao}; razão
+// social/porte/natureza/capital social vêm dentro de "empresa"; sócios e o
+// status de Simples/MEI têm formato próprio. Normaliza tudo pro formato
+// interno que o resto do app (tabela, modal, exportações) consome, sem
+// precisar saber de qual chamada o registro veio.
 function mapArcomBatchRecord(d, jaClienteOverride) {
   const empresa = d.empresa || {};
   const simples = d.simples || {};
@@ -2596,6 +2534,11 @@ function mapArcomBatchRecord(d, jaClienteOverride) {
     simples: simNaoOuTraco(simples.opcao_simples),
     mei: simNaoOuTraco(simples.opcao_mei),
     regimeTributario: [],
+    // Coordenadas da API (derivadas do endereço oficial na Receita Federal).
+    // Só confiamos nelas pra fixar o pino do mapa — se não vierem, o mapa cai
+    // na busca pelo texto do endereço.
+    latitude: (typeof d.latitude === 'number') ? d.latitude : null,
+    longitude: (typeof d.longitude === 'number') ? d.longitude : null,
     api: 'Consulta CNPJ Arcom',
     municipio: nomeMunicipio
   };
@@ -3634,17 +3577,25 @@ function abrirMapa(cnpj) {
     return;
   }
   mapaEnderecoAtual = endereco;
+  // Se a API trouxe lat/long (derivada do endereço oficial na Receita Federal),
+  // fixa o pino exatamente nessas coordenadas. Sem coordenadas, cai na busca
+  // do Google pelo texto do endereço (menos preciso).
+  const temCoords = data.latitude != null && data.longitude != null;
+  mapaQueryAtual = temCoords ? `${data.latitude},${data.longitude}` : endereco;
+  const fonteNota = temCoords
+    ? '<span style="display:block;margin-top:6px;font-size:11px;color:var(--muted)"><i class="fas fa-circle-check" style="color:var(--accent);margin-right:4px"></i>Localização exata conforme cadastro na Receita Federal</span>'
+    : '<span style="display:block;margin-top:6px;font-size:11px;color:var(--muted)"><i class="fas fa-circle-info" style="margin-right:4px"></i>Localização aproximada pelo endereço (sem coordenadas oficiais)</span>';
   document.getElementById('mapCNPJ').textContent = fmt(cnpj);
   document.getElementById('mapRazao').textContent = data.razao;
-  document.getElementById('mapEndereco').innerHTML = `<i class="fas fa-map-pin" style="color:var(--accent);margin-right:5px"></i>${endereco}`;
+  document.getElementById('mapEndereco').innerHTML = `<i class="fas fa-map-pin" style="color:var(--accent);margin-right:5px"></i>${endereco}${fonteNota}`;
   document.getElementById('mapFrame').src =
-    `https://maps.google.com/maps?q=${encodeURIComponent(endereco)}&t=&z=15&output=embed`;
+    `https://maps.google.com/maps?q=${encodeURIComponent(mapaQueryAtual)}&t=&z=${temCoords ? 17 : 15}&output=embed`;
   openModal('mapModal');
 }
 
 function abrirMapaExterno() {
-  if (!mapaEnderecoAtual) return;
-  window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapaEnderecoAtual)}`, '_blank');
+  if (!mapaQueryAtual) return;
+  window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapaQueryAtual)}`, '_blank');
 }
 
 // ── INSIGHT COMERCIAL (IA — Groq + busca real na web via Tavily) ──────────
