@@ -1329,6 +1329,9 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
           <button class="btn btn-success-outline hidden" id="btnMapaTodos" onclick="abrirMapaTodos()">
             <i class="fas fa-map-location-dot"></i> Mapa + roteiro de visita
           </button>
+          <button class="btn btn-success-outline hidden" id="btnRedeSocios" onclick="abrirRedeSocios()">
+            <i class="fas fa-people-arrows"></i> Rede de sócios
+          </button>
         </div>
       </div>
 
@@ -1725,6 +1728,23 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
       <button class="btn btn-primary" id="btnGerarRoteiro" onclick="gerarRoteiroVisita()">
         <i class="fas fa-route"></i> Gerar roteiro de visita
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: REDE DE SÓCIOS -->
+<div class="modal-overlay" id="redeSociosModal">
+  <div class="modal-box" style="max-width:820px">
+    <div class="modal-head">
+      <div>
+        <p class="modal-head-razao">Rede de sócios</p>
+        <p class="modal-head-cnpj" id="redeSociosResumo" style="color:var(--muted)"></p>
+      </div>
+      <button class="modal-close" onclick="closeModal('redeSociosModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body" id="redeSociosBody"></div>
+    <div class="modal-footer-row">
+      <button class="btn btn-ghost" onclick="closeModal('redeSociosModal')">Fechar</button>
     </div>
   </div>
 </div>
@@ -2560,6 +2580,7 @@ function mapArcomBatchRecord(d, jaClienteOverride) {
     email: d.correio_eletronico || '—',
     socios: (d.socios || []).map(s => ({
       nome_socio: s.nome_socio,
+      cpf: s.cnpj_cpf_socio || '',
       qualificacao_socio: (s.qualificacao_socio && s.qualificacao_socio.descricao) || '',
       faixa_etaria: (s.faixa_etaria && s.faixa_etaria.descricao) || '',
       data_entrada_sociedade: s.data_entrada_sociedade || ''
@@ -3383,6 +3404,7 @@ async function startVerification() {
     document.getElementById('btnEnrichAll').classList.remove('hidden');
     document.getElementById('btnRankingLeads').classList.remove('hidden');
     document.getElementById('btnMapaTodos').classList.remove('hidden');
+    document.getElementById('btnRedeSocios').classList.remove('hidden');
   }
   document.getElementById('btnCopiarErros').classList.toggle('hidden', erroCNPJs.length===0);
   registrarLogConsulta(Object.keys(allData));
@@ -3441,13 +3463,18 @@ function openDetailsModal(cnpj) {
 
 function renderSociosHTML(socios) {
   if (!socios||!socios.length) return '<p style="color:var(--muted);font-size:13px">Quadro societário não disponível</p>';
-  return '<div class="socios-grid">'+socios.map(s=>`
-    <div class="socio-card">
-      <strong>${s.nome_socio||s.nome||'Não informado'}</strong>
+  return '<div class="socios-grid">'+socios.map(s=>{
+    const nome = s.nome_socio||s.nome||'Não informado';
+    const ident = encodeURIComponent(JSON.stringify({ cpf: s.cpf||'', nome }));
+    return `
+    <div class="socio-card" style="cursor:pointer" title="Ver outras empresas consultadas com este sócio" onclick="verEmpresasDoSocio('${ident}')">
+      <strong>${nome}</strong>
       <small>${s.qualificacao_socio||s.qualificacao||'Qualificação não informada'}</small>
       ${s.data_entrada_sociedade ? `<small>Desde ${s.data_entrada_sociedade}</small>` : ''}
       ${s.faixa_etaria ? `<small>${s.faixa_etaria}</small>` : ''}
-    </div>`).join('')+'</div>';
+      <small style="color:var(--accent)"><i class="fas fa-people-arrows"></i> ver vínculos</small>
+    </div>`;
+  }).join('')+'</div>';
 }
 
 // Reaproveita a mesma definição de colunas da exportação em massa
@@ -3741,6 +3768,109 @@ function gerarRoteiroVisita() {
   }
   box.innerHTML = html;
   showToast('Roteiro gerado — abra no Google Maps pra navegar.', 'success');
+}
+
+// ── REDE DE SÓCIOS (vínculos entre empresas consultadas) ────────────────────
+// Cruza os sócios de todas as empresas consultadas. Chave de identidade: o
+// CPF parcial que a RF já expõe (ex: ***471146**); se faltar, cai no nome
+// normalizado. É dado público de composição societária — não é consulta de
+// dado pessoal por CPF (a API nem devolve o CPF completo).
+function normalizarNome(n) {
+  return (n || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+}
+function chaveSocio(s) {
+  const cpf = (s.cpf || '').replace(/\s/g, '');
+  return (cpf && /\d/.test(cpf)) ? 'cpf:' + cpf : 'nome:' + normalizarNome(s.nome_socio || s.nome);
+}
+
+// Monta um mapa chave-do-sócio -> [{cnpj, razao, clienteArcom, nome, qualificacao}]
+function indexarSocios() {
+  const idx = {};
+  for (const cnpj in allData) {
+    const d = allData[cnpj];
+    (d.socios || []).forEach(s => {
+      const k = chaveSocio(s);
+      if (!k || k === 'nome:') return;
+      (idx[k] = idx[k] || []).push({
+        cnpj, razao: d.razao, clienteArcom: d.clienteArcom,
+        nome: s.nome_socio || s.nome || '—', qualificacao: s.qualificacao_socio || s.qualificacao || ''
+      });
+    });
+  }
+  return idx;
+}
+
+function badgeVinculoEmpresa(e) {
+  const tag = e.clienteArcom === 'Sim'
+    ? '<span class="badge badge-ativa" style="margin-left:6px">cliente</span>'
+    : e.clienteArcom === 'Não' ? '<span class="badge badge-baixada" style="margin-left:6px">prospect</span>' : '';
+  return `<li><span class="td-cnpj">${fmt(e.cnpj)}</span> — ${e.razao}${tag} <span style="color:var(--muted);font-size:11px">(${e.qualificacao || 'sócio'})</span></li>`;
+}
+
+function abrirRedeSocios() {
+  const idx = indexarSocios();
+  // só interessa sócio que aparece em 2+ empresas consultadas
+  const grupos = Object.keys(idx)
+    .map(k => ({ k, empresas: idx[k] }))
+    .filter(g => new Set(g.empresas.map(e => e.cnpj)).size >= 2)
+    // "ponte quente": sócio ligado a pelo menos 1 cliente E 1 prospect vem primeiro
+    .sort((a, b) => pontePeso(b) - pontePeso(a));
+
+  const body = document.getElementById('redeSociosBody');
+  document.getElementById('redeSociosResumo').textContent =
+    `${Object.keys(allData).length} empresa(s) consultada(s) · ${grupos.length} sócio(s) ligando 2+ empresas`;
+
+  if (!grupos.length) {
+    body.innerHTML = '<p style="color:var(--muted);font-size:13px">Nenhum sócio em comum entre as empresas consultadas. Consulte mais CNPJs (ou um grupo de empresas) pra revelar vínculos.</p>';
+    openModal('redeSociosModal');
+    return;
+  }
+
+  body.innerHTML = grupos.map(g => {
+    const nome = g.empresas[0].nome;
+    const temCliente = g.empresas.some(e => e.clienteArcom === 'Sim');
+    const temProspect = g.empresas.some(e => e.clienteArcom === 'Não');
+    const ponte = temCliente && temProspect
+      ? '<div style="font-size:12px;color:var(--accent);font-weight:600;margin-bottom:4px"><i class="fas fa-fire"></i> Porta de entrada: liga prospect(s) a cliente(s) Arcom</div>' : '';
+    const empresasUnicas = [];
+    const vistos = new Set();
+    g.empresas.forEach(e => { if (!vistos.has(e.cnpj)) { vistos.add(e.cnpj); empresasUnicas.push(e); } });
+    return `<div class="modal-section" style="margin-bottom:12px">
+      <div class="modal-section-title"><i class="fas fa-user-tie" style="color:var(--accent);margin-right:6px"></i>${nome}</div>
+      ${ponte}
+      <ul style="margin:4px 0 0 18px;font-size:13px;line-height:1.7">${empresasUnicas.map(badgeVinculoEmpresa).join('')}</ul>
+    </div>`;
+  }).join('');
+  openModal('redeSociosModal');
+}
+function pontePeso(g) {
+  const temCliente = g.empresas.some(e => e.clienteArcom === 'Sim');
+  const temProspect = g.empresas.some(e => e.clienteArcom === 'Não');
+  return (temCliente && temProspect ? 100 : 0) + new Set(g.empresas.map(e => e.cnpj)).size;
+}
+
+// Clique num sócio (modal de detalhes) -> outras empresas consultadas com ele.
+function verEmpresasDoSocio(identEncoded) {
+  let ident;
+  try { ident = JSON.parse(decodeURIComponent(identEncoded)); } catch { return; }
+  const alvo = chaveSocio(ident);
+  const idx = indexarSocios();
+  const empresas = idx[alvo] || [];
+  const unicas = [];
+  const vistos = new Set();
+  empresas.forEach(e => { if (!vistos.has(e.cnpj)) { vistos.add(e.cnpj); unicas.push(e); } });
+
+  const body = document.getElementById('redeSociosBody');
+  document.getElementById('redeSociosResumo').textContent = `Sócio: ${ident.nome}`;
+  if (unicas.length <= 1) {
+    body.innerHTML = `<p style="color:var(--muted);font-size:13px">Entre as empresas já consultadas, <strong>${ident.nome}</strong> aparece só nesta. Consulte outras empresas do grupo pra revelar vínculos — ou, se a API tiver busca por sócio, dá pra estender isso pra toda a base (me avise).</p>`;
+  } else {
+    body.innerHTML = `<div class="modal-section">
+      <div class="modal-section-title"><i class="fas fa-people-arrows" style="color:var(--accent);margin-right:6px"></i>${ident.nome} é sócio em ${unicas.length} empresas consultadas</div>
+      <ul style="margin:4px 0 0 18px;font-size:13px;line-height:1.7">${unicas.map(badgeVinculoEmpresa).join('')}</ul>
+    </div>`;
+  }
+  openModal('redeSociosModal');
 }
 
 // ── INSIGHT COMERCIAL (IA — Groq + busca real na web via Tavily) ──────────
