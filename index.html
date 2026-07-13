@@ -2452,18 +2452,32 @@ async function obterArcomToken(forcar) {
   return arcomToken;
 }
 
-// Consulta individual: reaproveita o endpoint de lote (/v1/cnpj/batch) com
-// um único CNPJ, em vez do GET /v1/cnpj/{cnpj} direto. Isso garante que o
-// campo ja_cliente (usado no selo "Cliente Arcom") seja lido sempre pelo
-// mesmo caminho que a consulta em lote já usa (item.ja_cliente) — o GET
-// individual não retorna esse campo no corpo da resposta.
+// REVERTIDO (ver commit seguinte): tentamos rotear a consulta individual
+// pelo endpoint de lote pra resolver o "Cliente Arcom" sempre "—", mas o
+// /v1/cnpj/batch retorna os dados da empresa em um formato diferente do
+// GET /v1/cnpj/{cnpj} (ex: município como objeto, não string — o restante
+// dos campos ficou em branco). Voltando ao GET direto até termos uma
+// amostra real da resposta do endpoint de lote pra mapear os dois formatos
+// corretamente.
 async function consultarNovaAPI(cnpj) {
   if (!isValidCNPJ(cnpj)) throw new Error('CNPJ inválido');
-  const [item] = await consultarLoteArcomBruto([cnpj]);
-  if (!item) throw new Error('Erro na Consulta CNPJ Arcom: resposta vazia');
-  if (item.error) throw new Error(item.error);
-  if (!item.found) throw new Error('CNPJ não encontrado');
-  return mapArcomRecord(item.data, item.ja_cliente);
+  let token = await obterArcomToken(false);
+  let r = await fetch(ARCOM_API_BASE_URL + '/v1/cnpj/' + cnpj + '?cliente=true', {
+    headers: { 'Authorization': 'Bearer ' + token }
+  });
+  if (r.status === 401) {
+    token = await obterArcomToken(true);
+    r = await fetch(ARCOM_API_BASE_URL + '/v1/cnpj/' + cnpj + '?cliente=true', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+  }
+  if (!r.ok) {
+    if (r.status === 404) throw new Error('CNPJ não encontrado');
+    if (r.status === 422) throw new Error('CNPJ inválido');
+    throw new Error('Erro na Consulta CNPJ Arcom (HTTP ' + r.status + ')');
+  }
+  const d = await r.json();
+  return mapArcomRecord(d);
 }
 
 // Converte um CNPJRecord cru da API Arcom no formato usado pela tabela/UI.
