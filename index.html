@@ -1868,6 +1868,7 @@ let enrichData = {}; // cnpj -> insight comercial gerado pela IA (Groq)
 let currentEnrichCNPJ = null;
 let erroCNPJs = []; // lista de {cnpj, motivo} que não foram consultados com sucesso
 let mapaEnderecoAtual = ''; // endereço em exibição no modal de mapa
+let mapaQueryAtual = '';     // o que abre no Google Maps: "lat,lng" (RF) quando há coordenadas, senão o texto do endereço
 
 // ── TOASTS ──────────────────────────────────────────────────────────────────
 function showToast(msg, type) {
@@ -2533,6 +2534,11 @@ function mapArcomBatchRecord(d, jaClienteOverride) {
     simples: simNaoOuTraco(simples.opcao_simples),
     mei: simNaoOuTraco(simples.opcao_mei),
     regimeTributario: [],
+    // Coordenadas da API (derivadas do endereço oficial na Receita Federal).
+    // Só confiamos nelas pra fixar o pino do mapa — se não vierem, o mapa cai
+    // na busca pelo texto do endereço.
+    latitude: (typeof d.latitude === 'number') ? d.latitude : null,
+    longitude: (typeof d.longitude === 'number') ? d.longitude : null,
     api: 'Consulta CNPJ Arcom',
     municipio: nomeMunicipio
   };
@@ -3571,17 +3577,25 @@ function abrirMapa(cnpj) {
     return;
   }
   mapaEnderecoAtual = endereco;
+  // Se a API trouxe lat/long (derivada do endereço oficial na Receita Federal),
+  // fixa o pino exatamente nessas coordenadas. Sem coordenadas, cai na busca
+  // do Google pelo texto do endereço (menos preciso).
+  const temCoords = data.latitude != null && data.longitude != null;
+  mapaQueryAtual = temCoords ? `${data.latitude},${data.longitude}` : endereco;
+  const fonteNota = temCoords
+    ? '<span style="display:block;margin-top:6px;font-size:11px;color:var(--muted)"><i class="fas fa-circle-check" style="color:var(--accent);margin-right:4px"></i>Localização exata conforme cadastro na Receita Federal</span>'
+    : '<span style="display:block;margin-top:6px;font-size:11px;color:var(--muted)"><i class="fas fa-circle-info" style="margin-right:4px"></i>Localização aproximada pelo endereço (sem coordenadas oficiais)</span>';
   document.getElementById('mapCNPJ').textContent = fmt(cnpj);
   document.getElementById('mapRazao').textContent = data.razao;
-  document.getElementById('mapEndereco').innerHTML = `<i class="fas fa-map-pin" style="color:var(--accent);margin-right:5px"></i>${endereco}`;
+  document.getElementById('mapEndereco').innerHTML = `<i class="fas fa-map-pin" style="color:var(--accent);margin-right:5px"></i>${endereco}${fonteNota}`;
   document.getElementById('mapFrame').src =
-    `https://maps.google.com/maps?q=${encodeURIComponent(endereco)}&t=&z=15&output=embed`;
+    `https://maps.google.com/maps?q=${encodeURIComponent(mapaQueryAtual)}&t=&z=${temCoords ? 17 : 15}&output=embed`;
   openModal('mapModal');
 }
 
 function abrirMapaExterno() {
-  if (!mapaEnderecoAtual) return;
-  window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapaEnderecoAtual)}`, '_blank');
+  if (!mapaQueryAtual) return;
+  window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapaQueryAtual)}`, '_blank');
 }
 
 // ── INSIGHT COMERCIAL (IA — Groq + busca real na web via Tavily) ──────────
