@@ -2503,7 +2503,7 @@ function simNaoBadgeHTML(label) {
   return '—';
 }
 
-function mapArcomRecord(d, jaClienteOverride) {
+function mapArcomRecord(d) {
   const nomeMunicipio = d.municipio || '';
   const enderecoInicio = [d.logradouro, d.numero].filter(Boolean).join(', ');
   const complemento = d.complemento ? ` (${d.complemento})` : '';
@@ -2520,7 +2520,7 @@ function mapArcomRecord(d, jaClienteOverride) {
     dataSituacaoEspecial: d.data_situacao_especial || '—',
     razao: d.razao_social || '—',
     porte: d.porte || '—',
-    clienteArcom: simNaoOuTraco(jaClienteOverride ?? d.ja_cliente),
+    clienteArcom: simNaoOuTraco(d.ja_cliente),
     natureza: d.natureza_juridica || '—',
     atividade: d.cnae_fiscal_descricao || '—',
     cnaesSecundarios: d.cnaes_secundarios || [],
@@ -2539,6 +2539,63 @@ function mapArcomRecord(d, jaClienteOverride) {
     simples: simNaoOuTraco(d.opcao_pelo_simples),
     mei: simNaoOuTraco(d.opcao_pelo_mei),
     regimeTributario: d.regime_tributario || [],
+    api: 'Consulta CNPJ Arcom',
+    municipio: nomeMunicipio
+  };
+}
+
+// Mapeia o formato de /v1/cnpj/batch — bem diferente do GET /v1/cnpj/{cnpj}
+// que mapArcomRecord acima trata. Confirmado com uma amostra real: aqui
+// matriz_filial, situacao_cadastral, motivo_situacao_cadastral,
+// cnae_fiscal_principal, município e natureza_juridica vêm como objetos
+// {codigo, descricao}; razão social/porte/natureza/capital social vêm
+// dentro de "empresa"; sócios e o status de Simples/MEI têm formato
+// próprio. Normaliza tudo pro mesmo formato interno que mapArcomRecord
+// produz, pra o resto do app (tabela, modal, exportações) não precisar
+// saber de qual endpoint o registro veio.
+function mapArcomBatchRecord(d, jaClienteOverride) {
+  const empresa = d.empresa || {};
+  const simples = d.simples || {};
+  const nomeMunicipio = (d.municipio && d.municipio.descricao) || '';
+  const enderecoInicio = [[d.tipo_logradouro, d.logradouro].filter(Boolean).join(' '), d.numero].filter(Boolean).join(', ');
+  const complemento = d.complemento ? ` (${d.complemento})` : '';
+  const enderecoFim = [d.bairro, nomeMunicipio, d.uf].filter(Boolean).join(', ');
+  const endereco = (enderecoInicio || enderecoFim)
+    ? (enderecoInicio + complemento + (enderecoFim ? ' - ' + enderecoFim : ''))
+    : '—';
+
+  return {
+    situacao: ((d.situacao_cadastral && d.situacao_cadastral.descricao) || 'INDEFINIDA').toUpperCase(),
+    dataSituacaoCadastral: d.data_situacao_cadastral || '—',
+    motivoSituacaoCadastral: (d.motivo_situacao_cadastral && d.motivo_situacao_cadastral.descricao) || '—',
+    situacaoEspecial: '—',
+    dataSituacaoEspecial: '—',
+    razao: empresa.razao_social || '—',
+    porte: (empresa.porte_empresa && empresa.porte_empresa.descricao) || '—',
+    clienteArcom: simNaoOuTraco(jaClienteOverride ?? d.ja_cliente),
+    natureza: (empresa.natureza_juridica && empresa.natureza_juridica.descricao) || '—',
+    atividade: (d.cnae_fiscal_principal && d.cnae_fiscal_principal.descricao) || '—',
+    cnaesSecundarios: d.cnae_fiscal_secundaria || [],
+    matrizFilial: (d.matriz_filial && d.matriz_filial.descricao) || '—',
+    uf: (d.uf || '—').substring(0, 2),
+    nomeFantasia: d.nome_fantasia || '—',
+    dataInicio: d.data_inicio_atividade || '—',
+    capitalSocial: empresa.capital_social != null ? 'R$ ' + Number(empresa.capital_social).toLocaleString('pt-BR') : '—',
+    endereco: endereco,
+    cep: d.cep || '—',
+    telefone: d.telefone_1 ? `${d.ddd_1 || ''}${d.telefone_1}` : '—',
+    telefone2: '—',
+    fax: '—',
+    email: d.correio_eletronico || '—',
+    socios: (d.socios || []).map(s => ({
+      nome_socio: s.nome_socio,
+      qualificacao_socio: (s.qualificacao_socio && s.qualificacao_socio.descricao) || '',
+      faixa_etaria: (s.faixa_etaria && s.faixa_etaria.descricao) || '',
+      data_entrada_sociedade: s.data_entrada_sociedade || ''
+    })),
+    simples: simNaoOuTraco(simples.opcao_simples),
+    mei: simNaoOuTraco(simples.opcao_mei),
+    regimeTributario: [],
     api: 'Consulta CNPJ Arcom',
     municipio: nomeMunicipio
   };
@@ -3311,7 +3368,7 @@ async function startVerification() {
           resultados.forEach(item => {
             if (item.error) { renderErro(item.cnpj, item.error); return; }
             if (!item.found) { renderErro(item.cnpj, 'CNPJ não encontrado'); return; }
-            const result = mapArcomRecord(item.data, item.ja_cliente);
+            const result = mapArcomBatchRecord(item.data, item.ja_cliente);
             saveToCache(item.cnpj, 'arcom', result);
             renderLinha(item.cnpj, result);
           });
