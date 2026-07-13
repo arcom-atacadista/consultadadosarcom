@@ -269,7 +269,6 @@
       margin-bottom: 4px;
     }
     .api-option:last-child { margin-bottom: 0; }
-    .api-option input[type=radio] { accent-color: var(--accent); }
     .api-option:hover { background: var(--border); }
     .api-option label { cursor: pointer; font-size: 13px; font-weight: 500; }
     .api-option small { display: block; font-size: 11px; color: var(--muted); font-weight: 400; }
@@ -2453,25 +2452,18 @@ async function obterArcomToken(forcar) {
   return arcomToken;
 }
 
+// Consulta individual: reaproveita o endpoint de lote (/v1/cnpj/batch) com
+// um único CNPJ, em vez do GET /v1/cnpj/{cnpj} direto. Isso garante que o
+// campo ja_cliente (usado no selo "Cliente Arcom") seja lido sempre pelo
+// mesmo caminho que a consulta em lote já usa (item.ja_cliente) — o GET
+// individual não retorna esse campo no corpo da resposta.
 async function consultarNovaAPI(cnpj) {
   if (!isValidCNPJ(cnpj)) throw new Error('CNPJ inválido');
-  let token = await obterArcomToken(false);
-  let r = await fetch(ARCOM_API_BASE_URL + '/v1/cnpj/' + cnpj + '?cliente=true', {
-    headers: { 'Authorization': 'Bearer ' + token }
-  });
-  if (r.status === 401) {
-    token = await obterArcomToken(true);
-    r = await fetch(ARCOM_API_BASE_URL + '/v1/cnpj/' + cnpj + '?cliente=true', {
-      headers: { 'Authorization': 'Bearer ' + token }
-    });
-  }
-  if (!r.ok) {
-    if (r.status === 404) throw new Error('CNPJ não encontrado');
-    if (r.status === 422) throw new Error('CNPJ inválido');
-    throw new Error('Erro na Consulta CNPJ Arcom (HTTP ' + r.status + ')');
-  }
-  const d = await r.json();
-  return mapArcomRecord(d);
+  const [item] = await consultarLoteArcomBruto([cnpj]);
+  if (!item) throw new Error('Erro na Consulta CNPJ Arcom: resposta vazia');
+  if (item.error) throw new Error(item.error);
+  if (!item.found) throw new Error('CNPJ não encontrado');
+  return mapArcomRecord(item.data, item.ja_cliente);
 }
 
 // Converte um CNPJRecord cru da API Arcom no formato usado pela tabela/UI.
@@ -2486,7 +2478,14 @@ async function consultarNovaAPI(cnpj) {
 // Porte, Natureza e Atividade caírem sempre no fallback "—"/"INDEFINIDA".
 function simNaoOuTraco(v) {
   if (typeof v === 'boolean') return v ? 'Sim' : 'Não';
+  if (typeof v === 'number') return v !== 0 ? 'Sim' : 'Não';
   if (typeof v === 'string' && v.trim() !== '') return /^(sim|true|1|s)$/i.test(v.trim()) ? 'Sim' : 'Não';
+  return '—';
+}
+// Único lugar que decide a cor do badge Sim/Não/— (ex: coluna "Cliente Arcom").
+function simNaoBadgeHTML(label) {
+  if (label === 'Sim') return '<span class="badge badge-ativa">Sim</span>';
+  if (label === 'Não') return '<span class="badge badge-baixada">Não</span>';
   return '—';
 }
 
@@ -2503,8 +2502,8 @@ function mapArcomRecord(d, jaClienteOverride) {
     situacao: (d.descricao_situacao_cadastral || 'INDEFINIDA').toUpperCase(),
     dataSituacaoCadastral: d.data_situacao_cadastral || '—',
     motivoSituacaoCadastral: d.descricao_motivo_situacao_cadastral || '—',
-    situacaoEspecial: d.situacao_especial || '',
-    dataSituacaoEspecial: d.data_situacao_especial || '',
+    situacaoEspecial: d.situacao_especial || '—',
+    dataSituacaoEspecial: d.data_situacao_especial || '—',
     razao: d.razao_social || '—',
     porte: d.porte || '—',
     clienteArcom: simNaoOuTraco(jaClienteOverride ?? d.ja_cliente),
@@ -2515,7 +2514,7 @@ function mapArcomRecord(d, jaClienteOverride) {
     uf: (d.uf || '—').substring(0, 2),
     nomeFantasia: d.nome_fantasia || '—',
     dataInicio: d.data_inicio_atividade || '—',
-    capitalSocial: d.capital_social ? 'R$ ' + Number(d.capital_social).toLocaleString('pt-BR') : '—',
+    capitalSocial: d.capital_social != null ? 'R$ ' + Number(d.capital_social).toLocaleString('pt-BR') : '—',
     endereco: endereco,
     cep: d.cep || '—',
     telefone: d.ddd_telefone_1 || '—',
@@ -3252,7 +3251,7 @@ async function startVerification() {
       <td class="td-cnpj">${fmt(cnpj)}</td>
       <td class="td-razao">${result.razao}${cacheTagHtml}<span data-precad-slot="${cnpj}"></span></td>
       <td><span class="badge ${bc}">${result.situacao}</span></td>
-      <td style="color:var(--muted);font-size:12px">${result.clienteArcom==='Sim' ? '<span class="badge badge-ativa">Sim</span>' : result.clienteArcom==='Não' ? '<span class="badge badge-baixada">Não</span>' : '—'}</td>
+      <td style="color:var(--muted);font-size:12px">${simNaoBadgeHTML(result.clienteArcom)}</td>
       <td style="color:var(--muted);font-size:12px;font-family:var(--mono)">${result.uf}</td>
       <td class="td-actions">
         <button class="btn-eye" onclick="openDetailsModal('${cnpj}')"><i class="fas fa-eye"></i> Ver</button>
@@ -3341,6 +3340,18 @@ async function startVerification() {
   registrarLogConsulta(Object.keys(allData));
 }
 
+// Mostra/esconde um bloco opcional do modal de detalhes (campos que só a
+// API retorna às vezes, como situação especial, CNAEs secundários etc.).
+function mostrarCampoOpcional(fieldElId, contentElId, temValor, render) {
+  const fieldEl = document.getElementById(fieldElId);
+  if (temValor) {
+    fieldEl.style.display = '';
+    document.getElementById(contentElId).innerHTML = render();
+  } else {
+    fieldEl.style.display = 'none';
+  }
+}
+
 function openDetailsModal(cnpj) {
   currentDetailsCNPJ=cnpj;
   const data=allData[cnpj];
@@ -3361,29 +3372,14 @@ function openDetailsModal(cnpj) {
   document.getElementById('detailCapital').textContent=data.capitalSocial;
   document.getElementById('detailSimples').textContent=data.simples||'—';
   document.getElementById('detailMei').textContent=data.mei||'—';
-  const situacaoEspecialField=document.getElementById('detailSituacaoEspecialField');
-  if (data.situacaoEspecial) {
-    situacaoEspecialField.style.display='';
-    document.getElementById('detailSituacaoEspecial').textContent=data.situacaoEspecial + (data.dataSituacaoEspecial ? ` (${data.dataSituacaoEspecial})` : '');
-  } else {
-    situacaoEspecialField.style.display='none';
-  }
-  const cnaesField=document.getElementById('detailCnaesSecundariosField');
-  if (data.cnaesSecundarios && data.cnaesSecundarios.length) {
-    cnaesField.style.display='';
-    document.getElementById('detailCnaesSecundarios').innerHTML=data.cnaesSecundarios.map(c=>`<div>${c.codigo||''} — ${c.descricao||''}</div>`).join('');
-  } else {
-    cnaesField.style.display='none';
-  }
-  const regimeField=document.getElementById('detailRegimeTributarioField');
-  if (data.regimeTributario && data.regimeTributario.length) {
-    regimeField.style.display='';
-    document.getElementById('detailRegimeTributario').innerHTML=data.regimeTributario
-      .slice().sort((a,b)=>(b.ano||0)-(a.ano||0))
-      .map(r=>`<div>${r.ano||''} — ${r.forma_de_tributacao||'—'}</div>`).join('');
-  } else {
-    regimeField.style.display='none';
-  }
+  const temValor = v => v && v !== '—';
+  const temSituacaoEspecial = temValor(data.situacaoEspecial);
+  mostrarCampoOpcional('detailSituacaoEspecialField', 'detailSituacaoEspecial', temSituacaoEspecial, () =>
+    data.situacaoEspecial + (temValor(data.dataSituacaoEspecial) ? ` (${data.dataSituacaoEspecial})` : ''));
+  mostrarCampoOpcional('detailCnaesSecundariosField', 'detailCnaesSecundarios', data.cnaesSecundarios && data.cnaesSecundarios.length, () =>
+    data.cnaesSecundarios.map(c=>`<div>${c.codigo||''} — ${c.descricao||''}</div>`).join(''));
+  mostrarCampoOpcional('detailRegimeTributarioField', 'detailRegimeTributario', data.regimeTributario && data.regimeTributario.length, () =>
+    data.regimeTributario.slice().sort((a,b)=>(b.ano||0)-(a.ano||0)).map(r=>`<div>${r.ano||''} — ${r.forma_de_tributacao||'—'}</div>`).join(''));
   document.getElementById('detailEndereco').textContent=data.endereco;
   document.getElementById('detailCEP').textContent=data.cep;
   document.getElementById('detailUF').textContent=data.uf;
@@ -3406,11 +3402,16 @@ function renderSociosHTML(socios) {
     </div>`).join('')+'</div>';
 }
 
+// Reaproveita a mesma definição de colunas da exportação em massa
+// (EXPORT_FIELD_DEFS/buildEmpresaRow) — antes essa exportação individual
+// tinha seu próprio esquema de 8 colunas, desatualizado em relação aos
+// campos novos (Cliente Arcom, Simples/MEI, CNAEs secundários etc.).
 function exportDetalhes() {
   if (!currentDetailsCNPJ||!allData[currentDetailsCNPJ]) return;
   const data=allData[currentDetailsCNPJ];
-  let csv='CNPJ,Razão Social,Situação,Porte,UF,Telefone,Email,Endereço\n';
-  csv+=`"${fmt(currentDetailsCNPJ)}","${data.razao}","${data.situacao}","${data.porte}","${data.uf}","${data.telefone}","${data.email}","${data.endereco}"\n`;
+  const linha = buildEmpresaRow(currentDetailsCNPJ, data);
+  const escapeCsv = v => `"${String(v).replace(/"/g,'""')}"`;
+  const csv = EXPORT_COLUMNS.map(escapeCsv).join(',') + '\n' + linha.map(escapeCsv).join(',') + '\n';
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
   a.download=`detalhe_${fmt(currentDetailsCNPJ)}.csv`;
@@ -3982,20 +3983,48 @@ function exportarInsightsCSV(cnpjsFiltro) {
   a.click();
 }
 
-const EXPORT_COLUMNS = ['CNPJ','Razão Social','Nome Fantasia','Situação','Data Situação Cadastral','Motivo Situação Cadastral','Situação Especial','Cliente Arcom','Porte','Matriz/Filial','Natureza Jurídica','Atividade Principal','Atividades Secundárias','Data de Abertura','Capital Social','Optante Simples Nacional','Optante MEI','Endereço Completo','CEP','UF','Telefone','Telefone 2','Fax','E-mail','Quantidade de Sócios','API Utilizada'];
+// Fonte única para a exportação de empresas: cada item descreve uma coluna
+// (cabeçalho + como extraí-la do registro). EXPORT_COLUMNS e as linhas de
+// buildEmpresaRow/exportDetalhes vêm todas daqui — evita duas listas
+// mantidas à mão em paralelo (cabeçalhos de um lado, valores de outro)
+// que podem se desalinhar silenciosamente.
+const EXPORT_FIELD_DEFS = [
+  { header: 'CNPJ', get: (cnpj, d) => fmt(cnpj) },
+  { header: 'Razão Social', get: (cnpj, d) => d.razao || '' },
+  { header: 'Nome Fantasia', get: (cnpj, d) => d.nomeFantasia || '' },
+  { header: 'Situação', get: (cnpj, d) => d.situacao || '' },
+  { header: 'Data Situação Cadastral', get: (cnpj, d) => d.dataSituacaoCadastral || '' },
+  { header: 'Motivo Situação Cadastral', get: (cnpj, d) => d.motivoSituacaoCadastral || '' },
+  { header: 'Situação Especial', get: (cnpj, d) => d.situacaoEspecial || '' },
+  { header: 'Cliente Arcom', get: (cnpj, d) => d.clienteArcom || '' },
+  { header: 'Porte', get: (cnpj, d) => d.porte || '' },
+  { header: 'Matriz/Filial', get: (cnpj, d) => d.matrizFilial || '' },
+  { header: 'Natureza Jurídica', get: (cnpj, d) => d.natureza || '' },
+  { header: 'Atividade Principal', get: (cnpj, d) => d.atividade || '' },
+  { header: 'Atividades Secundárias', get: (cnpj, d) => (d.cnaesSecundarios||[]).map(c=>`${c.codigo||''} - ${c.descricao||''}`).join('; ') },
+  { header: 'Data de Abertura', get: (cnpj, d) => d.dataInicio || '' },
+  { header: 'Capital Social', get: (cnpj, d) => d.capitalSocial || '' },
+  { header: 'Optante Simples Nacional', get: (cnpj, d) => d.simples || '' },
+  { header: 'Optante MEI', get: (cnpj, d) => d.mei || '' },
+  { header: 'Endereço Completo', get: (cnpj, d) => d.endereco || '' },
+  { header: 'CEP', get: (cnpj, d) => d.cep || '' },
+  { header: 'UF', get: (cnpj, d) => d.uf || '' },
+  { header: 'Telefone', get: (cnpj, d) => d.telefone || '' },
+  { header: 'Telefone 2', get: (cnpj, d) => d.telefone2 || '' },
+  { header: 'Fax', get: (cnpj, d) => d.fax || '' },
+  { header: 'E-mail', get: (cnpj, d) => d.email || '' },
+  { header: 'Quantidade de Sócios', get: (cnpj, d) => d.socios ? d.socios.length : 0 },
+  { header: 'API Utilizada', get: (cnpj, d) => d.api || '' }
+];
+const EXPORT_COLUMNS = EXPORT_FIELD_DEFS.map(f => f.header);
+function buildEmpresaRow(cnpj, d) { return EXPORT_FIELD_DEFS.map(f => f.get(cnpj, d)); }
 
 function buildExportData() {
   const empresas=[EXPORT_COLUMNS];
   const socios=[['CNPJ','Razão Social','Nome do Sócio','Qualificação','Faixa Etária','Data de Entrada']];
   for(const cnpj in allData){
     const d=allData[cnpj];
-    const cnaesSecundarios=(d.cnaesSecundarios||[]).map(c=>`${c.codigo||''} - ${c.descricao||''}`).join('; ');
-    empresas.push([
-      fmt(cnpj),d.razao||'',d.nomeFantasia||'',d.situacao||'',d.dataSituacaoCadastral||'',d.motivoSituacaoCadastral||'',
-      d.situacaoEspecial||'',d.clienteArcom||'',d.porte||'',d.matrizFilial||'',d.natureza||'',d.atividade||'',cnaesSecundarios,
-      d.dataInicio||'',d.capitalSocial||'',d.simples||'',d.mei||'',d.endereco||'',d.cep||'',d.uf||'',
-      d.telefone||'',d.telefone2||'',d.fax||'',d.email||'',d.socios?d.socios.length:0,d.api||''
-    ]);
+    empresas.push(buildEmpresaRow(cnpj, d));
     if(d.socios?.length) d.socios.forEach(s=>socios.push([fmt(cnpj),d.razao||'',s.nome_socio||s.nome||'',s.qualificacao_socio||s.qualificacao||'',s.faixa_etaria||'',s.data_entrada_sociedade||'']));
   }
   return {empresas,socios};
