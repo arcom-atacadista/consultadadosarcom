@@ -2761,6 +2761,9 @@ async function buscarProspeccao() {
             cnpj: cnpjLimpo,
             razao: emp.razao_social || '—',
             nomeFantasia: emp.nome_fantasia || '',
+            // Os 4 dígitos do meio do CNPJ são o número da filial (0001 = matriz).
+            // Um número alto = rede grande (ex: Americanas filial 0842).
+            ordemFilial: parseInt(cnpjLimpo.slice(8, 12), 10) || 1,
             // cnae_fiscal_principal vem como objeto {codigo, descricao} — o
             // código lia emp.cnae_fiscal_descricao (inexistente), deixando a
             // Atividade sempre em branco.
@@ -2816,30 +2819,60 @@ function toggleSomenteNovas() {
   renderProspeccaoResultado(prospeccaoUltimoResultado);
 }
 
+// Corte de grandes redes: por padrão ligado, escondendo empresas cuja filial
+// (nº do meio do CNPJ) seja >= o limite. Foco da Arcom é porte médio/baixo;
+// grandes redes têm setor próprio.
+let prosCortarRedes = true;
+let prosLimiteFiliais = 20;
+function eGrandeRede(emp) {
+  return prosCortarRedes && (emp.ordemFilial || 1) >= prosLimiteFiliais;
+}
+function toggleCortarRedes() {
+  prosCortarRedes = document.getElementById('chkCortarRedes').checked;
+  renderProspeccaoResultado(prospeccaoUltimoResultado);
+}
+function mudarLimiteFiliais() {
+  const v = parseInt(document.getElementById('inpLimiteFiliais').value, 10);
+  if (v >= 2) prosLimiteFiliais = v;
+  renderProspeccaoResultado(prospeccaoUltimoResultado);
+}
+
 function renderProspeccaoResultado(empresas) {
   const resultado = document.getElementById('prosResultado');
   const cidadesEnvolvidas = [...new Set(empresas.map(e => `${e.cidade}/${e.uf}`))];
-  const qtdNovas = empresas.filter(e => { const m = mesesDesdeAbertura(e.dataInicio); return m != null && m >= 0 && m <= RADAR_MESES_NOVA; }).length;
-  const lista = prosSomenteNovas
-    ? empresas.filter(e => { const m = mesesDesdeAbertura(e.dataInicio); return m != null && m >= 0 && m <= RADAR_MESES_NOVA; })
-    : empresas;
+  const eNova = e => { const m = mesesDesdeAbertura(e.dataInicio); return m != null && m >= 0 && m <= RADAR_MESES_NOVA; };
+
+  const qtdRedes = empresas.filter(e => (e.ordemFilial || 1) >= prosLimiteFiliais).length;
+  let lista = empresas;
+  if (prosCortarRedes) lista = lista.filter(e => !eGrandeRede(e));
+  const qtdNovas = lista.filter(eNova).length;
+  if (prosSomenteNovas) lista = lista.filter(eNova);
 
   let h = `<p style="font-size:12px;color:var(--muted);margin-bottom:6px">
       ${empresas.length} prospect(s) encontrado(s) em <strong>${cidadesEnvolvidas.join(', ')}</strong> — empresas ativas que ainda não são clientes Arcom.
     </p>`;
-  h += `<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:10px;cursor:pointer">
+  h += `<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">`;
+  h += `<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer">
+      <input type="checkbox" id="chkCortarRedes" ${prosCortarRedes?'checked':''} onchange="toggleCortarRedes()">
+      <i class="fas fa-ban" style="color:var(--red)"></i> Cortar grandes redes: esconder empresas com filial nº ≥
+      <input type="number" id="inpLimiteFiliais" value="${prosLimiteFiliais}" min="2" style="width:64px;padding:2px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-family:var(--mono)" onchange="mudarLimiteFiliais()" onclick="event.preventDefault()">
+      — <strong>${qtdRedes}</strong> cortada(s)
+    </label>`;
+  h += `<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer">
       <input type="checkbox" id="chkSomenteNovas" ${prosSomenteNovas?'checked':''} onchange="toggleSomenteNovas()">
       <i class="fas fa-seedling" style="color:var(--accent)"></i> Radar: mostrar só empresas novas (últimos ${RADAR_MESES_NOVA} meses) — <strong>${qtdNovas}</strong> encontrada(s)
     </label>`;
-  h += `<table style="width:100%"><thead><tr><th>CNPJ</th><th>Razão Social</th><th>Nome Fantasia</th><th>Cidade</th><th>Atividade</th><th>Abertura</th><th></th></tr></thead><tbody>`;
+  h += `</div>`;
+  h += `<table style="width:100%"><thead><tr><th>CNPJ</th><th>Razão Social</th><th>Nome Fantasia</th><th>Cidade</th><th>Atividade</th><th>Filial nº</th><th>Abertura</th><th></th></tr></thead><tbody>`;
   lista.forEach(emp => {
     const abertura = emp.dataInicio ? emp.dataInicio.split('-').reverse().join('/') : '—';
     const fantasia = emp.nomeFantasia && emp.nomeFantasia.trim() ? emp.nomeFantasia : '—';
-    h += `<tr><td>${fmt(emp.cnpj)}</td><td>${emp.razao}${badgeNova(emp.dataInicio)}<span data-precad-slot="${emp.cnpj}"></span></td><td style="font-weight:600">${fantasia}</td><td style="font-size:12px;color:var(--muted)">${emp.cidade}/${emp.uf}</td><td style="font-size:12px;color:var(--muted)">${emp.atividade}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${abertura}</td>
+    const filialTxt = (emp.ordemFilial && emp.ordemFilial > 1) ? String(emp.ordemFilial) : (emp.ordemFilial === 1 ? 'matriz' : '—');
+    h += `<tr><td>${fmt(emp.cnpj)}</td><td>${emp.razao}${badgeNova(emp.dataInicio)}<span data-precad-slot="${emp.cnpj}"></span></td><td style="font-weight:600">${fantasia}</td><td style="font-size:12px;color:var(--muted)">${emp.cidade}/${emp.uf}</td><td style="font-size:12px;color:var(--muted)">${emp.atividade}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${filialTxt}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${abertura}</td>
       <td><button class="btn-eye" onclick="abrirPreCadastro('${emp.cnpj}')"><i class="fas fa-user-plus"></i> Pré-cadastrar</button></td></tr>`;
   });
   h += '</tbody></table>';
-  if (!lista.length) h += '<p style="color:var(--muted);font-size:13px">Nenhuma empresa nova nesse filtro.</p>';
+  if (!lista.length) h += '<p style="color:var(--muted);font-size:13px">Nenhuma empresa nesse filtro.</p>';
   resultado.innerHTML = h;
   atualizarBadgePreCadastro(lista.map(e => e.cnpj));
 }
@@ -2869,10 +2902,22 @@ function renderConcentracaoBairro(empresas) {
     </div>`;
 }
 
+// Lista de prospects após aplicar os filtros ativos (corte de grandes redes,
+// radar de novas) — pra "Copiar CNPJs" bater com o que está na tela.
+function listaProspeccaoVisivel() {
+  const eNova = e => { const m = mesesDesdeAbertura(e.dataInicio); return m != null && m >= 0 && m <= RADAR_MESES_NOVA; };
+  let lista = prospeccaoUltimoResultado;
+  if (prosCortarRedes) lista = lista.filter(e => !eGrandeRede(e));
+  if (prosSomenteNovas) lista = lista.filter(eNova);
+  return lista;
+}
+
 function copiarProspeccao() {
-  if (!prospeccaoCNPJs.length) { showToast('Nenhum CNPJ encontrado.','error'); return; }
-  navigator.clipboard.writeText(prospeccaoCNPJs.join('\n'));
-  showToast(`${prospeccaoCNPJs.length} CNPJs copiados`,'success');
+  const lista = listaProspeccaoVisivel();
+  if (!lista.length) { showToast('Nenhum CNPJ na lista visível.','error'); return; }
+  navigator.clipboard.writeText(lista.map(e => e.cnpj).join('\n'));
+  const cortados = prospeccaoUltimoResultado.length - lista.length;
+  showToast(`${lista.length} CNPJs copiados${cortados ? ` (${cortados} ocultados pelos filtros)` : ''}`,'success');
 }
 
 // ── LISTAS SALVAS DE PROSPECÇÃO ─────────────────────────────────────────────
