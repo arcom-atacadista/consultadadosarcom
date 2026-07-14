@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
@@ -1499,7 +1500,7 @@ Patos de Minas"></textarea>
           <button class="btn btn-success-outline" onclick="copiarProspeccao()">
             <i class="fas fa-copy"></i> Copiar CNPJs
           </button>
-          <button class="btn btn-danger hidden" id="btnIndicacaoPDF" onclick="exportarIndicacaoPDF()">
+          <button class="btn btn-danger hidden" id="btnIndicacaoPDF" onclick="abrirModalOrigemPDF()">
             <i class="fas fa-file-pdf"></i> PDF Indicação (consultores)
           </button>
           <button class="btn btn-ghost hidden" id="btnSalvarListaProspeccao" onclick="salvarListaProspeccao()">
@@ -1512,6 +1513,7 @@ Patos de Minas"></textarea>
             <i class="fas fa-address-card"></i> Ver pré-cadastros
           </button>
         </div>
+        <div id="prosRotaLinks" style="margin-top:12px"></div>
         <div id="prosConcentracao" style="margin-top:16px"></div>
         <div id="prosResultado" style="margin-top:20px"></div>
       </div>
@@ -1710,6 +1712,32 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
       <button class="btn btn-primary" id="btnAbrirMapaExterno" onclick="abrirMapaExterno()">
         <i class="fas fa-up-right-from-square"></i> Abrir no Google Maps
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ORIGEM DO ASSESSOR (pra ordenar o PDF por proximidade) -->
+<div class="modal-overlay" id="origemPdfModal">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-head">
+      <div><p class="modal-head-razao">De onde o assessor vai sair?</p>
+        <p class="modal-head-cnpj" style="color:var(--muted)">O PDF sai ordenado do mais perto pro mais longe dali</p></div>
+      <button class="modal-close" onclick="closeModal('origemPdfModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-field" style="margin-bottom:14px">
+        <label>Bairro de partida</label>
+        <select id="origemBairro" class="regional-input" style="width:100%" onchange="origemBairroMudou()"></select>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <button class="btn btn-ghost" onclick="usarGpsOrigemPDF()"><i class="fas fa-location-crosshairs"></i> Usar minha localização (GPS)</button>
+        <span id="origemStatus" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+      <p style="font-size:11px;color:var(--muted)">Dica: sem escolher nada, o PDF sai na ordem normal (sem priorizar por localização).</p>
+    </div>
+    <div class="modal-footer-row">
+      <button class="btn btn-ghost" onclick="closeModal('origemPdfModal')">Cancelar</button>
+      <button class="btn btn-primary" id="btnConfirmarOrigemPDF" onclick="confirmarOrigemEExportar()"><i class="fas fa-file-pdf"></i> Gerar PDF</button>
     </div>
   </div>
 </div>
@@ -3056,81 +3084,203 @@ function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
-async function exportarIndicacaoPDF() {
+// ── ORIGEM DO ASSESSOR (bairro OU GPS) pra ordenar o PDF por proximidade ─────
+let modoOrigemPDF = 'nenhum'; // 'bairro' | 'gps' | 'nenhum'
+let gpsOrigemPDF = null;      // {lat,lng}
+
+function abrirModalOrigemPDF() {
   const prospects = listaProspeccaoParaAcao();
   if (!prospects.length) { showToast('Nenhum prospect selecionado/visível.', 'error'); return; }
+  const bairros = [...new Set(prospects.filter(p => p.latitude != null && p.bairro && p.bairro !== '—').map(p => p.bairro))].sort();
+  document.getElementById('origemBairro').innerHTML =
+    '<option value="">— Não ordenar por localização —</option>' + bairros.map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
+  gpsOrigemPDF = null; modoOrigemPDF = 'nenhum';
+  document.getElementById('origemStatus').textContent = '';
+  openModal('origemPdfModal');
+}
+function origemBairroMudou() {
+  modoOrigemPDF = document.getElementById('origemBairro').value ? 'bairro' : 'nenhum';
+  if (modoOrigemPDF === 'bairro') { gpsOrigemPDF = null; document.getElementById('origemStatus').textContent = ''; }
+}
+function usarGpsOrigemPDF() {
+  if (!navigator.geolocation) { showToast('GPS não disponível neste navegador.', 'error'); return; }
+  document.getElementById('origemStatus').innerHTML = '<span class="spinner"></span> pegando localização…';
+  navigator.geolocation.getCurrentPosition(
+    pos => { gpsOrigemPDF = { lat: pos.coords.latitude, lng: pos.coords.longitude }; modoOrigemPDF = 'gps'; document.getElementById('origemBairro').value = ''; document.getElementById('origemStatus').innerHTML = '<i class="fas fa-circle-check" style="color:var(--accent)"></i> localização capturada'; },
+    err => { document.getElementById('origemStatus').innerHTML = `<span style="color:var(--red)">não consegui o GPS (${err.message || 'permissão negada'})</span>`; }
+  );
+}
+function confirmarOrigemEExportar() {
+  const prospects = listaProspeccaoParaAcao();
+  let origem = null;
+  if (modoOrigemPDF === 'gps' && gpsOrigemPDF) {
+    origem = gpsOrigemPDF;
+  } else if (modoOrigemPDF === 'bairro') {
+    const b = document.getElementById('origemBairro').value;
+    const pts = prospects.filter(p => p.bairro === b && p.latitude != null && p.longitude != null);
+    if (pts.length) origem = { lat: pts.reduce((s, p) => s + p.latitude, 0) / pts.length, lng: pts.reduce((s, p) => s + p.longitude, 0) / pts.length };
+  }
+  closeModal('origemPdfModal');
+  gerarIndicacaoPDF(prospects, origem);
+}
+
+// Ordena por vizinho-mais-próximo a partir de uma origem (se null, começa no 1º ponto).
+function rotaProximidade(pontos, origem) {
+  const restantes = pontos.slice();
+  const ordem = [];
+  let atual = origem;
+  if (!atual) { atual = restantes.shift(); if (atual) ordem.push(atual); }
+  while (restantes.length) {
+    let iMin = 0, dMin = Infinity;
+    restantes.forEach((p, i) => { const d = distanciaKm(atual, { lat: p.latitude, lng: p.longitude }); if (d < dMin) { dMin = d; iMin = i; } });
+    atual = restantes.splice(iMin, 1)[0];
+    ordem.push(atual);
+  }
+  return ordem;
+}
+
+async function gerarIndicacaoPDF(prospects, origem) {
+  if (!prospects || !prospects.length) { showToast('Nenhum prospect pra gerar.', 'error'); return; }
   const btn = document.getElementById('btnIndicacaoPDF');
   btn.disabled = true;
   const btnHtmlOrig = btn.innerHTML;
   btn.innerHTML = '<span class="spinner"></span> Gerando PDF…';
-
-  // Enriquecimento: 1 chamada em lote pra pegar o quadro societário (não vem
-  // no endpoint de Prospecção). Se falhar, seguimos sem sócios.
-  const porCnpj = {};
-  try {
-    const resultados = await consultarLoteArcomBruto(prospects.map(p => p.cnpj));
-    (resultados || []).forEach(item => {
-      if (item && item.found && item.data) porCnpj[(item.cnpj || '').replace(/\D/g, '')] = mapArcomBatchRecord(item.data, item.ja_cliente);
-    });
-  } catch (e) {
-    showToast('Não consegui buscar o quadro societário (sigo sem ele): ' + (e.message || e), 'info');
-  }
-
-  const cidades = [...new Set(prospects.map(p => `${p.cidade} - ${p.uf}`))];
-  const tituloCidade = cidades.length === 1 ? cidades[0] : cidades.join(' · ');
-
-  // Agrupa por ramo (CNAE)
-  const grupos = {};
-  prospects.forEach(p => {
-    const r = ramoDoCnae(p.cnaeCodigo, p.atividade);
-    const chave = r.emoji + ' ' + r.label;
-    (grupos[chave] = grupos[chave] || []).push(p);
-  });
-
-  const logo = (document.querySelector('.login-logo img') || {}).src || '';
-  let html = `<div style="font-family:'Red Hat Display',Arial,sans-serif;color:#1F4033;padding:8px 4px">`;
-  html += `<div style="display:flex;align-items:center;gap:12px;border-bottom:3px solid #007840;padding-bottom:10px;margin-bottom:16px">
-      ${logo ? `<img src="${logo}" style="height:46px;width:auto">` : ''}
-      <div>
-        <div style="font-size:20px;font-weight:800;color:#007840">Indicação de clientes para ${escapeHtml(tituloCidade)}</div>
-        <div style="font-size:11px;color:#636466">Gerado pela ferramenta CDA — ${prospects.length} empresa(s) · ${new Date().toLocaleDateString('pt-BR')}</div>
-      </div>
-    </div>`;
-
-  Object.keys(grupos).forEach(ramo => {
-    html += `<div style="font-size:16px;font-weight:700;margin:14px 0 8px;color:#1F4033">${escapeHtml(ramo)}:</div>`;
-    grupos[ramo].forEach(p => {
-      const enr = porCnpj[p.cnpj] || {};
-      const endereco = (enr.endereco && enr.endereco !== '—') ? enr.endereco : (p.endereco || '—');
-      const cep = (p.cep || (enr.cep && enr.cep !== '—' ? enr.cep : '')) || '';
-      const cepFmt = cep ? String(cep).replace(/\D/g, '').replace(/^(\d{5})(\d{3})$/, '$1-$2') : '—';
-      const telefone = p.telefone || (enr.telefone && enr.telefone !== '—' ? enr.telefone : '');
-      const socios = (enr.socios || []).filter(s => s.nome_socio || s.nome);
-      const fantasia = p.nomeFantasia && p.nomeFantasia.trim() ? ` <span style="color:#636466;font-weight:500">(${escapeHtml(p.nomeFantasia)})</span>` : '';
-
-      html += `<div style="border:1px solid #E6E7E8;border-radius:8px;padding:10px 12px;margin-bottom:8px;page-break-inside:avoid">
-        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#007840;font-weight:600">${fmt(p.cnpj)}</div>
-        <div style="font-size:14px;font-weight:700">${escapeHtml(p.razao)}${fantasia}</div>
-        <div style="font-size:12px;margin-top:4px">📍 <strong>Endereço:</strong> ${escapeHtml(endereco)}</div>
-        <div style="font-size:12px">🏷️ <strong>CEP:</strong> ${escapeHtml(cepFmt)}</div>
-        <div style="font-size:12px">📞 <strong>Telefone:</strong> ${telefone ? escapeHtml(telefone) : '—'}</div>`;
-      if (socios.length) {
-        html += `<div style="font-size:12px;margin-top:4px"><strong>Quadro Societário:</strong> ${socios.map(s => escapeHtml(s.nome_socio || s.nome) + (s.qualificacao_socio ? ` <span style="color:#636466">(${escapeHtml(s.qualificacao_socio)})</span>` : '')).join(' · ')}</div>`;
-      }
-      html += `</div>`;
-    });
-  });
-  html += `</div>`;
-
   const el = document.createElement('div');
-  el.innerHTML = html;
-  const nomeArq = 'Indicacao_clientes_' + (cidades.length === 1 ? cidades[0].replace(/[^a-zA-Z]/g, '') : 'varias') + '_' + new Date().toISOString().split('T')[0] + '.pdf';
+
   try {
-    await html2pdf().set({ margin: 10, filename: nomeArq, pagebreak: { mode: ['css', 'legacy'] }, html2canvas: { scale: 2 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(el).save();
+    // Enriquecimento: 1 chamada em lote pro quadro societário (não vem na Prospecção).
+    const porCnpj = {};
+    try {
+      const resultados = await consultarLoteArcomBruto(prospects.map(p => p.cnpj));
+      (resultados || []).forEach(item => {
+        if (item && item.found && item.data) porCnpj[(item.cnpj || '').replace(/\D/g, '')] = mapArcomBatchRecord(item.data, item.ja_cliente);
+      });
+    } catch (e) {
+      showToast('Não consegui o quadro societário (sigo sem ele): ' + (e.message || e), 'info');
+    }
+
+    const cidades = [...new Set(prospects.map(p => `${p.cidade} - ${p.uf}`))];
+    const tituloCidade = cidades.length === 1 ? cidades[0] : cidades.join(' · ');
+
+    // Rota (proximidade global) pra Maps/Waze/QR
+    const comCoord = prospects.filter(p => p.latitude != null && p.longitude != null);
+    const routeStops = rotaProximidade(comCoord, origem);
+    const MAX_STOPS = 9; // Google Maps aceita ~10 pontos por link (incl. origem)
+    const usados = routeStops.slice(0, MAX_STOPS).map(s => `${s.latitude},${s.longitude}`);
+    let mapsUrl = '';
+    if (usados.length) {
+      const partes = origem ? [`${origem.lat},${origem.lng}`, ...usados] : usados;
+      mapsUrl = 'https://www.google.com/maps/dir/' + partes.join('/');
+    }
+    const wazeUrl = routeStops.length ? `https://waze.com/ul?ll=${routeStops[0].latitude},${routeStops[0].longitude}&navigate=yes` : '';
+
+    // QR code do Google Maps (imagem sobrevive à rasterização do PDF)
+    let qrDataUrl = '';
+    if (mapsUrl && typeof QRCode !== 'undefined') {
+      try {
+        const tmp = document.createElement('div');
+        new QRCode(tmp, { text: mapsUrl, width: 128, height: 128, correctLevel: QRCode.CorrectLevel.M });
+        const cv = tmp.querySelector('canvas');
+        if (cv) qrDataUrl = cv.toDataURL('image/png');
+      } catch (e) { /* segue sem QR */ }
+    }
+
+    // Agrupa por ramo; ordena cada grupo por proximidade à origem
+    const grupos = {};
+    prospects.forEach(p => {
+      const r = ramoDoCnae(p.cnaeCodigo, p.atividade);
+      const chave = r.emoji + ' ' + r.label;
+      (grupos[chave] = grupos[chave] || []).push(p);
+    });
+    const distOrigem = p => (origem && p.latitude != null) ? distanciaKm(origem, { lat: p.latitude, lng: p.longitude }) : Infinity;
+    if (origem) Object.keys(grupos).forEach(k => grupos[k].sort((a, b) => distOrigem(a) - distOrigem(b)));
+
+    const logo = (document.querySelector('.login-logo img') || {}).src || '';
+    let html = `<div style="font-family:'Red Hat Display',Arial,sans-serif;color:#1F4033;padding:8px 4px">`;
+    html += `<div style="display:flex;align-items:center;gap:12px;border-bottom:3px solid #007840;padding-bottom:10px;margin-bottom:14px">
+        ${logo ? `<img src="${logo}" style="height:46px;width:auto">` : ''}
+        <div>
+          <div style="font-size:20px;font-weight:800;color:#007840">Indicação de clientes para ${escapeHtml(tituloCidade)}</div>
+          <div style="font-size:11px;color:#636466">Gerado pela ferramenta CDA — ${prospects.length} empresa(s) · ${new Date().toLocaleDateString('pt-BR')}${origem ? ' · ordenado por proximidade' : ''}</div>
+        </div>
+      </div>`;
+
+    if (mapsUrl) {
+      html += `<div style="display:flex;gap:12px;align-items:center;border:1px solid #E6E7E8;border-radius:8px;padding:10px 12px;margin-bottom:14px;background:#F6F6F6">
+          ${qrDataUrl ? `<img src="${qrDataUrl}" style="width:96px;height:96px;flex:none">` : ''}
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:700;color:#1F4033;margin-bottom:6px">Rota de visita ${origem ? '(a partir da localização do assessor)' : ''}</div>
+            <span id="pdfRotaMapsBtn" style="display:inline-block;background:#007840;color:#fff;font-weight:700;font-size:12px;padding:8px 12px;border-radius:6px;margin:0 6px 6px 0">🗺️ Abrir rota no Google Maps</span>
+            <span id="pdfRotaWazeBtn" style="display:inline-block;background:#33ccff;color:#06283a;font-weight:700;font-size:12px;padding:8px 12px;border-radius:6px">🚗 Waze (ponto + próximo)</span>
+            <div style="font-size:10px;color:#636466;margin-top:6px">Escaneie o QR ou toque nos botões (abrindo o PDF no celular).${routeStops.length > MAX_STOPS ? ` Mostrando as ${MAX_STOPS} paradas mais próximas de ${routeStops.length}.` : ''}</div>
+          </div>
+        </div>`;
+    }
+
+    Object.keys(grupos).forEach(ramo => {
+      html += `<div style="font-size:16px;font-weight:700;margin:14px 0 8px;color:#1F4033">${escapeHtml(ramo)}:</div>`;
+      grupos[ramo].forEach(p => {
+        const enr = porCnpj[p.cnpj] || {};
+        const endereco = (enr.endereco && enr.endereco !== '—') ? enr.endereco : (p.endereco || '—');
+        const cep = (p.cep || (enr.cep && enr.cep !== '—' ? enr.cep : '')) || '';
+        const cepFmt = cep ? String(cep).replace(/\D/g, '').replace(/^(\d{5})(\d{3})$/, '$1-$2') : '—';
+        const telefone = p.telefone || (enr.telefone && enr.telefone !== '—' ? enr.telefone : '');
+        const socios = (enr.socios || []).filter(s => s.nome_socio || s.nome);
+        const fantasia = p.nomeFantasia && p.nomeFantasia.trim() ? ` <span style="color:#636466;font-weight:500">(${escapeHtml(p.nomeFantasia)})</span>` : '';
+        const dist = distOrigem(p);
+        const distTxt = (origem && isFinite(dist)) ? ` <span style="color:#007840;font-weight:600">· ~${dist.toFixed(1)} km</span>` : '';
+
+        html += `<div style="border:1px solid #E6E7E8;border-radius:8px;padding:10px 12px;margin-bottom:8px;page-break-inside:avoid">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#007840;font-weight:600">${fmt(p.cnpj)}${distTxt}</div>
+          <div style="font-size:14px;font-weight:700">${escapeHtml(p.razao)}${fantasia}</div>
+          <div style="font-size:12px;margin-top:4px">📍 <strong>Endereço:</strong> ${escapeHtml(endereco)}</div>
+          <div style="font-size:12px">🏷️ <strong>CEP:</strong> ${escapeHtml(cepFmt)}</div>
+          <div style="font-size:12px">📞 <strong>Telefone:</strong> ${telefone ? escapeHtml(telefone) : '—'}</div>`;
+        if (socios.length) {
+          html += `<div style="font-size:12px;margin-top:4px"><strong>Quadro Societário:</strong> ${socios.map(s => escapeHtml(s.nome_socio || s.nome) + (s.qualificacao_socio ? ` <span style="color:#636466">(${escapeHtml(s.qualificacao_socio)})</span>` : '')).join(' · ')}</div>`;
+        }
+        html += `</div>`;
+      });
+    });
+    html += `</div>`;
+
+    // Botões clicáveis no próprio app (rede de segurança + pra mandar o link junto)
+    const rotaBox = document.getElementById('prosRotaLinks');
+    if (rotaBox) {
+      rotaBox.innerHTML = mapsUrl
+        ? `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px">
+            <span style="font-size:12px;color:var(--muted)"><i class="fas fa-route"></i> Rota do PDF:</span>
+            <a class="btn btn-primary" href="${mapsUrl}" target="_blank" rel="noopener"><i class="fas fa-map-location-dot"></i> Google Maps (rota completa)</a>
+            ${wazeUrl ? `<a class="btn btn-ghost" href="${wazeUrl}" target="_blank" rel="noopener"><i class="fab fa-waze"></i> Waze (ponto mais próximo)</a>` : ''}
+          </div>`
+        : '';
+    }
+
+    // Rasteriza (html2canvas) e adiciona os links clicáveis por cima dos botões.
+    el.innerHTML = html;
+    el.style.cssText = 'position:fixed;left:-99999px;top:0;width:760px;background:#fff';
+    document.body.appendChild(el);
+    const nomeArq = 'Indicacao_clientes_' + (cidades.length === 1 ? cidades[0].replace(/[^a-zA-Z]/g, '') : 'varias') + '_' + new Date().toISOString().split('T')[0] + '.pdf';
+    const worker = html2pdf().set({ margin: 10, filename: nomeArq, pagebreak: { mode: ['css', 'legacy'] }, html2canvas: { scale: 2 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(el).toPdf();
+    await worker.get('pdf').then(pdf => {
+      // el tem 760px de largura e o conteúdo ocupa 190mm (A4 210 - 2×10 de margem).
+      const F = 190 / 760;
+      pdf.setPage(1);
+      const addLink = (id, url) => {
+        if (!url) return;
+        const b = el.querySelector('#' + id);
+        if (!b) return;
+        pdf.link(10 + b.offsetLeft * F, 10 + b.offsetTop * F, b.offsetWidth * F, b.offsetHeight * F, { url });
+      };
+      addLink('pdfRotaMapsBtn', mapsUrl);
+      addLink('pdfRotaWazeBtn', wazeUrl);
+    });
+    await worker.save();
     showToast('PDF de indicação gerado!', 'success');
   } catch (e) {
     showToast('Erro ao gerar o PDF: ' + (e.message || e), 'error');
   } finally {
+    el.remove();
     btn.disabled = false;
     btn.innerHTML = btnHtmlOrig;
   }
