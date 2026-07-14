@@ -9,8 +9,6 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" rel="preload" as="script">
   <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:ital,wght@0,300;0,400;0,500;0,600;0,700;0,900;1,300;1,400;1,500;1,600;1,700;1,900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
@@ -1334,7 +1332,7 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
             <i class="fas fa-ranking-star"></i> Ranking de leads (IA)
           </button>
           <button class="btn btn-success-outline hidden" id="btnMapaTodos" onclick="abrirMapaTodos()">
-            <i class="fas fa-map-location-dot"></i> Mapa + roteiro de visita
+            <i class="fas fa-route"></i> Roteiro de visita (Google Maps)
           </button>
           <button class="btn btn-success-outline hidden" id="btnRedeSocios" onclick="abrirRedeSocios()">
             <i class="fas fa-people-arrows"></i> Rede de sócios
@@ -1742,30 +1740,21 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
   </div>
 </div>
 
-<!-- MODAL: MAPA DE TERRITÓRIO + ROTEIRO -->
+<!-- MODAL: ROTEIRO DE VISITA (abre no Google Maps por endereço) -->
 <div class="modal-overlay" id="mapaTodosModal">
-  <div class="modal-box" style="max-width:900px">
+  <div class="modal-box" style="max-width:720px">
     <div class="modal-head">
       <div>
-        <p class="modal-head-razao">Mapa de território</p>
+        <p class="modal-head-razao">Roteiro de visita</p>
         <p class="modal-head-cnpj" id="mapaTodosResumo" style="color:var(--muted)"></p>
       </div>
       <button class="modal-close" onclick="closeModal('mapaTodosModal')"><i class="fas fa-times"></i></button>
     </div>
-    <div class="modal-body" style="padding:0">
-      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;padding:12px 24px">
-        <span style="font-size:12px;color:var(--muted)"><i class="fas fa-circle" style="color:#15803D;margin-right:4px"></i>Já é cliente Arcom</span>
-        <span style="font-size:12px;color:var(--muted)"><i class="fas fa-circle" style="color:#D13D29;margin-right:4px"></i>Prospect (não cliente)</span>
-        <span style="font-size:12px;color:var(--muted)"><i class="fas fa-circle" style="color:#636466;margin-right:4px"></i>Sem coordenadas / indefinido</span>
-      </div>
-      <div id="mapaTodos" style="width:100%;height:440px;background:var(--surface2)"></div>
-      <div id="roteiroLista" style="padding:12px 24px 0"></div>
+    <div class="modal-body">
+      <div id="roteiroConteudo"></div>
     </div>
     <div class="modal-footer-row">
       <button class="btn btn-ghost" onclick="closeModal('mapaTodosModal')">Fechar</button>
-      <button class="btn btn-primary" id="btnGerarRoteiro" onclick="gerarRoteiroVisita()">
-        <i class="fas fa-route"></i> Gerar roteiro de visita
-      </button>
     </div>
   </div>
 </div>
@@ -3112,13 +3101,20 @@ function usarGpsOrigemPDF() {
 }
 function confirmarOrigemEExportar() {
   const prospects = listaProspeccaoParaAcao();
+  // origem carrega: lat/lng (só nos bastidores, pra ordenar por proximidade) e
+  // urlPart (o que entra na URL da rota — endereço do bairro, ou a posição GPS
+  // do próprio assessor, que é a única forma de representar "onde estou").
   let origem = null;
   if (modoOrigemPDF === 'gps' && gpsOrigemPDF) {
-    origem = gpsOrigemPDF;
+    origem = { lat: gpsOrigemPDF.lat, lng: gpsOrigemPDF.lng, urlPart: `${gpsOrigemPDF.lat},${gpsOrigemPDF.lng}` };
   } else if (modoOrigemPDF === 'bairro') {
     const b = document.getElementById('origemBairro').value;
-    const pts = prospects.filter(p => p.bairro === b && p.latitude != null && p.longitude != null);
-    if (pts.length) origem = { lat: pts.reduce((s, p) => s + p.latitude, 0) / pts.length, lng: pts.reduce((s, p) => s + p.longitude, 0) / pts.length };
+    const noBairro = prospects.filter(p => p.bairro === b);
+    if (noBairro.length) {
+      origem = { urlPart: encodeURIComponent(`${b}, ${noBairro[0].cidade} - ${noBairro[0].uf}`) };
+      const comC = noBairro.filter(p => p.latitude != null && p.longitude != null);
+      if (comC.length) { origem.lat = comC.reduce((s, p) => s + p.latitude, 0) / comC.length; origem.lng = comC.reduce((s, p) => s + p.longitude, 0) / comC.length; }
+    }
   }
   closeModal('origemPdfModal');
   gerarIndicacaoPDF(prospects, origem);
@@ -3126,15 +3122,16 @@ function confirmarOrigemEExportar() {
 
 // Ordena por vizinho-mais-próximo a partir de uma origem (se null, começa no 1º ponto).
 function rotaProximidade(pontos, origem) {
+  const xy = p => ({ lat: (p.lat != null ? p.lat : p.latitude), lng: (p.lng != null ? p.lng : p.longitude) });
   const restantes = pontos.slice();
   const ordem = [];
-  let atual = origem;
-  if (!atual) { atual = restantes.shift(); if (atual) ordem.push(atual); }
+  let atual = origem ? { lat: origem.lat, lng: origem.lng } : null;
+  if (!atual) { const f = restantes.shift(); if (f) { ordem.push(f); atual = xy(f); } }
   while (restantes.length) {
     let iMin = 0, dMin = Infinity;
-    restantes.forEach((p, i) => { const d = distanciaKm(atual, { lat: p.latitude, lng: p.longitude }); if (d < dMin) { dMin = d; iMin = i; } });
-    atual = restantes.splice(iMin, 1)[0];
-    ordem.push(atual);
+    restantes.forEach((p, i) => { const d = distanciaKm(atual, xy(p)); if (d < dMin) { dMin = d; iMin = i; } });
+    const prox = restantes.splice(iMin, 1)[0];
+    ordem.push(prox); atual = xy(prox);
   }
   return ordem;
 }
@@ -3146,6 +3143,14 @@ async function gerarIndicacaoPDF(prospects, origem) {
   const btnHtmlOrig = btn.innerHTML;
   btn.innerHTML = '<span class="spinner"></span> Gerando PDF…';
   const el = document.createElement('div');
+  // Camada visível (coberta por um aviso) — o html2canvas renderia EM BRANCO se
+  // o elemento estivesse jogado pra fora da tela (left:-99999px). Aqui ele fica
+  // on-screen de verdade, atrás de um overlay "Gerando PDF…".
+  const palco = document.createElement('div');
+  palco.style.cssText = 'position:fixed;inset:0;z-index:99998;overflow:auto;background:#fff';
+  const aviso = document.createElement('div');
+  aviso.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.92);font-family:sans-serif;color:#007840;font-weight:700;font-size:16px';
+  aviso.innerHTML = '<div><span class="spinner"></span> Gerando PDF…</div>';
 
   try {
     // Enriquecimento: 1 chamada em lote pro quadro societário (não vem na Prospecção).
@@ -3162,17 +3167,24 @@ async function gerarIndicacaoPDF(prospects, origem) {
     const cidades = [...new Set(prospects.map(p => `${p.cidade} - ${p.uf}`))];
     const tituloCidade = cidades.length === 1 ? cidades[0] : cidades.join(' · ');
 
-    // Rota (proximidade global) pra Maps/Waze/QR
+    // Rota pra Maps/Waze/QR — SEMPRE por ENDEREÇO (nunca por lat/long).
+    // A coordenada (quando existe) só ordena "mais perto primeiro"; quem não
+    // tem coordenada é anexado no fim, mas entra na rota pelo endereço.
+    const temOrigemCoord = origem && origem.lat != null && origem.lng != null;
     const comCoord = prospects.filter(p => p.latitude != null && p.longitude != null);
-    const routeStops = rotaProximidade(comCoord, origem);
+    const semCoord = prospects.filter(p => (p.latitude == null || p.longitude == null) && p.endereco && p.endereco !== '—');
+    const routeStops = rotaProximidade(comCoord, temOrigemCoord ? { lat: origem.lat, lng: origem.lng } : null)
+      .concat(semCoord).filter(p => p.endereco && p.endereco !== '—');
     const MAX_STOPS = 9; // Google Maps aceita ~10 pontos por link (incl. origem)
-    const usados = routeStops.slice(0, MAX_STOPS).map(s => `${s.latitude},${s.longitude}`);
+    const usados = routeStops.slice(0, MAX_STOPS);
     let mapsUrl = '';
     if (usados.length) {
-      const partes = origem ? [`${origem.lat},${origem.lng}`, ...usados] : usados;
+      const partes = [];
+      if (origem && origem.urlPart) partes.push(origem.urlPart);
+      usados.forEach(p => partes.push(encodeURIComponent(p.endereco)));
       mapsUrl = 'https://www.google.com/maps/dir/' + partes.join('/');
     }
-    const wazeUrl = routeStops.length ? `https://waze.com/ul?ll=${routeStops[0].latitude},${routeStops[0].longitude}&navigate=yes` : '';
+    const wazeUrl = usados.length ? `https://waze.com/ul?q=${encodeURIComponent(usados[0].endereco)}&navigate=yes` : '';
 
     // QR code do Google Maps (imagem sobrevive à rasterização do PDF)
     let qrDataUrl = '';
@@ -3192,8 +3204,8 @@ async function gerarIndicacaoPDF(prospects, origem) {
       const chave = r.emoji + ' ' + r.label;
       (grupos[chave] = grupos[chave] || []).push(p);
     });
-    const distOrigem = p => (origem && p.latitude != null) ? distanciaKm(origem, { lat: p.latitude, lng: p.longitude }) : Infinity;
-    if (origem) Object.keys(grupos).forEach(k => grupos[k].sort((a, b) => distOrigem(a) - distOrigem(b)));
+    const distOrigem = p => (temOrigemCoord && p.latitude != null) ? distanciaKm({ lat: origem.lat, lng: origem.lng }, { lat: p.latitude, lng: p.longitude }) : Infinity;
+    if (temOrigemCoord) Object.keys(grupos).forEach(k => grupos[k].sort((a, b) => distOrigem(a) - distOrigem(b)));
 
     const logo = (document.querySelector('.login-logo img') || {}).src || '';
     let html = `<div style="font-family:'Red Hat Display',Arial,sans-serif;color:#1F4033;padding:8px 4px">`;
@@ -3228,7 +3240,7 @@ async function gerarIndicacaoPDF(prospects, origem) {
         const socios = (enr.socios || []).filter(s => s.nome_socio || s.nome);
         const fantasia = p.nomeFantasia && p.nomeFantasia.trim() ? ` <span style="color:#636466;font-weight:500">(${escapeHtml(p.nomeFantasia)})</span>` : '';
         const dist = distOrigem(p);
-        const distTxt = (origem && isFinite(dist)) ? ` <span style="color:#007840;font-weight:600">· ~${dist.toFixed(1)} km</span>` : '';
+        const distTxt = (temOrigemCoord && isFinite(dist)) ? ` <span style="color:#007840;font-weight:600">· ~${dist.toFixed(1)} km</span>` : '';
 
         html += `<div style="border:1px solid #E6E7E8;border-radius:8px;padding:10px 12px;margin-bottom:8px;page-break-inside:avoid">
           <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#007840;font-weight:600">${fmt(p.cnpj)}${distTxt}</div>
@@ -3258,10 +3270,12 @@ async function gerarIndicacaoPDF(prospects, origem) {
 
     // Rasteriza (html2canvas) e adiciona os links clicáveis por cima dos botões.
     el.innerHTML = html;
-    el.style.cssText = 'position:fixed;left:-99999px;top:0;width:760px;background:#fff';
-    document.body.appendChild(el);
+    el.style.cssText = 'position:relative;width:760px;margin:0 auto;background:#fff';
+    palco.appendChild(el);
+    document.body.appendChild(palco);
+    document.body.appendChild(aviso);
     const nomeArq = 'Indicacao_clientes_' + (cidades.length === 1 ? cidades[0].replace(/[^a-zA-Z]/g, '') : 'varias') + '_' + new Date().toISOString().split('T')[0] + '.pdf';
-    const worker = html2pdf().set({ margin: 10, filename: nomeArq, pagebreak: { mode: ['css', 'legacy'] }, html2canvas: { scale: 2 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(el).toPdf();
+    const worker = html2pdf().set({ margin: 10, filename: nomeArq, pagebreak: { mode: ['css', 'legacy'] }, html2canvas: { scale: 2, backgroundColor: '#ffffff', useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(el).toPdf();
     await worker.get('pdf').then(pdf => {
       // el tem 760px de largura e o conteúdo ocupa 190mm (A4 210 - 2×10 de margem).
       const F = 190 / 760;
@@ -3280,7 +3294,8 @@ async function gerarIndicacaoPDF(prospects, origem) {
   } catch (e) {
     showToast('Erro ao gerar o PDF: ' + (e.message || e), 'error');
   } finally {
-    el.remove();
+    palco.remove();
+    aviso.remove();
     btn.disabled = false;
     btn.innerHTML = btnHtmlOrig;
   }
@@ -4123,64 +4138,13 @@ function abrirMapaExterno() {
   window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapaQueryAtual)}`, '_blank');
 }
 
-// ── MAPA DE TERRITÓRIO + ROTEIRO DE VISITA ──────────────────────────────────
-// Usa só as coordenadas oficiais (RF) que a API já devolve. Empresas sem
-// lat/long não entram no mapa nem no roteiro (não inventamos localização).
-let mapaTodosLeaflet = null;
-let roteiroOrdenado = []; // [{cnpj, razao, lat, lng, clienteArcom}] na ordem otimizada
+// ── ROTEIRO DE VISITA (Consulta) ────────────────────────────────────────────
+// Abre SEMPRE pelo ENDEREÇO do CNPJ no Google Maps/Waze (nunca por lat/long).
+// A coordenada, quando existe, é usada só nos bastidores pra ordenar "mais
+// perto primeiro"; quem não tem coordenada vai pro fim, na ordem original.
+let roteiroOrdenado = [];
 
-function empresasComCoordenadas() {
-  return Object.keys(allData)
-    .map(cnpj => ({ cnpj, d: allData[cnpj] }))
-    .filter(({ d }) => d.latitude != null && d.longitude != null)
-    .map(({ cnpj, d }) => ({
-      cnpj, razao: d.razao, lat: d.latitude, lng: d.longitude,
-      clienteArcom: d.clienteArcom, situacao: d.situacao
-    }));
-}
-
-function abrirMapaTodos() {
-  const pontos = empresasComCoordenadas();
-  const totalConsultados = Object.keys(allData).length;
-  const semCoord = totalConsultados - pontos.length;
-  const resumo = document.getElementById('mapaTodosResumo');
-  resumo.textContent = `${pontos.length} de ${totalConsultados} empresa(s) com localização oficial`
-    + (semCoord ? ` · ${semCoord} sem coordenadas` : '');
-  document.getElementById('roteiroLista').innerHTML = '';
-  roteiroOrdenado = [];
-  document.getElementById('btnGerarRoteiro').disabled = pontos.length < 2;
-  openModal('mapaTodosModal');
-
-  // Leaflet precisa que o container já esteja visível pra calcular tamanho.
-  setTimeout(() => {
-    if (typeof L === 'undefined') {
-      document.getElementById('mapaTodos').innerHTML = '<p style="padding:24px;color:var(--muted)">Não foi possível carregar o mapa (biblioteca offline).</p>';
-      return;
-    }
-    if (mapaTodosLeaflet) { mapaTodosLeaflet.remove(); mapaTodosLeaflet = null; }
-    if (!pontos.length) {
-      document.getElementById('mapaTodos').innerHTML = '<p style="padding:24px;color:var(--muted)">Nenhuma empresa consultada tem coordenadas oficiais da Receita Federal pra exibir no mapa.</p>';
-      return;
-    }
-    document.getElementById('mapaTodos').innerHTML = '';
-    mapaTodosLeaflet = L.map('mapaTodos');
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap', maxZoom: 19
-    }).addTo(mapaTodosLeaflet);
-    const latlngs = [];
-    pontos.forEach(p => {
-      const cor = p.clienteArcom === 'Sim' ? '#15803D' : p.clienteArcom === 'Não' ? '#D13D29' : '#636466';
-      L.circleMarker([p.lat, p.lng], {
-        radius: 8, fillColor: cor, color: '#fff', weight: 2, opacity: 1, fillOpacity: 0.9
-      }).addTo(mapaTodosLeaflet)
-        .bindPopup(`<strong>${p.razao}</strong><br>${fmt(p.cnpj)}<br>${p.clienteArcom === 'Sim' ? '✅ Cliente Arcom' : '🎯 Prospect'} · ${p.situacao}`);
-      latlngs.push([p.lat, p.lng]);
-    });
-    mapaTodosLeaflet.fitBounds(latlngs, { padding: [40, 40], maxZoom: 15 });
-  }, 250);
-}
-
-// Distância aproximada em km entre dois pontos (Haversine).
+// Distância aproximada em km entre dois pontos (Haversine) — uso interno.
 function distanciaKm(a, b) {
   const R = 6371, rad = Math.PI / 180;
   const dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
@@ -4188,11 +4152,12 @@ function distanciaKm(a, b) {
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
-// Ordena os pontos por vizinho-mais-próximo (heurística de roteiro): começa
-// no primeiro e sempre segue pro ponto ainda não visitado mais perto.
+// Ordena por vizinho-mais-próximo quem tem coordenada; anexa sem-coordenada no fim.
 function ordenarPorProximidade(pontos) {
-  if (pontos.length <= 2) return pontos.slice();
-  const restantes = pontos.slice();
+  const comCoord = pontos.filter(p => p.lat != null && p.lng != null);
+  const semCoord = pontos.filter(p => p.lat == null || p.lng == null);
+  if (comCoord.length <= 2) return comCoord.concat(semCoord);
+  const restantes = comCoord.slice();
   const ordem = [restantes.shift()];
   while (restantes.length) {
     const atual = ordem[ordem.length - 1];
@@ -4200,38 +4165,53 @@ function ordenarPorProximidade(pontos) {
     restantes.forEach((p, i) => { const d = distanciaKm(atual, p); if (d < dMin) { dMin = d; iMin = i; } });
     ordem.push(restantes.splice(iMin, 1)[0]);
   }
-  return ordem;
+  return ordem.concat(semCoord);
 }
 
-function gerarRoteiroVisita() {
-  const pontos = empresasComCoordenadas();
-  if (pontos.length < 2) { showToast('São necessárias ao menos 2 empresas com localização.', 'error'); return; }
+function empresasParaRoteiro() {
+  return Object.keys(allData)
+    .map(cnpj => ({ cnpj, d: allData[cnpj] }))
+    .filter(({ d }) => d.endereco && d.endereco !== '—')
+    .map(({ cnpj, d }) => ({
+      cnpj, razao: d.razao, endereco: d.endereco, clienteArcom: d.clienteArcom,
+      lat: d.latitude, lng: d.longitude
+    }));
+}
+
+// URL do Google Maps por ENDEREÇO (não por coordenada).
+function urlMapsPorEndereco(paradas) {
+  return 'https://www.google.com/maps/dir/' + paradas.map(p => encodeURIComponent(p.endereco)).join('/');
+}
+function urlWazePorEndereco(endereco) {
+  return 'https://waze.com/ul?q=' + encodeURIComponent(endereco) + '&navigate=yes';
+}
+
+function abrirMapaTodos() {
+  const pontos = empresasParaRoteiro();
+  if (!pontos.length) { showToast('Nenhuma empresa consultada tem endereço pra montar a rota.', 'error'); return; }
   roteiroOrdenado = ordenarPorProximidade(pontos);
+  const totalConsultados = Object.keys(allData).length;
+  document.getElementById('mapaTodosResumo').textContent =
+    `${roteiroOrdenado.length} empresa(s) na rota (abre pelo endereço no Google Maps)`
+    + (roteiroOrdenado.length < totalConsultados ? ` · ${totalConsultados - roteiroOrdenado.length} sem endereço` : '');
 
-  // Google Maps aceita ~10 paradas por link. Acima disso, dividimos em trechos.
-  const MAX_PARADAS = 10;
-  const box = document.getElementById('roteiroLista');
-  let html = '<div class="modal-section-title" style="margin-bottom:8px"><i class="fas fa-route" style="color:var(--accent);margin-right:6px"></i>Roteiro sugerido (ordem por proximidade)</div>';
+  const MAX_PARADAS = 10; // teto do Google Maps por link
+  let html = '<div class="modal-section-title" style="margin-bottom:8px"><i class="fas fa-route" style="color:var(--accent);margin-right:6px"></i>Ordem sugerida (mais perto primeiro, quando há localização)</div>';
   html += '<ol style="margin:0 0 12px 18px;font-size:13px;line-height:1.7">'
-    + roteiroOrdenado.map(p => `<li>${p.razao} <span style="color:var(--muted)">— ${fmt(p.cnpj)}${p.clienteArcom==='Sim'?' · cliente':''}</span></li>`).join('')
+    + roteiroOrdenado.map(p => `<li>${p.razao} <span style="color:var(--muted)">— ${p.endereco}${p.clienteArcom==='Sim'?' · cliente':''}</span></li>`).join('')
     + '</ol>';
-
   const trechos = [];
-  for (let i = 0; i < roteiroOrdenado.length; i += MAX_PARADAS) {
-    trechos.push(roteiroOrdenado.slice(i, i + MAX_PARADAS));
-  }
-  html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">';
+  for (let i = 0; i < roteiroOrdenado.length; i += MAX_PARADAS) trechos.push(roteiroOrdenado.slice(i, i + MAX_PARADAS));
+  html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
   trechos.forEach((trecho, idx) => {
-    const url = 'https://www.google.com/maps/dir/' + trecho.map(p => `${p.lat},${p.lng}`).join('/');
-    const rotulo = trechos.length > 1 ? `Abrir trecho ${idx+1} (${trecho.length} paradas)` : 'Abrir rota no Google Maps';
-    html += `<a class="btn btn-primary" href="${url}" target="_blank" rel="noopener"><i class="fas fa-up-right-from-square"></i> ${rotulo}</a>`;
+    const rotulo = trechos.length > 1 ? `Abrir trecho ${idx+1} (${trecho.length})` : 'Abrir rota no Google Maps';
+    html += `<a class="btn btn-primary" href="${urlMapsPorEndereco(trecho)}" target="_blank" rel="noopener"><i class="fas fa-map-location-dot"></i> ${rotulo}</a>`;
   });
+  html += `<a class="btn btn-ghost" href="${urlWazePorEndereco(roteiroOrdenado[0].endereco)}" target="_blank" rel="noopener"><i class="fab fa-waze"></i> Waze (1º ponto)</a>`;
   html += '</div>';
-  if (trechos.length > 1) {
-    html += `<p style="font-size:11px;color:var(--muted)">O Google Maps aceita até ${MAX_PARADAS} paradas por rota — como há ${roteiroOrdenado.length}, o roteiro foi dividido em ${trechos.length} trechos.</p>`;
-  }
-  box.innerHTML = html;
-  showToast('Roteiro gerado — abra no Google Maps pra navegar.', 'success');
+  if (trechos.length > 1) html += `<p style="font-size:11px;color:var(--muted);margin-top:6px">O Google Maps aceita até ${MAX_PARADAS} paradas por rota — dividido em ${trechos.length} trecho(s).</p>`;
+  document.getElementById('roteiroConteudo').innerHTML = html;
+  openModal('mapaTodosModal');
 }
 
 // ── REDE DE SÓCIOS (vínculos entre empresas consultadas) ────────────────────
