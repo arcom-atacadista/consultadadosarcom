@@ -1593,6 +1593,7 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
       <div class="modal-section">
         <div class="modal-section-title"><i class="fas fa-building"></i> Informações Básicas</div>
         <div class="modal-grid">
+          <div class="modal-field" style="grid-column:1/-1"><label>Nome Fantasia</label><p id="detailNomeFantasia" style="font-weight:600"></p></div>
           <div class="modal-field"><label>Situação</label><p><span class="badge" id="detailSituacao"></span></p></div>
           <div class="modal-field"><label id="detailPorteLabel">Cliente Arcom</label><p id="detailPorte"></p></div>
           <div class="modal-field"><label>Porte</label><p id="detailPorteEmpresa"></p></div>
@@ -2756,14 +2757,30 @@ async function buscarProspeccao() {
           const cnpjLimpo = (emp.cnpj || '').replace(/\D/g, '');
           if (!cnpjLimpo || vistos.has(cnpjLimpo)) return;
           vistos.add(cnpjLimpo);
+          // Endereço: o GET já traz logradouro/numero/cep, mas antes só o
+          // bairro era guardado. Montamos o endereço completo pra validar a
+          // loja no mapa direto da Prospecção (sem ir na aba Consulta).
+          const logr = [emp.logradouro, emp.numero].filter(Boolean).join(', ');
+          const fim = [emp.bairro, municipio.descricao, uf].filter(Boolean).join(', ');
+          const endereco = (logr || fim) ? (logr + (fim ? ' - ' + fim : '')) : '';
+          const telefone = emp.telefone_1 ? `${emp.ddd_1 || ''}${emp.telefone_1}` : '';
           empresasEncontradas.push({
             cnpj: cnpjLimpo,
             razao: emp.razao_social || '—',
+            nomeFantasia: emp.nome_fantasia || '',
+            // Os 4 dígitos do meio do CNPJ são o número da filial (0001 = matriz).
+            // Um número alto = rede grande (ex: Americanas filial 0842).
+            ordemFilial: parseInt(cnpjLimpo.slice(8, 12), 10) || 1,
             // cnae_fiscal_principal vem como objeto {codigo, descricao} — o
             // código lia emp.cnae_fiscal_descricao (inexistente), deixando a
             // Atividade sempre em branco.
             atividade: (emp.cnae_fiscal_principal && emp.cnae_fiscal_principal.descricao) || '—',
             bairro: emp.bairro || '—',
+            endereco: endereco,
+            cep: emp.cep || '',
+            telefone: telefone,
+            email: emp.correio_eletronico || '',
+            porte: (emp.porte_empresa && emp.porte_empresa.descricao) || '',
             dataInicio: emp.data_inicio_atividade || '',
             latitude: (typeof emp.latitude === 'number') ? emp.latitude : null,
             longitude: (typeof emp.longitude === 'number') ? emp.longitude : null,
@@ -2814,29 +2831,83 @@ function toggleSomenteNovas() {
   renderProspeccaoResultado(prospeccaoUltimoResultado);
 }
 
+// Corte de grandes redes: por padrão ligado, escondendo empresas cuja filial
+// (nº do meio do CNPJ) seja >= o limite. Foco da Arcom é porte médio/baixo;
+// grandes redes têm setor próprio.
+let prosCortarRedes = true;
+let prosLimiteFiliais = 20;
+function eGrandeRede(emp) {
+  return prosCortarRedes && (emp.ordemFilial || 1) >= prosLimiteFiliais;
+}
+function toggleCortarRedes() {
+  prosCortarRedes = document.getElementById('chkCortarRedes').checked;
+  renderProspeccaoResultado(prospeccaoUltimoResultado);
+}
+function mudarLimiteFiliais() {
+  const v = parseInt(document.getElementById('inpLimiteFiliais').value, 10);
+  if (v >= 2) prosLimiteFiliais = v;
+  renderProspeccaoResultado(prospeccaoUltimoResultado);
+}
+
+// Telefone parece celular? (após o DDD, 9 dígitos começando com 9). Só nesse
+// caso faz sentido oferecer WhatsApp.
+function telMovel(tel) {
+  const d = (tel || '').replace(/\D/g, '');
+  if (d.length < 11) return false;
+  const num = d.slice(2);
+  return num.length === 9 && num[0] === '9';
+}
+// Botões de ação por linha da Prospecção: validar no mapa + contato clicável
+// (ligar / WhatsApp / e-mail, quando existem) + pré-cadastrar. Os dados de
+// contato já vêm da API — antes eram descartados.
+function botoesAcaoProspect(emp) {
+  let btns = `<button class="btn-eye" title="Ver no mapa (validar loja física)" onclick="abrirMapaProspect('${emp.cnpj}')"><i class="fas fa-map-location-dot"></i></button>`;
+  const tel = (emp.telefone || '').replace(/\D/g, '');
+  if (tel) {
+    btns += `<a class="btn-eye" title="Ligar para ${tel}" href="tel:${tel}"><i class="fas fa-phone"></i></a>`;
+    if (telMovel(tel)) btns += `<a class="btn-eye" title="WhatsApp" href="https://wa.me/55${tel}" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i></a>`;
+  }
+  if (emp.email) btns += `<a class="btn-eye" title="E-mail: ${emp.email}" href="mailto:${emp.email}"><i class="fas fa-envelope"></i></a>`;
+  btns += `<button class="btn-eye" title="Pré-cadastrar" onclick="abrirPreCadastro('${emp.cnpj}')"><i class="fas fa-user-plus"></i></button>`;
+  return btns;
+}
+
 function renderProspeccaoResultado(empresas) {
   const resultado = document.getElementById('prosResultado');
   const cidadesEnvolvidas = [...new Set(empresas.map(e => `${e.cidade}/${e.uf}`))];
-  const qtdNovas = empresas.filter(e => { const m = mesesDesdeAbertura(e.dataInicio); return m != null && m >= 0 && m <= RADAR_MESES_NOVA; }).length;
-  const lista = prosSomenteNovas
-    ? empresas.filter(e => { const m = mesesDesdeAbertura(e.dataInicio); return m != null && m >= 0 && m <= RADAR_MESES_NOVA; })
-    : empresas;
+  const eNova = e => { const m = mesesDesdeAbertura(e.dataInicio); return m != null && m >= 0 && m <= RADAR_MESES_NOVA; };
+
+  const qtdRedes = empresas.filter(e => (e.ordemFilial || 1) >= prosLimiteFiliais).length;
+  let lista = empresas;
+  if (prosCortarRedes) lista = lista.filter(e => !eGrandeRede(e));
+  const qtdNovas = lista.filter(eNova).length;
+  if (prosSomenteNovas) lista = lista.filter(eNova);
 
   let h = `<p style="font-size:12px;color:var(--muted);margin-bottom:6px">
       ${empresas.length} prospect(s) encontrado(s) em <strong>${cidadesEnvolvidas.join(', ')}</strong> — empresas ativas que ainda não são clientes Arcom.
     </p>`;
-  h += `<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:10px;cursor:pointer">
+  h += `<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">`;
+  h += `<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer">
+      <input type="checkbox" id="chkCortarRedes" ${prosCortarRedes?'checked':''} onchange="toggleCortarRedes()">
+      <i class="fas fa-ban" style="color:var(--red)"></i> Cortar grandes redes: esconder empresas com filial nº ≥
+      <input type="number" id="inpLimiteFiliais" value="${prosLimiteFiliais}" min="2" style="width:64px;padding:2px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-family:var(--mono)" onchange="mudarLimiteFiliais()" onclick="event.preventDefault()">
+      — <strong>${qtdRedes}</strong> cortada(s)
+    </label>`;
+  h += `<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer">
       <input type="checkbox" id="chkSomenteNovas" ${prosSomenteNovas?'checked':''} onchange="toggleSomenteNovas()">
       <i class="fas fa-seedling" style="color:var(--accent)"></i> Radar: mostrar só empresas novas (últimos ${RADAR_MESES_NOVA} meses) — <strong>${qtdNovas}</strong> encontrada(s)
     </label>`;
-  h += `<table style="width:100%"><thead><tr><th>CNPJ</th><th>Razão Social</th><th>Cidade</th><th>Atividade</th><th>Abertura</th><th></th></tr></thead><tbody>`;
+  h += `</div>`;
+  h += `<table style="width:100%"><thead><tr><th>CNPJ</th><th>Razão Social</th><th>Nome Fantasia</th><th>Cidade</th><th>Atividade</th><th>Filial nº</th><th>Abertura</th><th></th></tr></thead><tbody>`;
   lista.forEach(emp => {
     const abertura = emp.dataInicio ? emp.dataInicio.split('-').reverse().join('/') : '—';
-    h += `<tr><td>${fmt(emp.cnpj)}</td><td>${emp.razao}${badgeNova(emp.dataInicio)}<span data-precad-slot="${emp.cnpj}"></span></td><td style="font-size:12px;color:var(--muted)">${emp.cidade}/${emp.uf}</td><td style="font-size:12px;color:var(--muted)">${emp.atividade}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${abertura}</td>
-      <td><button class="btn-eye" onclick="abrirPreCadastro('${emp.cnpj}')"><i class="fas fa-user-plus"></i> Pré-cadastrar</button></td></tr>`;
+    const fantasia = emp.nomeFantasia && emp.nomeFantasia.trim() ? emp.nomeFantasia : '—';
+    const filialTxt = (emp.ordemFilial && emp.ordemFilial > 1) ? String(emp.ordemFilial) : (emp.ordemFilial === 1 ? 'matriz' : '—');
+    h += `<tr><td>${fmt(emp.cnpj)}</td><td>${emp.razao}${badgeNova(emp.dataInicio)}<span data-precad-slot="${emp.cnpj}"></span></td><td style="font-weight:600">${fantasia}</td><td style="font-size:12px;color:var(--muted)">${emp.cidade}/${emp.uf}</td><td style="font-size:12px;color:var(--muted)">${emp.atividade}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${filialTxt}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${abertura}</td>
+      <td class="td-actions">${botoesAcaoProspect(emp)}</td></tr>`;
   });
   h += '</tbody></table>';
-  if (!lista.length) h += '<p style="color:var(--muted);font-size:13px">Nenhuma empresa nova nesse filtro.</p>';
+  if (!lista.length) h += '<p style="color:var(--muted);font-size:13px">Nenhuma empresa nesse filtro.</p>';
   resultado.innerHTML = h;
   atualizarBadgePreCadastro(lista.map(e => e.cnpj));
 }
@@ -2866,10 +2937,22 @@ function renderConcentracaoBairro(empresas) {
     </div>`;
 }
 
+// Lista de prospects após aplicar os filtros ativos (corte de grandes redes,
+// radar de novas) — pra "Copiar CNPJs" bater com o que está na tela.
+function listaProspeccaoVisivel() {
+  const eNova = e => { const m = mesesDesdeAbertura(e.dataInicio); return m != null && m >= 0 && m <= RADAR_MESES_NOVA; };
+  let lista = prospeccaoUltimoResultado;
+  if (prosCortarRedes) lista = lista.filter(e => !eGrandeRede(e));
+  if (prosSomenteNovas) lista = lista.filter(eNova);
+  return lista;
+}
+
 function copiarProspeccao() {
-  if (!prospeccaoCNPJs.length) { showToast('Nenhum CNPJ encontrado.','error'); return; }
-  navigator.clipboard.writeText(prospeccaoCNPJs.join('\n'));
-  showToast(`${prospeccaoCNPJs.length} CNPJs copiados`,'success');
+  const lista = listaProspeccaoVisivel();
+  if (!lista.length) { showToast('Nenhum CNPJ na lista visível.','error'); return; }
+  navigator.clipboard.writeText(lista.map(e => e.cnpj).join('\n'));
+  const cortados = prospeccaoUltimoResultado.length - lista.length;
+  showToast(`${lista.length} CNPJs copiados${cortados ? ` (${cortados} ocultados pelos filtros)` : ''}`,'success');
 }
 
 // ── LISTAS SALVAS DE PROSPECÇÃO ─────────────────────────────────────────────
@@ -2966,7 +3049,7 @@ function atualizarBadgePreCadastro(cnpjOuLista) {
 function dadosParaPreCadastro(cnpj) {
   const prospect = prospeccaoUltimoResultado.find(e => e.cnpj === cnpj);
   if (prospect) {
-    return { razao: prospect.razao, atividade: prospect.atividade, municipio: prospect.cidade, uf: prospect.uf, telefone: '', email: '', nomeSugerido: '' };
+    return { razao: prospect.razao, atividade: prospect.atividade, municipio: prospect.cidade, uf: prospect.uf, telefone: prospect.telefone || '', email: prospect.email || '', nomeSugerido: '' };
   }
   const consulta = typeof allData !== 'undefined' ? allData[cnpj] : null;
   if (consulta) {
@@ -3093,9 +3176,9 @@ function renderListaPreCadastros(lista) {
       <td>${d.razao || '—'}</td>
       <td style="font-size:12px;color:var(--muted)">${d.municipio || '—'}/${d.uf || '—'}</td>
       <td>${c.nome || '—'}</td>
-      <td style="font-family:var(--mono);font-size:12px">${c.telefone || '—'}</td>
-      <td style="font-family:var(--mono);font-size:12px">${c.whatsapp || '—'}</td>
-      <td style="font-size:12px">${c.email || '—'}</td>
+      <td style="font-family:var(--mono);font-size:12px">${c.telefone ? `<a href="tel:${c.telefone.replace(/\D/g,'')}" title="Ligar">${c.telefone}</a>` : '—'}</td>
+      <td style="font-family:var(--mono);font-size:12px">${c.whatsapp ? `<a href="https://wa.me/55${c.whatsapp.replace(/\D/g,'')}" target="_blank" rel="noopener" title="WhatsApp" style="color:#25D366"><i class="fab fa-whatsapp"></i> ${c.whatsapp}</a>` : '—'}</td>
+      <td style="font-size:12px">${c.email ? `<a href="mailto:${c.email}">${c.email}</a>` : '—'}</td>
       <td style="font-size:12px;color:var(--muted)" title="${obs.replace(/"/g,'&quot;')}">${obsResumo || '—'}</td>
       <td style="font-size:12px;color:var(--muted)">${dataFmt}</td>
       <td style="font-size:12px;color:var(--muted)">${d.criadoPor || '—'}</td>
@@ -3357,7 +3440,7 @@ async function startVerification() {
     tbody.innerHTML+=`<tr id="row-${cnpj}">
       <td class="td-fav" onclick="toggleFavorite('${cnpj}',event)">${isFav}</td>
       <td class="td-cnpj">${fmt(cnpj)}</td>
-      <td class="td-razao">${result.razao}${cacheTagHtml}<span data-precad-slot="${cnpj}"></span></td>
+      <td class="td-razao">${result.razao}${cacheTagHtml}${(result.nomeFantasia && result.nomeFantasia!=='—') ? `<span style="display:block;font-size:11px;color:var(--muted)"><i class="fas fa-store" style="margin-right:3px"></i>${result.nomeFantasia}</span>` : ''}<span data-precad-slot="${cnpj}"></span></td>
       <td><span class="badge ${bc}">${result.situacao}</span></td>
       <td style="color:var(--muted);font-size:12px">${simNaoBadgeHTML(result.clienteArcom)}</td>
       <td style="color:var(--muted);font-size:12px;font-family:var(--mono)">${result.uf}</td>
@@ -3469,6 +3552,7 @@ function openDetailsModal(cnpj) {
   const bc=badgeClass(data.situacao);
   document.getElementById('detailCNPJ').textContent=fmt(cnpj);
   document.getElementById('detailRazao').textContent=data.razao;
+  document.getElementById('detailNomeFantasia').textContent=(data.nomeFantasia && data.nomeFantasia!=='—') ? data.nomeFantasia : '—';
   const sb=document.getElementById('detailSituacao');
   sb.textContent=data.situacao; sb.className='badge '+bc;
   document.getElementById('detailPorte').textContent=data.clienteArcom||'—';
@@ -3668,30 +3752,37 @@ function copiarCNPJsProblema() {
     .catch(()=>showToast('Erro ao copiar.','error'));
 }
 
-// ── MAPA (endereço do CNPJ consultado) ─────────────────────────────────────
-function abrirMapa(cnpj) {
-  const data = allData[cnpj];
+// ── MAPA (endereço do CNPJ) ────────────────────────────────────────────────
+// Núcleo compartilhado: abre o mapa a partir de um registro qualquer
+// ({cnpj, razao, nomeFantasia, endereco}) — serve tanto pra Consulta
+// (allData) quanto pra Prospecção (prospeccaoUltimoResultado).
+function abrirMapaComDados(data) {
   if (!data) return;
   const endereco = data.endereco || '';
   if (!endereco || endereco.trim()==='' || endereco.replace(/[—,\s-]/g,'')==='') {
-    alert('Endereço não disponível para esta empresa.');
+    showToast('Endereço não disponível para esta empresa.', 'error');
     return;
   }
   mapaEnderecoAtual = endereco;
-  // Se a API trouxe lat/long (derivada do endereço oficial na Receita Federal),
-  // fixa o pino exatamente nessas coordenadas. Sem coordenadas, cai na busca
-  // do Google pelo texto do endereço (menos preciso).
-  const temCoords = data.latitude != null && data.longitude != null;
-  mapaQueryAtual = temCoords ? `${data.latitude},${data.longitude}` : endereco;
-  const fonteNota = temCoords
-    ? '<span style="display:block;margin-top:6px;font-size:11px;color:var(--muted)"><i class="fas fa-circle-check" style="color:var(--accent);margin-right:4px"></i>Localização exata conforme cadastro na Receita Federal</span>'
-    : '<span style="display:block;margin-top:6px;font-size:11px;color:var(--muted)"><i class="fas fa-circle-info" style="margin-right:4px"></i>Localização aproximada pelo endereço (sem coordenadas oficiais)</span>';
-  document.getElementById('mapCNPJ').textContent = fmt(cnpj);
-  document.getElementById('mapRazao').textContent = data.razao;
-  document.getElementById('mapEndereco').innerHTML = `<i class="fas fa-map-pin" style="color:var(--accent);margin-right:5px"></i>${endereco}${fonteNota}`;
+  // Busca sempre pelo TEXTO do endereço (não pela lat/long) — o Google Maps
+  // casa o endereço com o ponto comercial cadastrado e mostra o local/loja
+  // (com Street View), que é o que serve pra validar se existe fisicamente.
+  mapaQueryAtual = endereco;
+  document.getElementById('mapCNPJ').textContent = fmt(data.cnpj);
+  document.getElementById('mapRazao').textContent = data.nomeFantasia && data.nomeFantasia !== '—' && data.nomeFantasia !== '' ? `${data.razao} · ${data.nomeFantasia}` : data.razao;
+  document.getElementById('mapEndereco').innerHTML = `<i class="fas fa-map-pin" style="color:var(--accent);margin-right:5px"></i>${endereco}`;
   document.getElementById('mapFrame').src =
-    `https://maps.google.com/maps?q=${encodeURIComponent(mapaQueryAtual)}&t=&z=${temCoords ? 17 : 15}&output=embed`;
+    `https://maps.google.com/maps?q=${encodeURIComponent(mapaQueryAtual)}&t=&z=16&output=embed`;
   openModal('mapModal');
+}
+function abrirMapa(cnpj) {
+  const data = allData[cnpj];
+  if (data) abrirMapaComDados({ ...data, cnpj });
+}
+// Chamado pela linha da Prospecção (o prospect não está em allData).
+function abrirMapaProspect(cnpj) {
+  const p = prospeccaoUltimoResultado.find(e => e.cnpj === cnpj);
+  if (p) abrirMapaComDados(p);
 }
 
 function abrirMapaExterno() {
