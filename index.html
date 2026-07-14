@@ -2728,6 +2728,7 @@ async function buscarProspeccao() {
   const concentracao = document.getElementById('prosConcentracao');
 
   concentracao.innerHTML = '';
+  prospeccaoSelecionados = new Set();
   document.getElementById('btnSalvarListaProspeccao').classList.add('hidden');
   document.getElementById('btnIndicacaoPDF').classList.add('hidden');
 
@@ -2861,6 +2862,39 @@ function mudarLimiteFiliais() {
   renderProspeccaoResultado(prospeccaoUltimoResultado);
 }
 
+// Seleção manual de prospects (pra gerar PDF/copiar só de alguns).
+let prospeccaoSelecionados = new Set();
+let prospeccaoVisivelAtual = []; // última lista renderizada (após filtros)
+function toggleSelecionadoProspect(cnpj, cb) {
+  if (cb.checked) prospeccaoSelecionados.add(cnpj); else prospeccaoSelecionados.delete(cnpj);
+  atualizarSelecaoProspect();
+}
+function toggleSelecionarTodosProspect(cb) {
+  prospeccaoVisivelAtual.forEach(e => { if (cb.checked) prospeccaoSelecionados.add(e.cnpj); else prospeccaoSelecionados.delete(e.cnpj); });
+  document.querySelectorAll('.chk-prospect').forEach(c => { c.checked = cb.checked; });
+  atualizarSelecaoProspect();
+}
+// Atualiza o contador e o estado do "selecionar todos" sem re-renderizar tudo.
+function atualizarSelecaoProspect() {
+  const el = document.getElementById('prospSelCount');
+  const n = prospeccaoSelecionados.size;
+  if (el) el.textContent = n ? `${n} selecionado(s) — PDF e "Copiar" usam só os marcados` : 'nenhum marcado — PDF e "Copiar" usam todos os visíveis';
+  const selTodos = document.getElementById('chkSelTodosProspect');
+  if (selTodos) {
+    const vis = prospeccaoVisivelAtual;
+    const marcadosVis = vis.filter(e => prospeccaoSelecionados.has(e.cnpj)).length;
+    selTodos.checked = vis.length > 0 && marcadosVis === vis.length;
+    selTodos.indeterminate = marcadosVis > 0 && marcadosVis < vis.length;
+  }
+}
+// Prospects que uma ação (PDF/copiar) deve usar: os marcados (∩ visíveis) ou,
+// se nada marcado, todos os visíveis.
+function listaProspeccaoParaAcao() {
+  const vis = listaProspeccaoVisivel();
+  if (prospeccaoSelecionados.size === 0) return vis;
+  return vis.filter(e => prospeccaoSelecionados.has(e.cnpj));
+}
+
 // Telefone parece celular? (após o DDD, 9 dígitos começando com 9). Só nesse
 // caso faz sentido oferecer WhatsApp.
 function telMovel(tel) {
@@ -2909,18 +2943,22 @@ function renderProspeccaoResultado(empresas) {
       <input type="checkbox" id="chkSomenteNovas" ${prosSomenteNovas?'checked':''} onchange="toggleSomenteNovas()">
       <i class="fas fa-seedling" style="color:var(--accent)"></i> Radar: mostrar só empresas novas (últimos ${RADAR_MESES_NOVA} meses) — <strong>${qtdNovas}</strong> encontrada(s)
     </label>`;
+  h += `<span style="font-size:12px;color:var(--accent)"><i class="fas fa-square-check"></i> <span id="prospSelCount"></span></span>`;
   h += `</div>`;
-  h += `<table style="width:100%"><thead><tr><th>CNPJ</th><th>Razão Social</th><th>Nome Fantasia</th><th>Cidade</th><th>Atividade</th><th>Filial nº</th><th>Abertura</th><th></th></tr></thead><tbody>`;
+  h += `<table style="width:100%"><thead><tr><th style="width:28px"><input type="checkbox" id="chkSelTodosProspect" title="Selecionar todos" onclick="toggleSelecionarTodosProspect(this)"></th><th>CNPJ</th><th>Razão Social</th><th>Nome Fantasia</th><th>Cidade</th><th>Atividade</th><th>Filial nº</th><th>Abertura</th><th></th></tr></thead><tbody>`;
   lista.forEach(emp => {
     const abertura = emp.dataInicio ? emp.dataInicio.split('-').reverse().join('/') : '—';
     const fantasia = emp.nomeFantasia && emp.nomeFantasia.trim() ? emp.nomeFantasia : '—';
     const filialTxt = (emp.ordemFilial && emp.ordemFilial > 1) ? String(emp.ordemFilial) : (emp.ordemFilial === 1 ? 'matriz' : '—');
-    h += `<tr><td>${fmt(emp.cnpj)}</td><td>${emp.razao}${badgeNova(emp.dataInicio)}<span data-precad-slot="${emp.cnpj}"></span></td><td style="font-weight:600">${fantasia}</td><td style="font-size:12px;color:var(--muted)">${emp.cidade}/${emp.uf}</td><td style="font-size:12px;color:var(--muted)">${emp.atividade}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${filialTxt}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${abertura}</td>
+    const marcado = prospeccaoSelecionados.has(emp.cnpj) ? 'checked' : '';
+    h += `<tr><td><input type="checkbox" class="chk-prospect" ${marcado} onclick="toggleSelecionadoProspect('${emp.cnpj}',this)"></td><td>${fmt(emp.cnpj)}</td><td>${emp.razao}${badgeNova(emp.dataInicio)}<span data-precad-slot="${emp.cnpj}"></span></td><td style="font-weight:600">${fantasia}</td><td style="font-size:12px;color:var(--muted)">${emp.cidade}/${emp.uf}</td><td style="font-size:12px;color:var(--muted)">${emp.atividade}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${filialTxt}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${abertura}</td>
       <td class="td-actions">${botoesAcaoProspect(emp)}</td></tr>`;
   });
   h += '</tbody></table>';
   if (!lista.length) h += '<p style="color:var(--muted);font-size:13px">Nenhuma empresa nesse filtro.</p>';
   resultado.innerHTML = h;
+  prospeccaoVisivelAtual = lista;
+  atualizarSelecaoProspect();
   atualizarBadgePreCadastro(lista.map(e => e.cnpj));
 }
 
@@ -2960,11 +2998,11 @@ function listaProspeccaoVisivel() {
 }
 
 function copiarProspeccao() {
-  const lista = listaProspeccaoVisivel();
-  if (!lista.length) { showToast('Nenhum CNPJ na lista visível.','error'); return; }
+  const lista = listaProspeccaoParaAcao();
+  if (!lista.length) { showToast('Nenhum CNPJ na lista.','error'); return; }
   navigator.clipboard.writeText(lista.map(e => e.cnpj).join('\n'));
-  const cortados = prospeccaoUltimoResultado.length - lista.length;
-  showToast(`${lista.length} CNPJs copiados${cortados ? ` (${cortados} ocultados pelos filtros)` : ''}`,'success');
+  const soSelecionados = prospeccaoSelecionados.size > 0;
+  showToast(`${lista.length} CNPJs copiados${soSelecionados ? ' (apenas os marcados)' : ''}`,'success');
 }
 
 // ── PDF "INDICAÇÃO DE CLIENTES" PARA OS CONSULTORES DE CAMPO ─────────────────
@@ -3019,8 +3057,8 @@ function escapeHtml(s) {
 }
 
 async function exportarIndicacaoPDF() {
-  const prospects = listaProspeccaoVisivel();
-  if (!prospects.length) { showToast('Nenhum prospect na lista visível.', 'error'); return; }
+  const prospects = listaProspeccaoParaAcao();
+  if (!prospects.length) { showToast('Nenhum prospect selecionado/visível.', 'error'); return; }
   const btn = document.getElementById('btnIndicacaoPDF');
   btn.disabled = true;
   const btnHtmlOrig = btn.innerHTML;
@@ -3140,6 +3178,7 @@ function carregarListaSalva(indice) {
   if (!lista) return;
   prospeccaoUltimoResultado = lista.empresas;
   prospeccaoCNPJs = lista.empresas.map(e => e.cnpj);
+  prospeccaoSelecionados = new Set();
   renderProspeccaoResultado(lista.empresas);
   renderConcentracaoBairro(lista.empresas);
   document.getElementById('btnSalvarListaProspeccao').classList.remove('hidden');
