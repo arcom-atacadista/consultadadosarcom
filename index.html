@@ -363,6 +363,12 @@
       color: #7C3AED;
     }
     .btn-purple:hover { background: rgba(124,58,237,.18); }
+    .btn-danger {
+      background: rgba(209,61,41,.1);
+      border-color: rgba(209,61,41,.3);
+      color: var(--red);
+    }
+    .btn-danger:hover { background: rgba(209,61,41,.18); }
     .btn:disabled { opacity: .5; cursor: not-allowed; }
     .btn-eye.btn-purple { background: rgba(124,58,237,.08); border-color: rgba(124,58,237,.3); color: #7C3AED; }
     .btn-eye.btn-purple:hover { border-color: #7C3AED; color: #7C3AED; }
@@ -1492,6 +1498,9 @@ Patos de Minas"></textarea>
           </button>
           <button class="btn btn-success-outline" onclick="copiarProspeccao()">
             <i class="fas fa-copy"></i> Copiar CNPJs
+          </button>
+          <button class="btn btn-danger hidden" id="btnIndicacaoPDF" onclick="exportarIndicacaoPDF()">
+            <i class="fas fa-file-pdf"></i> PDF Indicação (consultores)
           </button>
           <button class="btn btn-ghost hidden" id="btnSalvarListaProspeccao" onclick="salvarListaProspeccao()">
             <i class="fas fa-bookmark"></i> Salvar como lista
@@ -2720,6 +2729,7 @@ async function buscarProspeccao() {
 
   concentracao.innerHTML = '';
   document.getElementById('btnSalvarListaProspeccao').classList.add('hidden');
+  document.getElementById('btnIndicacaoPDF').classList.add('hidden');
 
   if (!cidadesRaw) { resultado.innerHTML = '<p>Informe ao menos uma cidade (uma por linha).</p>'; return; }
   if (!cnaesSelecionados.length) { resultado.innerHTML = '<p>Selecione ao menos um ramo (segure Ctrl/Cmd pra escolher vários).</p>'; return; }
@@ -2775,6 +2785,7 @@ async function buscarProspeccao() {
             // código lia emp.cnae_fiscal_descricao (inexistente), deixando a
             // Atividade sempre em branco.
             atividade: (emp.cnae_fiscal_principal && emp.cnae_fiscal_principal.descricao) || '—',
+            cnaeCodigo: (emp.cnae_fiscal_principal && emp.cnae_fiscal_principal.codigo) || '',
             bairro: emp.bairro || '—',
             endereco: endereco,
             cep: emp.cep || '',
@@ -2806,6 +2817,7 @@ async function buscarProspeccao() {
   renderProspeccaoResultado(empresasEncontradas);
   renderConcentracaoBairro(empresasEncontradas);
   document.getElementById('btnSalvarListaProspeccao').classList.remove('hidden');
+  document.getElementById('btnIndicacaoPDF').classList.remove('hidden');
   showToast(`${empresasEncontradas.length} prospect(s) encontrado(s)`, 'success');
 }
 
@@ -2955,6 +2967,137 @@ function copiarProspeccao() {
   showToast(`${lista.length} CNPJs copiados${cortados ? ` (${cortados} ocultados pelos filtros)` : ''}`,'success');
 }
 
+// ── PDF "INDICAÇÃO DE CLIENTES" PARA OS CONSULTORES DE CAMPO ─────────────────
+// Reproduz o modelo usado pela equipe: agrupado por ramo, com CNPJ, razão
+// social, endereço, CEP, telefone e quadro societário. Os sócios não vêm no
+// endpoint de Prospecção, então enriquecemos numa única chamada em lote.
+const RAMO_INFO = {
+  '4711302': { emoji: '🛒', label: 'Supermercados' },
+  '4771701': { emoji: '💊', label: 'Farmácias' },
+  '4761003': { emoji: '📒', label: 'Papelarias' },
+  '5611201': { emoji: '🍴', label: 'Restaurantes' },
+  '5611203': { emoji: '🍔', label: 'Lanchonetes' },
+  '5611204': { emoji: '🍕', label: 'Pizzarias' },
+  '4772500': { emoji: '💄', label: 'Perfumarias' },
+  '4520001': { emoji: '🔧', label: 'Oficinas Mecânicas' },
+  '4520002': { emoji: '🔧', label: 'Funilarias' },
+  '4520006': { emoji: '🛞', label: 'Borracharias' },
+  '4744099': { emoji: '🧱', label: 'Material de Construção' },
+  '4530703': { emoji: '🚗', label: 'Auto Peças' },
+  '4721102': { emoji: '🥖', label: 'Padarias' },
+  '4722901': { emoji: '🥩', label: 'Açougues' },
+  '4635403': { emoji: '🍺', label: 'Distribuidoras de Bebidas' },
+  '5510801': { emoji: '🏨', label: 'Hotéis' },
+  '5590603': { emoji: '🛏️', label: 'Pousadas' },
+  '9313100': { emoji: '🏋️', label: 'Academias' },
+  '4729699': { emoji: '🍦', label: 'Suplementos / Sorveterias' },
+  '4751201': { emoji: '💻', label: 'Lojas de Informática' },
+  '4752100': { emoji: '📱', label: 'Lojas de Celular' },
+  '4781400': { emoji: '👕', label: 'Lojas de Roupas' },
+  '4782201': { emoji: '👟', label: 'Lojas de Calçados' },
+  '8599601': { emoji: '🚸', label: 'Auto Escolas' },
+  '4930202': { emoji: '🚚', label: 'Transportadoras' },
+  '4731800': { emoji: '⛽', label: 'Postos de Combustível' },
+  '8630504': { emoji: '🦷', label: 'Dentistas' },
+  '8630503': { emoji: '🏥', label: 'Clínicas Médicas' },
+  '8640202': { emoji: '🔬', label: 'Laboratórios' },
+  '7500100': { emoji: '🐾', label: 'Veterinárias' },
+  '4789004': { emoji: '🐶', label: 'Pet Shops' },
+  '4120400': { emoji: '🏗️', label: 'Construtoras' },
+  '6821801': { emoji: '🏠', label: 'Imobiliárias' },
+  '6920601': { emoji: '📊', label: 'Contabilidades' },
+  '6911701': { emoji: '⚖️', label: 'Advocacia' },
+  '1813001': { emoji: '🖨️', label: 'Gráficas' },
+};
+function ramoDoCnae(codigo, atividade) {
+  if (codigo && RAMO_INFO[codigo]) return RAMO_INFO[codigo];
+  return { emoji: '🏢', label: atividade && atividade !== '—' ? atividade : 'Outros ramos' };
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+async function exportarIndicacaoPDF() {
+  const prospects = listaProspeccaoVisivel();
+  if (!prospects.length) { showToast('Nenhum prospect na lista visível.', 'error'); return; }
+  const btn = document.getElementById('btnIndicacaoPDF');
+  btn.disabled = true;
+  const btnHtmlOrig = btn.innerHTML;
+  btn.innerHTML = '<span class="spinner"></span> Gerando PDF…';
+
+  // Enriquecimento: 1 chamada em lote pra pegar o quadro societário (não vem
+  // no endpoint de Prospecção). Se falhar, seguimos sem sócios.
+  const porCnpj = {};
+  try {
+    const resultados = await consultarLoteArcomBruto(prospects.map(p => p.cnpj));
+    (resultados || []).forEach(item => {
+      if (item && item.found && item.data) porCnpj[(item.cnpj || '').replace(/\D/g, '')] = mapArcomBatchRecord(item.data, item.ja_cliente);
+    });
+  } catch (e) {
+    showToast('Não consegui buscar o quadro societário (sigo sem ele): ' + (e.message || e), 'info');
+  }
+
+  const cidades = [...new Set(prospects.map(p => `${p.cidade} - ${p.uf}`))];
+  const tituloCidade = cidades.length === 1 ? cidades[0] : cidades.join(' · ');
+
+  // Agrupa por ramo (CNAE)
+  const grupos = {};
+  prospects.forEach(p => {
+    const r = ramoDoCnae(p.cnaeCodigo, p.atividade);
+    const chave = r.emoji + ' ' + r.label;
+    (grupos[chave] = grupos[chave] || []).push(p);
+  });
+
+  const logo = (document.querySelector('.login-logo img') || {}).src || '';
+  let html = `<div style="font-family:'Red Hat Display',Arial,sans-serif;color:#1F4033;padding:8px 4px">`;
+  html += `<div style="display:flex;align-items:center;gap:12px;border-bottom:3px solid #007840;padding-bottom:10px;margin-bottom:16px">
+      ${logo ? `<img src="${logo}" style="height:46px;width:auto">` : ''}
+      <div>
+        <div style="font-size:20px;font-weight:800;color:#007840">Indicação de clientes para ${escapeHtml(tituloCidade)}</div>
+        <div style="font-size:11px;color:#636466">Gerado pela ferramenta CDA — ${prospects.length} empresa(s) · ${new Date().toLocaleDateString('pt-BR')}</div>
+      </div>
+    </div>`;
+
+  Object.keys(grupos).forEach(ramo => {
+    html += `<div style="font-size:16px;font-weight:700;margin:14px 0 8px;color:#1F4033">${escapeHtml(ramo)}:</div>`;
+    grupos[ramo].forEach(p => {
+      const enr = porCnpj[p.cnpj] || {};
+      const endereco = (enr.endereco && enr.endereco !== '—') ? enr.endereco : (p.endereco || '—');
+      const cep = (p.cep || (enr.cep && enr.cep !== '—' ? enr.cep : '')) || '';
+      const cepFmt = cep ? String(cep).replace(/\D/g, '').replace(/^(\d{5})(\d{3})$/, '$1-$2') : '—';
+      const telefone = p.telefone || (enr.telefone && enr.telefone !== '—' ? enr.telefone : '');
+      const socios = (enr.socios || []).filter(s => s.nome_socio || s.nome);
+      const fantasia = p.nomeFantasia && p.nomeFantasia.trim() ? ` <span style="color:#636466;font-weight:500">(${escapeHtml(p.nomeFantasia)})</span>` : '';
+
+      html += `<div style="border:1px solid #E6E7E8;border-radius:8px;padding:10px 12px;margin-bottom:8px;page-break-inside:avoid">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#007840;font-weight:600">${fmt(p.cnpj)}</div>
+        <div style="font-size:14px;font-weight:700">${escapeHtml(p.razao)}${fantasia}</div>
+        <div style="font-size:12px;margin-top:4px">📍 <strong>Endereço:</strong> ${escapeHtml(endereco)}</div>
+        <div style="font-size:12px">🏷️ <strong>CEP:</strong> ${escapeHtml(cepFmt)}</div>
+        <div style="font-size:12px">📞 <strong>Telefone:</strong> ${telefone ? escapeHtml(telefone) : '—'}</div>`;
+      if (socios.length) {
+        html += `<div style="font-size:12px;margin-top:4px"><strong>Quadro Societário:</strong> ${socios.map(s => escapeHtml(s.nome_socio || s.nome) + (s.qualificacao_socio ? ` <span style="color:#636466">(${escapeHtml(s.qualificacao_socio)})</span>` : '')).join(' · ')}</div>`;
+      }
+      html += `</div>`;
+    });
+  });
+  html += `</div>`;
+
+  const el = document.createElement('div');
+  el.innerHTML = html;
+  const nomeArq = 'Indicacao_clientes_' + (cidades.length === 1 ? cidades[0].replace(/[^a-zA-Z]/g, '') : 'varias') + '_' + new Date().toISOString().split('T')[0] + '.pdf';
+  try {
+    await html2pdf().set({ margin: 10, filename: nomeArq, pagebreak: { mode: ['css', 'legacy'] }, html2canvas: { scale: 2 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(el).save();
+    showToast('PDF de indicação gerado!', 'success');
+  } catch (e) {
+    showToast('Erro ao gerar o PDF: ' + (e.message || e), 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = btnHtmlOrig;
+  }
+}
+
 // ── LISTAS SALVAS DE PROSPECÇÃO ─────────────────────────────────────────────
 function getListasSalvas() { try { return JSON.parse(localStorage.getItem('prospeccaoListasSalvas') || '[]'); } catch { return []; } }
 function setListasSalvas(lista) { localStorage.setItem('prospeccaoListasSalvas', JSON.stringify(lista)); }
@@ -3000,6 +3143,7 @@ function carregarListaSalva(indice) {
   renderProspeccaoResultado(lista.empresas);
   renderConcentracaoBairro(lista.empresas);
   document.getElementById('btnSalvarListaProspeccao').classList.remove('hidden');
+  document.getElementById('btnIndicacaoPDF').classList.remove('hidden');
   closeModal('listasSalvasModal');
   showToast(`Lista "${lista.nome}" carregada`,'success');
 }
