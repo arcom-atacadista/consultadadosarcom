@@ -3143,6 +3143,14 @@ async function gerarIndicacaoPDF(prospects, origem) {
   const btnHtmlOrig = btn.innerHTML;
   btn.innerHTML = '<span class="spinner"></span> Gerando PDF…';
   const el = document.createElement('div');
+  // Camada visível (coberta por um aviso) — o html2canvas renderia EM BRANCO se
+  // o elemento estivesse jogado pra fora da tela (left:-99999px). Aqui ele fica
+  // on-screen de verdade, atrás de um overlay "Gerando PDF…".
+  const palco = document.createElement('div');
+  palco.style.cssText = 'position:fixed;inset:0;z-index:99998;overflow:auto;background:#fff';
+  const aviso = document.createElement('div');
+  aviso.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.92);font-family:sans-serif;color:#007840;font-weight:700;font-size:16px';
+  aviso.innerHTML = '<div><span class="spinner"></span> Gerando PDF…</div>';
 
   try {
     // Enriquecimento: 1 chamada em lote pro quadro societário (não vem na Prospecção).
@@ -3262,10 +3270,12 @@ async function gerarIndicacaoPDF(prospects, origem) {
 
     // Rasteriza (html2canvas) e adiciona os links clicáveis por cima dos botões.
     el.innerHTML = html;
-    el.style.cssText = 'position:fixed;left:-99999px;top:0;width:760px;background:#fff';
-    document.body.appendChild(el);
+    el.style.cssText = 'position:relative;width:760px;margin:0 auto;background:#fff';
+    palco.appendChild(el);
+    document.body.appendChild(palco);
+    document.body.appendChild(aviso);
     const nomeArq = 'Indicacao_clientes_' + (cidades.length === 1 ? cidades[0].replace(/[^a-zA-Z]/g, '') : 'varias') + '_' + new Date().toISOString().split('T')[0] + '.pdf';
-    const worker = html2pdf().set({ margin: 10, filename: nomeArq, pagebreak: { mode: ['css', 'legacy'] }, html2canvas: { scale: 2 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(el).toPdf();
+    const worker = html2pdf().set({ margin: 10, filename: nomeArq, pagebreak: { mode: ['css', 'legacy'] }, html2canvas: { scale: 2, backgroundColor: '#ffffff', useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(el).toPdf();
     await worker.get('pdf').then(pdf => {
       // el tem 760px de largura e o conteúdo ocupa 190mm (A4 210 - 2×10 de margem).
       const F = 190 / 760;
@@ -3284,7 +3294,8 @@ async function gerarIndicacaoPDF(prospects, origem) {
   } catch (e) {
     showToast('Erro ao gerar o PDF: ' + (e.message || e), 'error');
   } finally {
-    el.remove();
+    palco.remove();
+    aviso.remove();
     btn.disabled = false;
     btn.innerHTML = btnHtmlOrig;
   }
