@@ -2757,6 +2757,13 @@ async function buscarProspeccao() {
           const cnpjLimpo = (emp.cnpj || '').replace(/\D/g, '');
           if (!cnpjLimpo || vistos.has(cnpjLimpo)) return;
           vistos.add(cnpjLimpo);
+          // Endereço: o GET já traz logradouro/numero/cep, mas antes só o
+          // bairro era guardado. Montamos o endereço completo pra validar a
+          // loja no mapa direto da Prospecção (sem ir na aba Consulta).
+          const logr = [emp.logradouro, emp.numero].filter(Boolean).join(', ');
+          const fim = [emp.bairro, municipio.descricao, uf].filter(Boolean).join(', ');
+          const endereco = (logr || fim) ? (logr + (fim ? ' - ' + fim : '')) : '';
+          const telefone = emp.telefone_1 ? `${emp.ddd_1 || ''}${emp.telefone_1}` : '';
           empresasEncontradas.push({
             cnpj: cnpjLimpo,
             razao: emp.razao_social || '—',
@@ -2769,6 +2776,11 @@ async function buscarProspeccao() {
             // Atividade sempre em branco.
             atividade: (emp.cnae_fiscal_principal && emp.cnae_fiscal_principal.descricao) || '—',
             bairro: emp.bairro || '—',
+            endereco: endereco,
+            cep: emp.cep || '',
+            telefone: telefone,
+            email: emp.correio_eletronico || '',
+            porte: (emp.porte_empresa && emp.porte_empresa.descricao) || '',
             dataInicio: emp.data_inicio_atividade || '',
             latitude: (typeof emp.latitude === 'number') ? emp.latitude : null,
             longitude: (typeof emp.longitude === 'number') ? emp.longitude : null,
@@ -2837,6 +2849,29 @@ function mudarLimiteFiliais() {
   renderProspeccaoResultado(prospeccaoUltimoResultado);
 }
 
+// Telefone parece celular? (após o DDD, 9 dígitos começando com 9). Só nesse
+// caso faz sentido oferecer WhatsApp.
+function telMovel(tel) {
+  const d = (tel || '').replace(/\D/g, '');
+  if (d.length < 11) return false;
+  const num = d.slice(2);
+  return num.length === 9 && num[0] === '9';
+}
+// Botões de ação por linha da Prospecção: validar no mapa + contato clicável
+// (ligar / WhatsApp / e-mail, quando existem) + pré-cadastrar. Os dados de
+// contato já vêm da API — antes eram descartados.
+function botoesAcaoProspect(emp) {
+  let btns = `<button class="btn-eye" title="Ver no mapa (validar loja física)" onclick="abrirMapaProspect('${emp.cnpj}')"><i class="fas fa-map-location-dot"></i></button>`;
+  const tel = (emp.telefone || '').replace(/\D/g, '');
+  if (tel) {
+    btns += `<a class="btn-eye" title="Ligar para ${tel}" href="tel:${tel}"><i class="fas fa-phone"></i></a>`;
+    if (telMovel(tel)) btns += `<a class="btn-eye" title="WhatsApp" href="https://wa.me/55${tel}" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i></a>`;
+  }
+  if (emp.email) btns += `<a class="btn-eye" title="E-mail: ${emp.email}" href="mailto:${emp.email}"><i class="fas fa-envelope"></i></a>`;
+  btns += `<button class="btn-eye" title="Pré-cadastrar" onclick="abrirPreCadastro('${emp.cnpj}')"><i class="fas fa-user-plus"></i></button>`;
+  return btns;
+}
+
 function renderProspeccaoResultado(empresas) {
   const resultado = document.getElementById('prosResultado');
   const cidadesEnvolvidas = [...new Set(empresas.map(e => `${e.cidade}/${e.uf}`))];
@@ -2869,7 +2904,7 @@ function renderProspeccaoResultado(empresas) {
     const fantasia = emp.nomeFantasia && emp.nomeFantasia.trim() ? emp.nomeFantasia : '—';
     const filialTxt = (emp.ordemFilial && emp.ordemFilial > 1) ? String(emp.ordemFilial) : (emp.ordemFilial === 1 ? 'matriz' : '—');
     h += `<tr><td>${fmt(emp.cnpj)}</td><td>${emp.razao}${badgeNova(emp.dataInicio)}<span data-precad-slot="${emp.cnpj}"></span></td><td style="font-weight:600">${fantasia}</td><td style="font-size:12px;color:var(--muted)">${emp.cidade}/${emp.uf}</td><td style="font-size:12px;color:var(--muted)">${emp.atividade}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${filialTxt}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${abertura}</td>
-      <td><button class="btn-eye" onclick="abrirPreCadastro('${emp.cnpj}')"><i class="fas fa-user-plus"></i> Pré-cadastrar</button></td></tr>`;
+      <td class="td-actions">${botoesAcaoProspect(emp)}</td></tr>`;
   });
   h += '</tbody></table>';
   if (!lista.length) h += '<p style="color:var(--muted);font-size:13px">Nenhuma empresa nesse filtro.</p>';
@@ -3014,7 +3049,7 @@ function atualizarBadgePreCadastro(cnpjOuLista) {
 function dadosParaPreCadastro(cnpj) {
   const prospect = prospeccaoUltimoResultado.find(e => e.cnpj === cnpj);
   if (prospect) {
-    return { razao: prospect.razao, atividade: prospect.atividade, municipio: prospect.cidade, uf: prospect.uf, telefone: '', email: '', nomeSugerido: '' };
+    return { razao: prospect.razao, atividade: prospect.atividade, municipio: prospect.cidade, uf: prospect.uf, telefone: prospect.telefone || '', email: prospect.email || '', nomeSugerido: '' };
   }
   const consulta = typeof allData !== 'undefined' ? allData[cnpj] : null;
   if (consulta) {
@@ -3141,9 +3176,9 @@ function renderListaPreCadastros(lista) {
       <td>${d.razao || '—'}</td>
       <td style="font-size:12px;color:var(--muted)">${d.municipio || '—'}/${d.uf || '—'}</td>
       <td>${c.nome || '—'}</td>
-      <td style="font-family:var(--mono);font-size:12px">${c.telefone || '—'}</td>
-      <td style="font-family:var(--mono);font-size:12px">${c.whatsapp || '—'}</td>
-      <td style="font-size:12px">${c.email || '—'}</td>
+      <td style="font-family:var(--mono);font-size:12px">${c.telefone ? `<a href="tel:${c.telefone.replace(/\D/g,'')}" title="Ligar">${c.telefone}</a>` : '—'}</td>
+      <td style="font-family:var(--mono);font-size:12px">${c.whatsapp ? `<a href="https://wa.me/55${c.whatsapp.replace(/\D/g,'')}" target="_blank" rel="noopener" title="WhatsApp" style="color:#25D366"><i class="fab fa-whatsapp"></i> ${c.whatsapp}</a>` : '—'}</td>
+      <td style="font-size:12px">${c.email ? `<a href="mailto:${c.email}">${c.email}</a>` : '—'}</td>
       <td style="font-size:12px;color:var(--muted)" title="${obs.replace(/"/g,'&quot;')}">${obsResumo || '—'}</td>
       <td style="font-size:12px;color:var(--muted)">${dataFmt}</td>
       <td style="font-size:12px;color:var(--muted)">${d.criadoPor || '—'}</td>
@@ -3717,27 +3752,37 @@ function copiarCNPJsProblema() {
     .catch(()=>showToast('Erro ao copiar.','error'));
 }
 
-// ── MAPA (endereço do CNPJ consultado) ─────────────────────────────────────
-function abrirMapa(cnpj) {
-  const data = allData[cnpj];
+// ── MAPA (endereço do CNPJ) ────────────────────────────────────────────────
+// Núcleo compartilhado: abre o mapa a partir de um registro qualquer
+// ({cnpj, razao, nomeFantasia, endereco}) — serve tanto pra Consulta
+// (allData) quanto pra Prospecção (prospeccaoUltimoResultado).
+function abrirMapaComDados(data) {
   if (!data) return;
   const endereco = data.endereco || '';
   if (!endereco || endereco.trim()==='' || endereco.replace(/[—,\s-]/g,'')==='') {
-    alert('Endereço não disponível para esta empresa.');
+    showToast('Endereço não disponível para esta empresa.', 'error');
     return;
   }
   mapaEnderecoAtual = endereco;
   // Busca sempre pelo TEXTO do endereço (não pela lat/long) — o Google Maps
   // casa o endereço com o ponto comercial cadastrado e mostra o local/loja
   // (com Street View), que é o que serve pra validar se existe fisicamente.
-  // Coordenadas cravam um pino "cego", sem contexto de negócio.
   mapaQueryAtual = endereco;
-  document.getElementById('mapCNPJ').textContent = fmt(cnpj);
-  document.getElementById('mapRazao').textContent = data.nomeFantasia && data.nomeFantasia !== '—' ? `${data.razao} · ${data.nomeFantasia}` : data.razao;
+  document.getElementById('mapCNPJ').textContent = fmt(data.cnpj);
+  document.getElementById('mapRazao').textContent = data.nomeFantasia && data.nomeFantasia !== '—' && data.nomeFantasia !== '' ? `${data.razao} · ${data.nomeFantasia}` : data.razao;
   document.getElementById('mapEndereco').innerHTML = `<i class="fas fa-map-pin" style="color:var(--accent);margin-right:5px"></i>${endereco}`;
   document.getElementById('mapFrame').src =
     `https://maps.google.com/maps?q=${encodeURIComponent(mapaQueryAtual)}&t=&z=16&output=embed`;
   openModal('mapModal');
+}
+function abrirMapa(cnpj) {
+  const data = allData[cnpj];
+  if (data) abrirMapaComDados({ ...data, cnpj });
+}
+// Chamado pela linha da Prospecção (o prospect não está em allData).
+function abrirMapaProspect(cnpj) {
+  const p = prospeccaoUltimoResultado.find(e => e.cnpj === cnpj);
+  if (p) abrirMapaComDados(p);
 }
 
 function abrirMapaExterno() {
