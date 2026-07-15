@@ -1212,6 +1212,54 @@
       padding: 12px; margin-bottom: 12px; max-height: 180px; overflow-y: auto;
     }
     .export-cols label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); cursor: pointer; }
+
+    /* ═══════════════ MICRO-ANIMAÇÕES ═══════════════ */
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+    @keyframes fadeIn   { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes popIn    { 0% { opacity: 0; transform: translateY(10px) scale(.97); } 100% { opacity: 1; transform: none; } }
+
+    /* troca de aba: conteúdo entra suave */
+    .tab-panel.active { animation: fadeInUp .34s cubic-bezier(.2,.7,.3,1); }
+
+    /* tela inicial (cover) */
+    .cover-inner { animation: fadeInUp .55s cubic-bezier(.2,.7,.3,1); }
+    .cover-chip { transition: transform .2s ease, border-color .2s ease, background .2s ease; }
+    .cover-chip:hover { transform: translateY(-2px); }
+
+    /* modais entram com leve pop */
+    .modal-overlay.open { animation: fadeIn .18s ease; }
+    .modal-overlay.open .modal-box { animation: popIn .3s cubic-bezier(.2,.8,.25,1); }
+
+    /* cartões de estatística — entrada escalonada */
+    .stats-row .stat-card { animation: fadeInUp .5s ease backwards; }
+    .stats-row .stat-card:nth-child(1) { animation-delay: .04s; }
+    .stats-row .stat-card:nth-child(2) { animation-delay: .09s; }
+    .stats-row .stat-card:nth-child(3) { animation-delay: .14s; }
+    .stats-row .stat-card:nth-child(4) { animation-delay: .19s; }
+    .stats-row .stat-card:nth-child(5) { animation-delay: .24s; }
+
+    /* linhas da tabela aparecem suave */
+    #tbody tr { animation: fadeIn .3s ease; }
+
+    /* botões: leve elevação no hover + feedback no clique */
+    .btn:hover  { transform: translateY(-1px); }
+    .btn:active { transform: translateY(0) scale(.98); }
+
+    /* navegação: item desliza no hover (expandida) / ícone dá um pop (mini-rail) */
+    .page:not(.nav-collapsed) .nav-item:hover { transform: translateX(3px); }
+    .page.nav-collapsed .nav-item { transition: transform .18s ease, background .2s ease; }
+    .page.nav-collapsed .nav-item:hover { transform: scale(1.1); }
+    #navToggle i { transition: transform .25s ease; }
+
+    /* respeita quem prefere menos movimento */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .001ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
   </style>
 </head>
 <body>
