@@ -2492,7 +2492,7 @@ const atividadesCol = db.collection('atividades_log'); // histórico geral: {uid
 
 // Usuário logado no momento (nome vem do Firestore) — usado no histórico de atividades.
 let usuarioAtual = null;
-let loginRegistrado = false; // evita registrar "login" mais de uma vez por carregamento de página
+let loginIntencional = false; // true só quando o usuário DIGITA e-mail/senha (não em refresh/restauração de sessão)
 
 // Registra um evento no histórico de atividades do site (login, consulta, prospecção, etc.).
 async function registrarAtividade(tipo, detalhe) {
@@ -2573,7 +2573,8 @@ async function mostrarApp(userDoc) {
     email: auth.currentUser ? auth.currentUser.email : '',
     uid: auth.currentUser ? auth.currentUser.uid : ''
   };
-  if (!loginRegistrado) { loginRegistrado = true; registrarAtividade('login', 'entrou no sistema'); }
+  // Só registra "login" quando foi um login intencional (e-mail/senha), não em F5/refresh
+  if (loginIntencional) { loginIntencional = false; registrarAtividade('login', 'entrou no sistema'); }
   atualizarCotaUsuario();
   carregarCnpjsPreCadastrados();
 }
@@ -2601,9 +2602,11 @@ async function tentarLogin(event) {
   const errBox = document.getElementById('loginError');
   errBox.style.display = 'none';
   try {
+    loginIntencional = true; // marca que foi um login de verdade (não um refresh)
     await auth.signInWithEmailAndPassword(email, senha);
     // onAuthStateChanged cuida do resto (checar status e mostrar tela certa)
   } catch (e) {
+    loginIntencional = false; // falhou: não conta como login
     let msg = 'Não foi possível entrar. Verifique seu e-mail e senha.';
     if (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found') {
       msg = 'E-mail ou senha incorretos.';
