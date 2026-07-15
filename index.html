@@ -4642,11 +4642,17 @@ function mapSetView(view) {
   geocodeEndereco(montarQueryGeocode(d)).then(coord => {
     if (token !== mapSvToken) return; // já abriram outro CNPJ; ignora esta resposta
     if (coord) {
+      // 1º: coordenada precisa do geocode do endereço
       aviso.style.display = 'none';
       frame.style.display = 'block';
       frame.src = `https://maps.google.com/maps?q=&layer=c&cbll=${coord.lat},${coord.lng}&cbp=12,0,0,0,0&output=svembed`;
+    } else if (typeof d.latitude === 'number' && typeof d.longitude === 'number') {
+      // 2º: não achou o endereço -> usa a coordenada da API (menos precisa, como antes)
+      aviso.style.display = 'none';
+      frame.style.display = 'block';
+      frame.src = `https://maps.google.com/maps?q=&layer=c&cbll=${d.latitude},${d.longitude}&cbp=12,0,0,0,0&output=svembed`;
     } else {
-      // Não achou o endereço: cai pro mapa (local correto), com aviso.
+      // 3º: sem geocode e sem coordenada -> cai pro mapa (local correto), com aviso.
       frame.style.display = 'block';
       aviso.style.display = 'none';
       frame.src = `https://maps.google.com/maps?q=${endQ}&t=&z=17&output=embed`;
