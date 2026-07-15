@@ -195,9 +195,11 @@
     .topbar-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,120,64,.08); }
 
     
-    .page { display: grid; grid-template-columns: 280px 1fr; min-height: calc(100vh - 56px); position: relative; z-index: 1; }
+    .page { display: grid; grid-template-columns: 280px 1fr; min-height: calc(100vh - 56px); position: relative; z-index: 1; transition: grid-template-columns .25s ease; }
+    .page.nav-collapsed { grid-template-columns: 0 1fr; }
+    .page.nav-collapsed .sidebar { padding-left: 0; padding-right: 0; }
 
-    
+
     .sidebar {
       background: var(--accent2);
       border-right: none;
@@ -205,7 +207,23 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
+      overflow: hidden;
+      white-space: nowrap;
     }
+    /* botão de recolher/expandir a navegação */
+    .nav-toggle {
+      width: 36px; height: 36px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; flex-shrink: 0;
+      transition: all .2s;
+    }
+    .nav-toggle:hover { color: var(--text); border-color: var(--border-lit); }
+    [data-theme="dark"] .nav-toggle:hover { border-color: var(--lima); color: var(--lima); background: rgba(186,230,79,.08); }
     .sidebar-label {
       font-size: 10px;
       font-weight: 600;
@@ -1287,6 +1305,7 @@
 
 <!-- TOPBAR -->
 <nav class="topbar">
+  <button class="nav-toggle" id="navToggle" onclick="toggleSidebar()" title="Recolher/expandir menu"><i class="fas fa-bars"></i></button>
   <a class="topbar-brand" href="#">
     <span class="logo-dot"><img src="data:image/png;base64,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" alt="ARCOM"></span>
     <span>/ CDA (Consulta dados Arcom)</span>
@@ -2085,6 +2104,26 @@ function toggleDarkMode() {
   if (btn) btn.innerHTML = novo ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
 }
 applyDarkModePreference(); // aplica assim que o script roda, evitando "flash" de tela clara
+
+// ── RECOLHER / EXPANDIR NAVEGAÇÃO ───────────────────────────────────────────
+function toggleSidebar() {
+  const page = document.querySelector('.page');
+  if (!page) return;
+  const collapsed = page.classList.toggle('nav-collapsed');
+  localStorage.setItem('navCollapsed', String(collapsed));
+  const icon = document.querySelector('#navToggle i');
+  if (icon) icon.className = collapsed ? 'fas fa-bars-staggered' : 'fas fa-bars';
+}
+function applySidebarPreference() {
+  const page = document.querySelector('.page');
+  if (!page) return;
+  if (localStorage.getItem('navCollapsed') === 'true') {
+    page.classList.add('nav-collapsed');
+    const icon = document.querySelector('#navToggle i');
+    if (icon) icon.className = 'fas fa-bars-staggered';
+  }
+}
+applySidebarPreference();
 
 // ── APARÊNCIA (cores + partículas) ───────────────────────────────────────────
 const DEFAULT_ACCENT  = '#007840';
