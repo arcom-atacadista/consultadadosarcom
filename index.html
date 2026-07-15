@@ -1924,6 +1924,9 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
           <button class="map-tab active" id="mapTabRua" onclick="mapSetView('rua')"><i class="fas fa-street-view"></i> Fachada (Street View)</button>
           <button class="map-tab" id="mapTabMapa" onclick="mapSetView('mapa')"><i class="fas fa-map"></i> Mapa</button>
         </div>
+        <div id="mapSvNota" style="display:none;font-size:11.5px;color:var(--yellow);background:rgba(180,83,9,.10);border:1px solid rgba(180,83,9,.25);border-radius:8px;padding:7px 10px;margin-bottom:10px">
+          <i class="fas fa-triangle-exclamation"></i> Posição <strong>aproximada</strong> na rua — o número exato pode variar. Confira o ponto certo na aba <strong>Mapa</strong>.
+        </div>
       </div>
       <iframe id="mapFrame"
         width="100%" height="380" style="border:0;display:block"
@@ -4602,14 +4605,19 @@ function montarQueryGeocode(d) {
   return [logradouro, cidade, uf].filter(Boolean).join(', ');
 }
 
-// Geocodifica um endereço (OpenStreetMap/Nominatim — grátis, sem chave). Retorna {lat,lng} ou null.
+// Geocodifica um endereço (OpenStreetMap/Nominatim — grátis, sem chave).
+// Retorna {lat,lng,precise} — precise=true quando casou o NÚMERO da casa.
 async function geocodeEndereco(query) {
   if (!query) return null;
   if (geocodeCache[query] !== undefined) return geocodeCache[query];
   try {
-    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${encodeURIComponent(query)}`, { headers: { 'Accept': 'application/json' } });
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&countrycodes=br&q=${encodeURIComponent(query)}`, { headers: { 'Accept': 'application/json' } });
     const arr = await r.json();
-    const res = (arr && arr[0]) ? { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon) } : null;
+    let res = null;
+    if (arr && arr[0]) {
+      const temNumero = !!(arr[0].address && arr[0].address.house_number);
+      res = { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon), precise: temNumero };
+    }
     geocodeCache[query] = res;
     return res;
   } catch (e) {
@@ -4626,7 +4634,11 @@ function mapSetView(view) {
   document.getElementById('mapTabMapa').classList.toggle('active', view === 'mapa');
   const endQ = encodeURIComponent(mapaQueryAtual || d.endereco || '');
 
+  const nota = document.getElementById('mapSvNota');
+  const svUrl = (lat, lng) => `https://maps.google.com/maps?q=&layer=c&cbll=${lat},${lng}&cbp=12,0,0,0,0&output=svembed`;
+
   if (view === 'mapa') {
+    if (nota) nota.style.display = 'none';
     aviso.style.display = 'none';
     frame.style.display = 'block';
     frame.src = `https://maps.google.com/maps?q=${endQ}&t=&z=17&output=embed`;
@@ -4636,25 +4648,29 @@ function mapSetView(view) {
   // Fachada (Street View): geocodifica o endereço -> coordenada precisa -> panorama.
   // (o svembed do Google só entra em Street View com coordenada `cbll`.)
   const token = ++mapSvToken;
+  if (nota) nota.style.display = 'none';
   frame.style.display = 'none';
   aviso.style.display = 'block';
   aviso.innerHTML = `<i class="fas fa-street-view" style="font-size:22px;color:var(--accent);margin-bottom:8px;display:block"></i> Carregando a fachada…`;
   geocodeEndereco(montarQueryGeocode(d)).then(coord => {
     if (token !== mapSvToken) return; // já abriram outro CNPJ; ignora esta resposta
     if (coord) {
-      // 1º: coordenada precisa do geocode do endereço
+      // 1º: coordenada do geocode do endereço (avisa se não casou o número exato)
       aviso.style.display = 'none';
       frame.style.display = 'block';
-      frame.src = `https://maps.google.com/maps?q=&layer=c&cbll=${coord.lat},${coord.lng}&cbp=12,0,0,0,0&output=svembed`;
+      frame.src = svUrl(coord.lat, coord.lng);
+      if (nota) nota.style.display = coord.precise ? 'none' : 'block';
     } else if (typeof d.latitude === 'number' && typeof d.longitude === 'number') {
       // 2º: não achou o endereço -> usa a coordenada da API (menos precisa, como antes)
       aviso.style.display = 'none';
       frame.style.display = 'block';
-      frame.src = `https://maps.google.com/maps?q=&layer=c&cbll=${d.latitude},${d.longitude}&cbp=12,0,0,0,0&output=svembed`;
+      frame.src = svUrl(d.latitude, d.longitude);
+      if (nota) nota.style.display = 'block';
     } else {
       // 3º: sem geocode e sem coordenada -> cai pro mapa (local correto), com aviso.
       frame.style.display = 'block';
       aviso.style.display = 'none';
+      if (nota) nota.style.display = 'none';
       frame.src = `https://maps.google.com/maps?q=${endQ}&t=&z=17&output=embed`;
       showToast('Street View indisponível para este endereço — mostrando o mapa.', 'info');
     }
