@@ -4580,23 +4580,85 @@ function abrirMapaComDados(data) {
   openModal('mapModal');
 }
 
+// Cache de geocodificação por endereço (evita chamadas repetidas ao Nominatim).
+var geocodeCache = {};
+var mapSvToken = 0;
+
+// Monta uma query limpa para geocodificar: "logradouro, número, cidade, UF"
+// (sem o bairro, que atrapalha o Nominatim).
+function montarQueryGeocode(d) {
+  const end = (d.endereco || '').trim();
+  const logradouro = end.split(' - ')[0].trim(); // "R. Domingos Dorázio, 190"
+  let cidade = d.cidade || d.municipio || '';
+  let uf = d.uf || '';
+  if (!cidade || !uf) {
+    const segs = end.split(' - ');
+    if (!uf && segs.length) uf = segs[segs.length - 1].trim();
+    if (!cidade && segs.length >= 2) {
+      const meio = segs[segs.length - 2].split(',');
+      cidade = meio[meio.length - 1].trim();
+    }
+  }
+  return [logradouro, cidade, uf].filter(Boolean).join(', ');
+}
+
+// Geocodifica um endereço (OpenStreetMap/Nominatim — grátis, sem chave). Retorna {lat,lng} ou null.
+async function geocodeEndereco(query) {
+  if (!query) return null;
+  if (geocodeCache[query] !== undefined) return geocodeCache[query];
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${encodeURIComponent(query)}`, { headers: { 'Accept': 'application/json' } });
+    const arr = await r.json();
+    const res = (arr && arr[0]) ? { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon) } : null;
+    geocodeCache[query] = res;
+    return res;
+  } catch (e) {
+    geocodeCache[query] = null;
+    return null;
+  }
+}
+
 function mapSetView(view) {
   const d = mapViewData; if (!d) return;
   const frame = document.getElementById('mapFrame');
   const aviso = document.getElementById('mapSvAviso');
   document.getElementById('mapTabRua').classList.toggle('active', view === 'rua');
   document.getElementById('mapTabMapa').classList.toggle('active', view === 'mapa');
-  aviso.style.display = 'none';
-  frame.style.display = 'block';
-  // IMPORTANTE: tanto o mapa quanto a fachada abrem pelo ENDEREÇO do CNPJ.
-  // A coordenada (latitude/longitude) da API de prospecção é imprecisa e às vezes
-  // repete entre empresas — usá-la fazia a fachada vir igual pra CNPJs diferentes.
-  const q = encodeURIComponent(mapaQueryAtual || d.endereco || '');
-  if (view === 'rua') {
-    frame.src = `https://maps.google.com/maps?q=${q}&layer=c&output=svembed`;
-  } else {
-    frame.src = `https://maps.google.com/maps?q=${q}&t=&z=17&output=embed`;
+  const endQ = encodeURIComponent(mapaQueryAtual || d.endereco || '');
+
+  if (view === 'mapa') {
+    aviso.style.display = 'none';
+    frame.style.display = 'block';
+    frame.src = `https://maps.google.com/maps?q=${endQ}&t=&z=17&output=embed`;
+    return;
   }
+
+  // Fachada (Street View): geocodifica o endereço -> coordenada precisa -> panorama.
+  // (o svembed do Google só entra em Street View com coordenada `cbll`.)
+  const token = ++mapSvToken;
+  frame.style.display = 'none';
+  aviso.style.display = 'block';
+  aviso.innerHTML = `<i class="fas fa-street-view" style="font-size:22px;color:var(--accent);margin-bottom:8px;display:block"></i> Carregando a fachada…`;
+  geocodeEndereco(montarQueryGeocode(d)).then(coord => {
+    if (token !== mapSvToken) return; // já abriram outro CNPJ; ignora esta resposta
+    if (coord) {
+      // 1º: coordenada precisa do geocode do endereço
+      aviso.style.display = 'none';
+      frame.style.display = 'block';
+      frame.src = `https://maps.google.com/maps?q=&layer=c&cbll=${coord.lat},${coord.lng}&cbp=12,0,0,0,0&output=svembed`;
+    } else if (typeof d.latitude === 'number' && typeof d.longitude === 'number') {
+      // 2º: não achou o endereço -> usa a coordenada da API (menos precisa, como antes)
+      aviso.style.display = 'none';
+      frame.style.display = 'block';
+      frame.src = `https://maps.google.com/maps?q=&layer=c&cbll=${d.latitude},${d.longitude}&cbp=12,0,0,0,0&output=svembed`;
+    } else {
+      // 3º: sem geocode e sem coordenada -> cai pro mapa (local correto), com aviso.
+      frame.style.display = 'block';
+      aviso.style.display = 'none';
+      frame.src = `https://maps.google.com/maps?q=${endQ}&t=&z=17&output=embed`;
+      showToast('Street View indisponível para este endereço — mostrando o mapa.', 'info');
+    }
+  });
 }
 function abrirMapa(cnpj) {
   const data = allData[cnpj];
