@@ -1212,6 +1212,73 @@
       padding: 12px; margin-bottom: 12px; max-height: 180px; overflow-y: auto;
     }
     .export-cols label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); cursor: pointer; }
+
+    /* validação de loja física no modal de mapa */
+    .map-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+    .map-tab {
+      flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
+      padding: 9px 12px; border-radius: var(--radius-sm); cursor: pointer;
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--muted); font-family: var(--font); font-size: 13px; font-weight: 600;
+      transition: all .18s;
+    }
+    .map-tab:hover { color: var(--text); transform: translateY(-1px); }
+    .map-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .map-veredicto {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 10px 12px; font-size: 12.5px; color: var(--muted);
+      margin-bottom: 12px;
+    }
+    .map-veredicto .mv-sinais { line-height: 1.45; }
+
+    /* ═══════════════ MICRO-ANIMAÇÕES ═══════════════ */
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+    @keyframes fadeIn   { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes popIn    { 0% { opacity: 0; transform: translateY(10px) scale(.97); } 100% { opacity: 1; transform: none; } }
+
+    /* troca de aba: conteúdo entra suave */
+    .tab-panel.active { animation: fadeInUp .34s cubic-bezier(.2,.7,.3,1); }
+
+    /* tela inicial (cover) */
+    .cover-inner { animation: fadeInUp .55s cubic-bezier(.2,.7,.3,1); }
+    .cover-chip { transition: transform .2s ease, border-color .2s ease, background .2s ease; }
+    .cover-chip:hover { transform: translateY(-2px); }
+
+    /* modais entram com leve pop */
+    .modal-overlay.open { animation: fadeIn .18s ease; }
+    .modal-overlay.open .modal-box { animation: popIn .3s cubic-bezier(.2,.8,.25,1); }
+
+    /* cartões de estatística — entrada escalonada */
+    .stats-row .stat-card { animation: fadeInUp .5s ease backwards; }
+    .stats-row .stat-card:nth-child(1) { animation-delay: .04s; }
+    .stats-row .stat-card:nth-child(2) { animation-delay: .09s; }
+    .stats-row .stat-card:nth-child(3) { animation-delay: .14s; }
+    .stats-row .stat-card:nth-child(4) { animation-delay: .19s; }
+    .stats-row .stat-card:nth-child(5) { animation-delay: .24s; }
+
+    /* linhas da tabela aparecem suave */
+    #tbody tr { animation: fadeIn .3s ease; }
+
+    /* botões: leve elevação no hover + feedback no clique */
+    .btn:hover  { transform: translateY(-1px); }
+    .btn:active { transform: translateY(0) scale(.98); }
+
+    /* navegação: item desliza no hover (expandida) / ícone dá um pop (mini-rail) */
+    .page:not(.nav-collapsed) .nav-item:hover { transform: translateX(3px); }
+    .page.nav-collapsed .nav-item { transition: transform .18s ease, background .2s ease; }
+    .page.nav-collapsed .nav-item:hover { transform: scale(1.1); }
+    #navToggle i { transition: transform .25s ease; }
+
+    /* respeita quem prefere menos movimento */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .001ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -1344,6 +1411,21 @@
       <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
         <p style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px"><i class="fas fa-list-check"></i> Log de consultas (últimas 20)</p>
         <div id="adminLogList"><p style="color:var(--muted);font-size:13px">Carregando...</p></div>
+      </div>
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;flex-wrap:wrap">
+          <p style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.6px;margin:0"><i class="fas fa-clock-rotate-left"></i> Histórico de atividades (últimas 60)</p>
+          <select id="filtroAtividade" onchange="renderHistoricoAtividades()" class="regional-input" style="width:auto;padding:4px 8px;font-size:12px">
+            <option value="">Todos os tipos</option>
+            <option value="login">Login</option>
+            <option value="consulta">Consulta</option>
+            <option value="prospeccao">Prospecção</option>
+            <option value="razao_social">Razão social</option>
+            <option value="precadastro">Pré-cadastro</option>
+            <option value="pdf_indicacao">PDF de indicação</option>
+          </select>
+        </div>
+        <div id="adminAtividadesList"><p style="color:var(--muted);font-size:13px">Carregando...</p></div>
       </div>
     </div>
   </div>
@@ -1788,11 +1870,17 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
     <div class="modal-body" style="padding:0">
       <div style="padding:16px 24px 0">
         <p style="font-size:12px;color:var(--muted);margin-bottom:12px" id="mapEndereco">—</p>
+        <div id="mapVeredicto" class="map-veredicto" style="display:none"></div>
+        <div class="map-tabs">
+          <button class="map-tab active" id="mapTabRua" onclick="mapSetView('rua')"><i class="fas fa-street-view"></i> Fachada (Street View)</button>
+          <button class="map-tab" id="mapTabMapa" onclick="mapSetView('mapa')"><i class="fas fa-map"></i> Mapa</button>
+        </div>
       </div>
       <iframe id="mapFrame"
         width="100%" height="380" style="border:0;display:block"
         loading="lazy" referrerpolicy="no-referrer-when-downgrade">
       </iframe>
+      <div id="mapSvAviso" style="display:none;padding:28px 24px;text-align:center;color:var(--muted);font-size:13px;line-height:1.5"></div>
     </div>
     <div class="modal-footer-row">
       <button class="btn btn-ghost" onclick="closeModal('mapModal')">Fechar</button>
@@ -2372,6 +2460,28 @@ const auth = firebase.auth();
 const db = firebase.firestore();
 const usersCol = db.collection('usuarios'); // uma doc por usuário, id = uid, campos: nome, email, motivo, status, criadoEm
 const logsCol = db.collection('consultas_log'); // uma doc por lote de verificação, campos: uid, email, cnpjs, quantidade, criadoEm
+const atividadesCol = db.collection('atividades_log'); // histórico geral: {uid, email, nome, tipo, detalhe, criadoEm}
+
+// Usuário logado no momento (nome vem do Firestore) — usado no histórico de atividades.
+let usuarioAtual = null;
+let loginRegistrado = false; // evita registrar "login" mais de uma vez por carregamento de página
+
+// Registra um evento no histórico de atividades do site (login, consulta, prospecção, etc.).
+async function registrarAtividade(tipo, detalhe) {
+  try {
+    if (!auth.currentUser) return;
+    await atividadesCol.add({
+      uid: auth.currentUser.uid,
+      email: auth.currentUser.email,
+      nome: (usuarioAtual && usuarioAtual.nome) || '',
+      tipo: tipo,
+      detalhe: detalhe || '',
+      criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  } catch (e) {
+    console.error('Erro ao registrar atividade:', e);
+  }
+}
 
 function mostrarTelaInicial() {
   document.getElementById('coverScreen').style.display = 'flex';
@@ -2428,6 +2538,12 @@ async function mostrarApp(userDoc) {
   // Admin = e-mail fixo (super admin) OU campo isAdmin=true no Firestore (promovido pelo painel)
   const isAdmin = (auth.currentUser && auth.currentUser.email === ADMIN_EMAIL) || !!(userDoc && userDoc.isAdmin);
   document.getElementById('btnAdminPainel').style.display = isAdmin ? '' : 'none';
+  usuarioAtual = {
+    nome: (userDoc && userDoc.nome) || '',
+    email: auth.currentUser ? auth.currentUser.email : '',
+    uid: auth.currentUser ? auth.currentUser.uid : ''
+  };
+  if (!loginRegistrado) { loginRegistrado = true; registrarAtividade('login', 'entrou no sistema'); }
   atualizarCotaUsuario();
   carregarCnpjsPreCadastrados();
 }
@@ -2516,6 +2632,44 @@ async function abrirAdminPainel() {
   openModal('adminModal');
   await renderAdminPainel();
   await renderLogConsultasAdmin();
+  await renderHistoricoAtividades();
+}
+
+// Histórico geral de atividades do site (login, consulta, prospecção, etc.) — só admin.
+const ATIVIDADE_META = {
+  login:         { icon: 'fa-right-to-bracket', label: 'Login',            cor: '#4ADE80' },
+  consulta:      { icon: 'fa-magnifying-glass', label: 'Consulta',         cor: '#22D3EE' },
+  prospeccao:    { icon: 'fa-bullseye',         label: 'Prospecção',       cor: '#FBBF24' },
+  razao_social:  { icon: 'fa-building',         label: 'Razão social',     cor: '#A78BFA' },
+  precadastro:   { icon: 'fa-user-plus',        label: 'Pré-cadastro',     cor: '#4ADE80' },
+  pdf_indicacao: { icon: 'fa-file-pdf',         label: 'PDF de indicação', cor: '#F87171' }
+};
+async function renderHistoricoAtividades() {
+  const box = document.getElementById('adminAtividadesList');
+  if (!box) return;
+  const filtro = (document.getElementById('filtroAtividade') || {}).value || '';
+  box.innerHTML = '<p style="color:var(--muted);font-size:13px">Carregando...</p>';
+  try {
+    const snap = await atividadesCol.orderBy('criadoEm', 'desc').limit(200).get();
+    if (snap.empty) { box.innerHTML = '<p style="color:var(--muted);font-size:13px">Nenhuma atividade registrada ainda.</p>'; return; }
+    let docs = snap.docs.map(d => d.data());
+    if (filtro) docs = docs.filter(d => d.tipo === filtro);
+    docs = docs.slice(0, 60);
+    if (!docs.length) { box.innerHTML = '<p style="color:var(--muted);font-size:13px">Nenhuma atividade desse tipo.</p>'; return; }
+    box.innerHTML = docs.map(d => {
+      const meta = ATIVIDADE_META[d.tipo] || { icon: 'fa-circle-info', label: d.tipo || 'Atividade', cor: 'var(--muted)' };
+      const ts = d.criadoEm && d.criadoEm.toDate ? d.criadoEm.toDate().toLocaleString('pt-BR') : '—';
+      const quem = d.nome ? `${escapeHtml(d.nome)} <span style="color:var(--muted)">(${escapeHtml(d.email || '')})</span>` : escapeHtml(d.email || '—');
+      return `<div class="req-item">
+        <div class="req-item-info">
+          <strong><i class="fas ${meta.icon}" style="color:${meta.cor};margin-right:6px"></i>${meta.label} — ${quem}</strong>
+          <p>${escapeHtml(d.detalhe || '')} · ${ts}</p>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    box.innerHTML = `<p style="color:var(--muted);font-size:13px">Erro ao carregar histórico: ${e.message}</p>`;
+  }
 }
 
 async function renderAdminPainel() {
@@ -2582,6 +2736,7 @@ async function registrarLogConsulta(cnpjs) {
       quantidade: cnpjs.length,
       criadoEm: firebase.firestore.FieldValue.serverTimestamp()
     });
+    registrarAtividade('consulta', `${cnpjs.length} CNPJ(s) consultado(s)`);
     atualizarCotaUsuario();
   } catch (e) {
     console.error('Erro ao registrar log de consulta:', e);
@@ -2962,6 +3117,8 @@ async function buscarProspeccao() {
   document.getElementById('btnSalvarListaProspeccao').classList.remove('hidden');
   document.getElementById('btnIndicacaoPDF').classList.remove('hidden');
   showToast(`${empresasEncontradas.length} prospect(s) encontrado(s)`, 'success');
+  const cidadesTxt = cidades.map(c => `${c.cidade}/${c.uf}`).join(', ');
+  registrarAtividade('prospeccao', `${empresasEncontradas.length} prospect(s) · ${cidadesTxt} · ${cnaesBusca.length} ramo(s)`);
 }
 
 // Radar de empresas novas: quantos meses desde a abertura (null se sem data).
@@ -3049,7 +3206,7 @@ function telMovel(tel) {
 // (ligar / WhatsApp / e-mail, quando existem) + pré-cadastrar. Os dados de
 // contato já vêm da API — antes eram descartados.
 function botoesAcaoProspect(emp) {
-  let btns = `<button class="btn-eye" title="Ver no mapa (validar loja física)" onclick="abrirMapaProspect('${emp.cnpj}')"><i class="fas fa-map-location-dot"></i></button>`;
+  let btns = `<button class="btn-eye" title="Ver a fachada (Street View) — validar se é loja física" onclick="abrirMapaProspect('${emp.cnpj}')"><i class="fas fa-street-view"></i></button>`;
   const tel = (emp.telefone || '').replace(/\D/g, '');
   if (tel) {
     btns += `<a class="btn-eye" title="Ligar para ${tel}" href="tel:${tel}"><i class="fas fa-phone"></i></a>`;
@@ -3460,6 +3617,7 @@ async function gerarIndicacaoPDF(prospects, origem) {
     });
     await worker.save();
     showToast('PDF de indicação gerado!', 'success');
+    registrarAtividade('pdf_indicacao', `Gerou PDF de indicação com ${prospects.length} empresa(s)`);
   } catch (e) {
     showToast('Erro ao gerar o PDF: ' + (e.message || e), 'error');
   } finally {
@@ -3639,6 +3797,7 @@ async function salvarPreCadastro() {
       });
       closeModal('preCadastroModal');
       showToast('Pré-cadastro atualizado com sucesso.', 'success');
+      registrarAtividade('precadastro', `Atualizou pré-cadastro ${fmt(cnpj)}`);
       abrirListaPreCadastros();
     } else {
       const emp = dadosParaPreCadastro(cnpj) || {};
@@ -3653,6 +3812,7 @@ async function salvarPreCadastro() {
       atualizarBadgePreCadastro(cnpj);
       closeModal('preCadastroModal');
       showToast('Pré-cadastro salvo com sucesso.', 'success');
+      registrarAtividade('precadastro', `Pré-cadastrou ${emp.razao || fmt(cnpj)}`);
     }
   } catch (e) {
     showToast('Erro ao salvar pré-cadastro: ' + (e.message || e), 'error');
@@ -3829,6 +3989,7 @@ async function buscarPorRazaoSocial() {
   statusEl.textContent = `Concluído — ${nomes.length} razão(ões) social(is) consultada(s)`;
   pctEl.textContent = '100%';
   barEl.style.width = '100%';
+  registrarAtividade('razao_social', `${nomes.length} razão(ões) social(is) buscada(s)`);
 
   renderResultadoRazaoSocial();
 }
@@ -4273,6 +4434,8 @@ function copiarCNPJsProblema() {
 // Núcleo compartilhado: abre o mapa a partir de um registro qualquer
 // ({cnpj, razao, nomeFantasia, endereco}) — serve tanto pra Consulta
 // (allData) quanto pra Prospecção (prospeccaoUltimoResultado).
+var mapViewData = null;
+
 function abrirMapaComDados(data) {
   if (!data) return;
   const endereco = data.endereco || '';
@@ -4280,17 +4443,56 @@ function abrirMapaComDados(data) {
     showToast('Endereço não disponível para esta empresa.', 'error');
     return;
   }
+  mapViewData = data;
   mapaEnderecoAtual = endereco;
   // Busca sempre pelo TEXTO do endereço (não pela lat/long) — o Google Maps
-  // casa o endereço com o ponto comercial cadastrado e mostra o local/loja
-  // (com Street View), que é o que serve pra validar se existe fisicamente.
+  // casa o endereço com o ponto comercial cadastrado e mostra o local/loja.
   mapaQueryAtual = endereco;
   document.getElementById('mapCNPJ').textContent = fmt(data.cnpj);
   document.getElementById('mapRazao').textContent = data.nomeFantasia && data.nomeFantasia !== '—' && data.nomeFantasia !== '' ? `${data.razao} · ${data.nomeFantasia}` : data.razao;
   document.getElementById('mapEndereco').innerHTML = `<i class="fas fa-map-pin" style="color:var(--accent);margin-right:5px"></i>${endereco}`;
-  document.getElementById('mapFrame').src =
-    `https://maps.google.com/maps?q=${encodeURIComponent(mapaQueryAtual)}&t=&z=16&output=embed`;
+
+  // Faixa de veredicto (score "provável loja física") quando temos os sinais do prospect
+  const vBox = document.getElementById('mapVeredicto');
+  try {
+    if (data.cnaeCodigo !== undefined) {
+      const sc = scoreLojaFisica(data);
+      vBox.style.display = 'flex';
+      vBox.innerHTML = `${badgePotencial(sc)} <span class="mv-sinais"><strong>Provável loja física:</strong> ${sc.chips.length ? sc.chips.join(' · ') : 'poucos sinais'}. Confirme na fachada abaixo 👇</span>`;
+    } else { vBox.style.display = 'none'; }
+  } catch (e) { vBox.style.display = 'none'; }
+
+  // View inicial: abre direto na FACHADA (Street View) quando há coordenada — é o
+  // que mata a dúvida de "é loja física?". Sem coordenada, começa no mapa.
+  const temCoord = (typeof data.latitude === 'number' && typeof data.longitude === 'number');
+  mapSetView(temCoord ? 'rua' : 'mapa');
   openModal('mapModal');
+}
+
+function mapSetView(view) {
+  const d = mapViewData; if (!d) return;
+  const frame = document.getElementById('mapFrame');
+  const aviso = document.getElementById('mapSvAviso');
+  document.getElementById('mapTabRua').classList.toggle('active', view === 'rua');
+  document.getElementById('mapTabMapa').classList.toggle('active', view === 'mapa');
+  const temCoord = (typeof d.latitude === 'number' && typeof d.longitude === 'number');
+  if (view === 'rua') {
+    if (temCoord) {
+      aviso.style.display = 'none';
+      frame.style.display = 'block';
+      frame.src = `https://maps.google.com/maps?q=&layer=c&cbll=${d.latitude},${d.longitude}&cbp=12,0,0,0,0&output=svembed`;
+    } else {
+      frame.style.display = 'none';
+      aviso.style.display = 'block';
+      aviso.innerHTML = `<i class="fas fa-street-view" style="font-size:24px;color:var(--accent);margin-bottom:10px;display:block"></i>
+        Sem coordenada pra abrir a fachada aqui dentro.<br>
+        Clique em <strong>"Abrir no Google Maps"</strong> e arraste o boneco amarelo até a rua pra ver a fachada.`;
+    }
+  } else {
+    aviso.style.display = 'none';
+    frame.style.display = 'block';
+    frame.src = `https://maps.google.com/maps?q=${encodeURIComponent(mapaQueryAtual)}&t=&z=17&output=embed`;
+  }
 }
 function abrirMapa(cnpj) {
   const data = allData[cnpj];
@@ -4303,6 +4505,13 @@ function abrirMapaProspect(cnpj) {
 }
 
 function abrirMapaExterno() {
+  const d = mapViewData;
+  const naRua = document.getElementById('mapTabRua') && document.getElementById('mapTabRua').classList.contains('active');
+  // Se está na aba Fachada e tem coordenada, abre direto o Street View (panorama) no Google
+  if (d && naRua && typeof d.latitude === 'number' && typeof d.longitude === 'number') {
+    window.open(`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${d.latitude},${d.longitude}`, '_blank');
+    return;
+  }
   if (!mapaQueryAtual) return;
   window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapaQueryAtual)}`, '_blank');
 }
