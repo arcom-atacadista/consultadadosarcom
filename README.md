@@ -11,41 +11,61 @@ Aplicação web (single-page, HTML/CSS/JS puro) para consulta, prospecção e en
 ### Consulta de CNPJ
 - Consulta individual ou em lote (cole vários CNPJs, um por linha).
 - Fonte de dados: **Consulta CNPJ Arcom** (API própria, com autenticação JWT e suporte a lote de até 1000 CNPJs por chamada).
-- Cache local de 24h: reconsultar o mesmo CNPJ na mesma API não gasta uma nova chamada.
+- Mostra na hora se a empresa **já é cliente Arcom**.
+- Exibe todos os campos que a API retorna (razão social, nome fantasia, situação, sócios, endereço, telefone, etc.).
+- Cache local de 24h: reconsultar o mesmo CNPJ não gasta uma nova chamada.
 - Validação de CNPJ no cliente (dígito verificador) antes de gastar qualquer chamada de API.
-- Favoritos com etiquetas personalizadas (ex: "quente", "não atende", "já é cliente").
-- Histórico das últimas consultas.
-- "Colar e ir": ao colar uma lista de CNPJs, a ferramenta detecta e sugere verificar na hora.
+- Favoritos com etiquetas personalizadas e histórico das últimas consultas.
 - Atalhos de teclado: `Ctrl/Cmd+Enter` verifica, `Esc` fecha modais.
 
 ### Prospecção
 - Busca de empresas ativas (e que ainda não são clientes Arcom) por cidade, UF e ramo (CNAE).
-- Suporte a **múltiplas cidades e múltiplos ramos numa única busca**, com deduplicação automática de CNPJs repetidos.
-- Ranking de concentração por bairro/cidade (alternativa leve a um mapa de calor, já que não há geocodificação configurada).
-- Listas de prospecção salvas localmente, com nome, para recarregar depois sem repetir a busca.
+- Suporte a **múltiplas cidades e múltiplos ramos numa única busca**, com deduplicação automática.
+- **Corte de grandes redes**: filtra automaticamente as grandes cadeias (pelo número da filial), focando em médio e pequeno porte.
+- Ranking de concentração por bairro/cidade.
+- Botões de contato clicáveis por linha (ligar, WhatsApp, e-mail) e pré-cadastro direto.
+- Listas de prospecção salvas localmente, para recarregar depois sem repetir a busca.
+
+### Provável loja física (validação visual)
+- Cada prospect recebe um **score de 0 a 100** ("provável loja física") com semáforo 🟢/🟡/🔴, calculado a partir de sinais como ramo (CNAE), nome fantasia, endereço com número, telefone fixo e tempo de atividade.
+- A lista é ordenada pelos leads de maior potencial.
+- Ao abrir o mapa de uma empresa, o modal já mostra a **fachada (Street View)** embutida — o jeito definitivo de confirmar se é loja física de verdade, sem sair do site. Abas **Fachada** / **Mapa** e faixa de veredicto com os sinais que pesaram.
+- Tudo aberto **pelo endereço** do CNPJ (as coordenadas só ordenam por proximidade nos bastidores).
+
+### Pré-cadastro de clientes
+- Cadastro auto-preenchido com os dados da consulta (razão, CNPJ, endereço, contato).
+- Lista de acompanhamento com busca, notas, edição e status, dentro das abas de Consulta e Prospecção.
+
+### Indicação de clientes em PDF
+- Exporta um PDF de indicação agrupado por ramo, com CNPJ, endereço, CEP, sócios e **telefone**.
+- Seleção dos prospects que entram no PDF.
+- Ordenação por proximidade a partir do ponto de partida do assessor (bairro ou GPS).
+- Rota de visita no **Google Maps/Waze** (link clicável, QR code e botões no PDF).
 
 ### Busca por Razão Social
 - Cole uma ou várias razões sociais e encontre os CNPJs correspondentes (via API da Casa dos Dados).
 
 ### Insight Comercial com IA
-- Geração de insight comercial por empresa (resumo, pontos fortes, sinais de atenção, abordagem sugerida, perguntas de qualificação) usando **Groq** (modelo Llama 3.3 70B) combinado com busca na web via **Tavily**.
-- Geração em lote para todas as empresas consultadas.
-- **Ranking de leads por IA**: um único request classifica as melhores oportunidades entre as empresas já consultadas.
-- Compartilhamento rápido do insight via WhatsApp ou e-mail.
-- Chat livre com IA (usa o mesmo modelo), com histórico persistente no navegador.
+- Geração de insight comercial por empresa usando **Groq** (Llama 3.3 70B) combinado com busca na web via **Tavily**.
+- Geração em lote, **ranking de leads por IA** e chat livre com histórico no navegador.
 
 ### Exportação
-- Excel/CSV (com seleção de quais colunas exportar), JSON e PDF.
-- Abas separadas para dados de sócios e para os insights gerados por IA.
+- Excel/CSV (com seleção de colunas), JSON e PDF, com abas separadas para sócios e insights.
 
 ### Administração (multiusuário via Firebase)
 - Login com e-mail/senha; novos usuários ficam **pendentes** até um admin aprovar.
-- Painel de admin: aprovar/negar acessos, promover/remover administradores.
-- Log das últimas consultas realizadas por todos os usuários.
-- Indicador de "cota" (quantidade de CNPJs consultados no mês pelo usuário logado) — **apenas informativo**, não bloqueia consultas (ver seção de Segurança).
+- Aprovar/negar acessos e promover/remover administradores.
 
-### Personalização
-- Modo escuro/claro, cor de destaque customizável, partículas de fundo animadas.
+### Painel do administrador (dashboard)
+- Aba exclusiva de admin que acompanha tudo no site: **contas criadas, contas pendentes, logins, consultas, prospecções e PDFs gerados**.
+- **Histórico de atividades** completo (com filtro por tipo) e nome de quem fez cada ação.
+- Tabela de **atividade por usuário** (logins/consultas/prospecções/PDFs por pessoa).
+
+### Interface
+- Tela inicial (cover) apresentando a ferramenta, tela de login e logo oficial da Arcom.
+- Tema escuro por padrão (claro opcional), com cor de destaque customizável e partículas de fundo.
+- Barra de navegação **recolhível** (vira uma mini-barra só de ícones) para expandir a área de trabalho.
+- Micro-animações suaves (respeitando `prefers-reduced-motion`).
 
 ---
 
@@ -56,18 +76,19 @@ Aplicação web (single-page, HTML/CSS/JS puro) para consulta, prospecção e en
 | Front-end | HTML + CSS + JavaScript vanilla (sem build step) |
 | Autenticação/Banco | Firebase Authentication + Firestore |
 | Gráficos | Chart.js |
-| Exportação | SheetJS (xlsx), html2pdf.js |
+| Exportação | SheetJS (xlsx), html2pdf.js, QR Code (qrcodejs) |
+| Mapa/validação | Google Maps + Street View (embed, por endereço) |
 | IA | Groq (chat completions) + Tavily (busca na web) |
 | Dados de CNPJ | API própria "Consulta CNPJ Arcom", Casa dos Dados (busca por razão social) |
 | Hospedagem | GitHub Pages |
 
-Não há back-end, bundler ou dependências de build — é um único arquivo `.html` que roda direto no navegador.
+Não há back-end, bundler ou dependências de build — é um único arquivo `index.html` que roda direto no navegador.
 
 ---
 
 ## 🚀 Como rodar localmente
 
-1. Baixe o arquivo `.html` do projeto.
+1. Baixe o arquivo `index.html` do projeto.
 2. Configure as constantes no topo dos blocos `<script>` (ver seção abaixo).
 3. Abra o arquivo direto no navegador, ou sirva com qualquer servidor estático:
    ```bash
@@ -91,7 +112,50 @@ No arquivo HTML, procure e preencha estas constantes antes de usar em produção
 
 Também é preciso configurar no **Console do Firebase**:
 - Authentication → método de login por e-mail/senha habilitado.
-- Firestore → coleções `usuarios` (perfis/aprovação) e `consultas_log` (log de uso) — criadas automaticamente pelo app no primeiro uso.
+- Firestore → coleções usadas pelo app (criadas automaticamente no primeiro uso):
+  - `usuarios` — perfis, status de aprovação e flag de admin
+  - `preCadastros` — pré-cadastros de clientes
+  - `consultas_log` — log de consultas (usado no contador de uso mensal)
+  - `atividades_log` — histórico geral de atividades (login, consulta, prospecção, PDF, etc.)
+
+### Regras do Firestore (exemplo)
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null && (
+        request.auth.token.email == 'SEU_SUPER_ADMIN@exemplo.com' ||
+        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.isAdmin == true
+      );
+    }
+
+    match /usuarios/{userId} {
+      allow create: if request.auth.uid == userId
+                     && request.resource.data.status == 'pendente';
+      allow read: if request.auth.uid == userId || isAdmin();
+      allow update: if isAdmin();
+    }
+
+    match /preCadastros/{docId} {
+      allow read, write: if request.auth != null
+        && get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.status == 'aprovado';
+    }
+
+    match /consultas_log/{docId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null;
+    }
+
+    match /atividades_log/{docId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null;
+    }
+  }
+}
+```
 
 ---
 
