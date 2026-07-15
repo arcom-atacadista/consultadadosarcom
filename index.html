@@ -2307,6 +2307,7 @@ function resetAccentColor() {
 
 // ── PARTÍCULAS DE FUNDO (rede/constelação) ───────────────────────────────────
 let particleCanvas, particleCtx, particles = [], particleAnimId = null;
+let particleColor = { r: 0, g: 120, b: 64 }, particleFrame = 0;
 let particleSettings = JSON.parse(localStorage.getItem('particleSettings') || 'null') || { enabled: false, density: 60 };
 
 function hexToRgb(hex) {
@@ -2346,7 +2347,9 @@ function initParticles() {
 function animateParticles() {
   if (!particleCtx || !particleSettings.enabled) return;
   particleCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
-  const { r, g, b } = hexToRgb(getParticleColorHex());
+  // Recalcula a cor (leitura de estilo custosa) só ~2x/s, não a cada frame.
+  if ((particleFrame++ % 30) === 0) particleColor = hexToRgb(getParticleColorHex());
+  const { r, g, b } = particleColor;
   particles.forEach(p => {
     p.x += p.vx; p.y += p.vy;
     if (p.x < 0 || p.x > particleCanvas.width) p.vx *= -1;
@@ -2869,7 +2872,8 @@ async function atualizarCotaUsuario() {
   if (!el || !auth.currentUser) return;
   try {
     const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0,0,0,0);
-    const snap = await logsCol.where('uid', '==', auth.currentUser.uid).get();
+    // Limite de segurança: evita ler o histórico inteiro (que só cresce) a cada consulta.
+    const snap = await logsCol.where('uid', '==', auth.currentUser.uid).limit(1000).get();
     let total = 0;
     snap.forEach(doc => {
       const d = doc.data();
@@ -3393,8 +3397,17 @@ function renderProspeccaoResultado(empresas) {
   lista.forEach(e => scoreCache.set(e.cnpj, scoreLojaFisica(e)));
   lista = lista.slice().sort((a, b) => scoreCache.get(b.cnpj).score - scoreCache.get(a.cnpj).score);
 
+  // Teto de renderização: evita travar o navegador em buscas muito amplas.
+  // A lista completa continua em prospeccaoUltimoResultado (PDF/exportação/seleção).
+  const LIMITE_RENDER = 500;
+  const totalLista = lista.length;
+  const listaRender = lista.slice(0, LIMITE_RENDER);
+  const capNote = totalLista > LIMITE_RENDER
+    ? ` <span style="color:var(--accent)">(mostrando os ${LIMITE_RENDER} de maior potencial; os ${totalLista} entram no PDF/exportação)</span>`
+    : '';
+
   let h = `<p style="font-size:12px;color:var(--muted);margin-bottom:6px">
-      ${empresas.length} prospect(s) encontrado(s) em <strong>${cidadesEnvolvidas.join(', ')}</strong> — empresas ativas que ainda não são clientes Arcom.
+      ${empresas.length} prospect(s) encontrado(s) em <strong>${cidadesEnvolvidas.join(', ')}</strong> — empresas ativas que ainda não são clientes Arcom.${capNote}
     </p>`;
   h += `<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">`;
   h += `<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer">
@@ -3410,7 +3423,7 @@ function renderProspeccaoResultado(empresas) {
   h += `<span style="font-size:12px;color:var(--accent)"><i class="fas fa-square-check"></i> <span id="prospSelCount"></span></span>`;
   h += `</div>`;
   h += `<table style="width:100%"><thead><tr><th style="width:28px"><input type="checkbox" id="chkSelTodosProspect" title="Selecionar todos" onclick="toggleSelecionarTodosProspect(this)"></th><th title="Provável loja física (0-100)">Potencial</th><th>CNPJ</th><th>Razão Social</th><th>Nome Fantasia</th><th>Cidade</th><th>Atividade</th><th>Filial nº</th><th>Abertura</th><th></th></tr></thead><tbody>`;
-  lista.forEach(emp => {
+  listaRender.forEach(emp => {
     const abertura = emp.dataInicio ? emp.dataInicio.split('-').reverse().join('/') : '—';
     const fantasia = emp.nomeFantasia && emp.nomeFantasia.trim() ? emp.nomeFantasia : '—';
     const filialTxt = (emp.ordemFilial && emp.ordemFilial > 1) ? String(emp.ordemFilial) : (emp.ordemFilial === 1 ? 'matriz' : '—');
