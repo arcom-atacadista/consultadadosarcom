@@ -412,6 +412,7 @@
 
     /* ── Sstatus geral ── */
     .stats-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px; }
+    .stats-row.dash { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
     .stat-card {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -1408,25 +1409,6 @@
     </div>
     <div class="modal-body">
       <div id="adminReqList"><p style="color:var(--muted);font-size:13px">Carregando...</p></div>
-      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
-        <p style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px"><i class="fas fa-list-check"></i> Log de consultas (últimas 20)</p>
-        <div id="adminLogList"><p style="color:var(--muted);font-size:13px">Carregando...</p></div>
-      </div>
-      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;flex-wrap:wrap">
-          <p style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.6px;margin:0"><i class="fas fa-clock-rotate-left"></i> Histórico de atividades (últimas 60)</p>
-          <select id="filtroAtividade" onchange="renderHistoricoAtividades()" class="regional-input" style="width:auto;padding:4px 8px;font-size:12px">
-            <option value="">Todos os tipos</option>
-            <option value="login">Login</option>
-            <option value="consulta">Consulta</option>
-            <option value="prospeccao">Prospecção</option>
-            <option value="razao_social">Razão social</option>
-            <option value="precadastro">Pré-cadastro</option>
-            <option value="pdf_indicacao">PDF de indicação</option>
-          </select>
-        </div>
-        <div id="adminAtividadesList"><p style="color:var(--muted);font-size:13px">Carregando...</p></div>
-      </div>
     </div>
   </div>
 </div>
@@ -1444,6 +1426,9 @@
     </div>
     <div class="nav-item" onclick="showTab('razaosocial', this)" title="Busca por Razão Social">
       <i class="fas fa-building"></i> Busca por Razão Social
+    </div>
+    <div class="nav-item" id="navAdmin" onclick="showTab('admin', this)" title="Painel do administrador" style="display:none">
+      <i class="fas fa-shield-halved"></i> Painel (admin)
     </div>
 
     <div class="sidebar-label" style="margin-top:20px">Fonte de Dados</div>
@@ -1749,6 +1734,48 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
         </div>
 
         <div id="resultadoRazaoSocial" style="margin-top:20px"></div>
+      </div>
+    </div>
+
+    <!-- TAB: PAINEL DO ADMIN -->
+    <div class="tab-panel" id="tab-admin">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div>
+          <h2><i class="fas fa-shield-halved" style="color:var(--accent);margin-right:8px"></i>Painel do administrador</h2>
+          <p style="color:var(--muted);font-size:13px;margin-top:4px">Tudo que acontece no site — contas, logins, consultas, prospecções e PDFs.</p>
+        </div>
+        <button class="btn btn-ghost" onclick="renderAdminDashboard()"><i class="fas fa-rotate"></i> Atualizar</button>
+      </div>
+
+      <div class="stats-row dash" style="margin-top:18px">
+        <div class="stat-card c-green"><div class="stat-val" id="dashContas">—</div><div class="stat-lbl">Contas criadas</div></div>
+        <div class="stat-card c-yellow"><div class="stat-val" id="dashPendentes">—</div><div class="stat-lbl">Contas pendentes</div></div>
+        <div class="stat-card c-cyan"><div class="stat-val" id="dashLogins">—</div><div class="stat-lbl">Logins</div></div>
+        <div class="stat-card c-green"><div class="stat-val" id="dashConsultas">—</div><div class="stat-lbl">Consultas</div></div>
+        <div class="stat-card c-yellow"><div class="stat-val" id="dashProspeccoes">—</div><div class="stat-lbl">Prospecções</div></div>
+        <div class="stat-card c-red"><div class="stat-val" id="dashPdfs">—</div><div class="stat-lbl">PDFs gerados</div></div>
+      </div>
+
+      <div class="table-card" style="margin-top:6px">
+        <div class="table-card-header" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <span><i class="fas fa-clock-rotate-left"></i> Histórico de atividades</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="filtroAtividade" onchange="renderHistoricoAtividades()" class="regional-input" style="width:auto;padding:5px 8px;font-size:12px">
+              <option value="">Todos os tipos</option>
+              <option value="conta_criada">Conta criada</option>
+              <option value="login">Login</option>
+              <option value="consulta">Consulta</option>
+              <option value="prospeccao">Prospecção</option>
+              <option value="razao_social">Razão social</option>
+              <option value="precadastro">Pré-cadastro</option>
+              <option value="pdf_indicacao">PDF de indicação</option>
+            </select>
+            <button class="btn btn-ghost" style="font-size:12px;padding:6px 10px" onclick="abrirAdminPainel()"><i class="fas fa-user-clock"></i> Solicitações de acesso</button>
+          </div>
+        </div>
+        <div id="adminAtividadesList" style="padding:14px 18px;max-height:520px;overflow-y:auto">
+          <p style="color:var(--muted);font-size:13px">Carregando...</p>
+        </div>
       </div>
     </div>
 
@@ -2177,6 +2204,7 @@ function showTab(name, el) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
   el.classList.add('active');
+  if (name === 'admin') renderAdminDashboard();
 }
 
 // ── MODALS ──────────────────────────────────────────────────────────────────
@@ -2538,6 +2566,8 @@ async function mostrarApp(userDoc) {
   // Admin = e-mail fixo (super admin) OU campo isAdmin=true no Firestore (promovido pelo painel)
   const isAdmin = (auth.currentUser && auth.currentUser.email === ADMIN_EMAIL) || !!(userDoc && userDoc.isAdmin);
   document.getElementById('btnAdminPainel').style.display = isAdmin ? '' : 'none';
+  const navAdmin = document.getElementById('navAdmin');
+  if (navAdmin) navAdmin.style.display = isAdmin ? '' : 'none';
   usuarioAtual = {
     nome: (userDoc && userDoc.nome) || '',
     email: auth.currentUser ? auth.currentUser.email : '',
@@ -2611,6 +2641,8 @@ async function enviarSolicitacao(event) {
       isAdmin: false,
       criadoEm: firebase.firestore.FieldValue.serverTimestamp()
     });
+    usuarioAtual = { nome, email, uid: cred.user.uid };
+    registrarAtividade('conta_criada', `Solicitou acesso: ${nome}`);
     // onAuthStateChanged vai detectar o login automático e mostrar a tela "pendente"
   } catch (e) {
     let msg = 'Não foi possível enviar a solicitação.';
@@ -2631,12 +2663,41 @@ function logout() {
 async function abrirAdminPainel() {
   openModal('adminModal');
   await renderAdminPainel();
-  await renderLogConsultasAdmin();
-  await renderHistoricoAtividades();
+}
+
+// Dashboard do admin (aba "Painel"): métricas + histórico de atividades.
+function dashSet(id, v) { const el = document.getElementById(id); if (el) el.textContent = v; }
+async function renderAdminDashboard() {
+  // Métricas de atividade (qualquer usuário logado pode ler atividades_log)
+  try {
+    const snap = await atividadesCol.orderBy('criadoEm', 'desc').limit(1000).get();
+    const c = { login:0, consulta:0, prospeccao:0, pdf_indicacao:0 };
+    snap.forEach(doc => { const t = doc.data().tipo; if (c[t] !== undefined) c[t]++; });
+    dashSet('dashLogins', c.login);
+    dashSet('dashConsultas', c.consulta);
+    dashSet('dashProspeccoes', c.prospeccao);
+    dashSet('dashPdfs', c.pdf_indicacao);
+  } catch (e) {
+    console.error('Dashboard (atividades):', e);
+    ['dashLogins','dashConsultas','dashProspeccoes','dashPdfs'].forEach(id => dashSet(id, '—'));
+  }
+  // Contas (usuarios) — pelas regras, listar todos exige admin; falha graciosa se não puder
+  try {
+    const us = await usersCol.get();
+    let total = 0, pend = 0;
+    us.forEach(doc => { total++; if (doc.data().status === 'pendente') pend++; });
+    dashSet('dashContas', total);
+    dashSet('dashPendentes', pend);
+  } catch (e) {
+    dashSet('dashContas', '—');
+    dashSet('dashPendentes', '—');
+  }
+  renderHistoricoAtividades();
 }
 
 // Histórico geral de atividades do site (login, consulta, prospecção, etc.) — só admin.
 const ATIVIDADE_META = {
+  conta_criada:  { icon: 'fa-user-plus',        label: 'Conta criada',     cor: '#A78BFA' },
   login:         { icon: 'fa-right-to-bracket', label: 'Login',            cor: '#4ADE80' },
   consulta:      { icon: 'fa-magnifying-glass', label: 'Consulta',         cor: '#22D3EE' },
   prospeccao:    { icon: 'fa-bullseye',         label: 'Prospecção',       cor: '#FBBF24' },
