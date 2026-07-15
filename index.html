@@ -86,22 +86,22 @@
     [data-theme="dark"] .stat-card:hover,
     [data-theme="dark"] .table-card:hover,
     [data-theme="dark"] .chart-panel:hover {
-      box-shadow: 0 1px 0 rgba(255,255,255,.06) inset, 0 20px 44px rgba(0,0,0,.6), 0 0 0 1px rgba(186,230,79,.14);
+      box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 14px 32px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.06);
     }
-    [data-theme="dark"] .sidebar { box-shadow: 6px 0 32px rgba(0,0,0,.35); }
+    [data-theme="dark"] .sidebar { box-shadow: 4px 0 24px rgba(0,0,0,.28); }
 
-    /* Acentos neon sutis (lima) em foco/hover */
+    /* Acentos discretos (verde) em foco/hover — sem glow neon */
     [data-theme="dark"] .cnpj-textarea:focus,
     [data-theme="dark"] .regional-input:focus {
-      border-color: var(--lima);
-      box-shadow: 0 0 0 3px rgba(186,230,79,.14);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0,150,80,.15);
     }
-    [data-theme="dark"] .topbar-btn:hover { border-color: var(--lima); color: var(--lima); background: rgba(186,230,79,.08); }
-    [data-theme="dark"] .table-card-header i { color: var(--lima); }
-    [data-theme="dark"] .btn-primary:hover { box-shadow: 0 0 0 3px rgba(186,230,79,.16), 0 8px 22px rgba(0,120,64,.4); }
-    [data-theme="dark"] .btn-success-outline:hover { box-shadow: 0 0 16px rgba(186,230,79,.12); }
-    [data-theme="dark"] .progress-bar-fill { background: linear-gradient(90deg, var(--accent), var(--lima)); box-shadow: 0 0 12px rgba(186,230,79,.35); }
-    [data-theme="dark"] .progress-pct { color: var(--lima); }
+    [data-theme="dark"] .topbar-btn:hover { border-color: rgba(0,192,96,.4); color: #fff; background: rgba(0,150,80,.10); }
+    [data-theme="dark"] .table-card-header i { color: var(--accent); }
+    [data-theme="dark"] .btn-primary:hover { box-shadow: 0 6px 18px rgba(0,120,64,.30); }
+    [data-theme="dark"] .btn-success-outline:hover { box-shadow: 0 4px 12px rgba(0,0,0,.28); }
+    [data-theme="dark"] .progress-bar-fill { background: linear-gradient(90deg, var(--accent), #2fbf6f); box-shadow: none; }
+    [data-theme="dark"] .progress-pct { color: #2fbf6f; }
 
     /* Badges com mais contraste/neon no escuro */
     [data-theme="dark"] .badge-ativa    { background: rgba(0,150,80,.16);  border-color: rgba(0,150,80,.4);  color: #4ADE80; }
@@ -115,7 +115,7 @@
     [data-theme="dark"] .stat-card.c-red    { border-top-color: #F87171; } [data-theme="dark"] .stat-card.c-red    .stat-val { color: #F87171; }
     [data-theme="dark"] .stat-card.c-yellow { border-top-color: #FBBF24; } [data-theme="dark"] .stat-card.c-yellow .stat-val { color: #FBBF24; }
     [data-theme="dark"] .stat-card.c-cyan   { border-top-color: #22D3EE; } [data-theme="dark"] .stat-card.c-cyan   .stat-val { color: #22D3EE; }
-    [data-theme="dark"] .stat-card.c-green  { border-top-color: var(--lima); } [data-theme="dark"] .stat-card.c-green .stat-val { color: var(--lima); }
+    [data-theme="dark"] .stat-card.c-green  { border-top-color: #2fbf6f; } [data-theme="dark"] .stat-card.c-green .stat-val { color: #2fbf6f; }
 
     body, .topbar, .sidebar, .table-card, .chart-panel, .modal-box, .login-box, .stat-card, #chatPanel, .progress-card, .card {
       transition: background-color .2s ease, border-color .2s ease, color .2s ease, box-shadow .2s ease, transform .2s ease;
@@ -196,8 +196,20 @@
 
     
     .page { display: grid; grid-template-columns: 280px 1fr; min-height: calc(100vh - 56px); position: relative; z-index: 1; transition: grid-template-columns .25s ease; }
-    .page.nav-collapsed { grid-template-columns: 0 1fr; }
-    .page.nav-collapsed .sidebar { padding-left: 0; padding-right: 0; }
+    /* ── mini-rail: navegação recolhida vira barra só de ícones ── */
+    .page.nav-collapsed { grid-template-columns: 68px 1fr; }
+    .page.nav-collapsed .sidebar { padding-left: 10px; padding-right: 10px; align-items: center; }
+    .page.nav-collapsed .sidebar > *:not(.nav-item) { display: none; }
+    .page.nav-collapsed .nav-item {
+      width: 44px; height: 44px;
+      justify-content: center;
+      padding: 0;
+      font-size: 0;                 /* esconde o texto, mantém o ícone */
+      border-left-color: transparent;
+      border-radius: var(--radius-sm);
+    }
+    .page.nav-collapsed .nav-item i { font-size: 16px; width: auto; }
+    .page.nav-collapsed .nav-item.active { background: rgba(186,230,79,.14); border-left-color: transparent; }
 
 
     .sidebar {
@@ -1342,13 +1354,13 @@
   <!-- SIDEBAR -->
   <aside class="sidebar">
     <div class="sidebar-label">Navegação</div>
-    <div class="nav-item active" onclick="showTab('consulta', this)">
+    <div class="nav-item active" onclick="showTab('consulta', this)" title="Consulta CNPJ">
       <i class="fas fa-search"></i> Consulta CNPJ
     </div>
-    <div class="nav-item" onclick="showTab('prospeccao', this)">
+    <div class="nav-item" onclick="showTab('prospeccao', this)" title="Prospecção">
       <i class="fas fa-bullseye"></i> Prospecção
     </div>
-    <div class="nav-item" onclick="showTab('razaosocial', this)">
+    <div class="nav-item" onclick="showTab('razaosocial', this)" title="Busca por Razão Social">
       <i class="fas fa-building"></i> Busca por Razão Social
     </div>
 
