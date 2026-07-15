@@ -1655,7 +1655,7 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
   </div>
 </div>
 
-<!-- MODAL: ENRIQUECIMENTO (Insight IA - Groq) -->
+<!-- MODAL: ENRIQUECIMENTO (Insight IA - Perplexity) -->
 <div class="modal-overlay" id="enrichModal">
   <div class="modal-box">
     <div class="modal-head purple-head">
@@ -1944,7 +1944,7 @@ let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
 let favTags = JSON.parse(localStorage.getItem('favTags') || '{}'); // { cnpj: ['tag1','tag2'] }
 let historyLog = JSON.parse(localStorage.getItem('cnpjHistory')) || [];
 let chart = null, chartUF = null, currentDetailsCNPJ = null;
-let enrichData = {}; // cnpj -> insight comercial gerado pela IA (Groq)
+let enrichData = {}; // cnpj -> insight comercial gerado pela IA (Perplexity)
 let currentEnrichCNPJ = null;
 let erroCNPJs = []; // lista de {cnpj, motivo} que não foram consultados com sucesso
 let mapaEnderecoAtual = ''; // endereço em exibição no modal de mapa
@@ -2935,6 +2935,45 @@ function botoesAcaoProspect(emp) {
   return btns;
 }
 
+// Score "provável loja física" (0-100) — 100% client-side, com o que a
+// Prospecção já entrega. Joga pro topo quem tem cara de loja de balcão
+// (varejo, com nome fantasia, endereço com número, telefone fixo, madura) e
+// pro fim holding/imobiliária/serviço. É um apoio à priorização, não verdade.
+function scoreLojaFisica(emp) {
+  let score = 0; const chips = [];
+  const p2 = (emp.cnaeCodigo || '').toString().slice(0, 2);
+  let cnaeScore, cnaeLabel;
+  if (p2 === '47') { cnaeScore = 40; cnaeLabel = 'Varejo'; }
+  else if (p2 === '56') { cnaeScore = 26; cnaeLabel = 'Alimentação'; }
+  else if (p2 === '45') { cnaeScore = 24; cnaeLabel = 'Veículos'; }
+  else if (p2 === '86') { cnaeScore = 20; cnaeLabel = 'Saúde'; }
+  else if (['10','11','13','14','15','16','17','18','20','22','23','25','31','32','33'].includes(p2)) { cnaeScore = 14; cnaeLabel = 'Indústria'; }
+  else if (['64','65','66','68','69','70','82'].includes(p2)) { cnaeScore = 0; cnaeLabel = 'Serviço/holding'; }
+  else { cnaeScore = 12; cnaeLabel = 'Outro'; }
+  score += cnaeScore; if (cnaeScore >= 24) chips.push(cnaeLabel);
+
+  if (emp.nomeFantasia && emp.nomeFantasia.trim()) { score += 15; chips.push('Nome fantasia'); }
+  const logradouro = (emp.endereco || '').split(' - ')[0] || '';
+  const temNumero = /\d/.test(logradouro) && !/\bS\/?N\b/i.test(emp.endereco || '');
+  if (temNumero) { score += 15; chips.push('Endereço c/ número'); }
+  const tel = (emp.telefone || '').replace(/\D/g, '');
+  if (tel) { score += 8; if (!telMovel(tel)) { score += 6; chips.push('Tel fixo'); } else chips.push('Telefone'); }
+  if (emp.porte && emp.porte !== 'MICRO EMPRESA' && emp.porte !== '—') { score += 8; }
+  if (emp.latitude != null) score += 5;
+  const meses = mesesDesdeAbertura(emp.dataInicio);
+  if (meses != null && meses >= 24) { score += 8; chips.push(`${Math.floor(meses / 12)} anos`); }
+
+  score = Math.max(0, Math.min(100, score));
+  const temp = score >= 65 ? 'quente' : score >= 40 ? 'morno' : 'frio';
+  return { score, temp, chips };
+}
+function badgePotencial(sc) {
+  const cor = sc.temp === 'quente' ? 'badge-ativa' : sc.temp === 'morno' ? 'badge-inapta' : 'badge-baixada';
+  const emoji = sc.temp === 'quente' ? '🟢' : sc.temp === 'morno' ? '🟡' : '🔴';
+  const dica = sc.chips.length ? sc.chips.join(' · ') : 'poucos sinais de loja física';
+  return `<span class="badge ${cor}" title="Provável loja física: ${sc.score}/100 — ${dica}">${emoji} ${sc.score}</span>`;
+}
+
 function renderProspeccaoResultado(empresas) {
   const resultado = document.getElementById('prosResultado');
   const cidadesEnvolvidas = [...new Set(empresas.map(e => `${e.cidade}/${e.uf}`))];
@@ -2945,6 +2984,11 @@ function renderProspeccaoResultado(empresas) {
   if (prosCortarRedes) lista = lista.filter(e => !eGrandeRede(e));
   const qtdNovas = lista.filter(eNova).length;
   if (prosSomenteNovas) lista = lista.filter(eNova);
+
+  // Calcula o score uma vez por empresa e ordena por potencial (melhor no topo).
+  const scoreCache = new Map();
+  lista.forEach(e => scoreCache.set(e.cnpj, scoreLojaFisica(e)));
+  lista = lista.slice().sort((a, b) => scoreCache.get(b.cnpj).score - scoreCache.get(a.cnpj).score);
 
   let h = `<p style="font-size:12px;color:var(--muted);margin-bottom:6px">
       ${empresas.length} prospect(s) encontrado(s) em <strong>${cidadesEnvolvidas.join(', ')}</strong> — empresas ativas que ainda não são clientes Arcom.
@@ -2962,13 +3006,13 @@ function renderProspeccaoResultado(empresas) {
     </label>`;
   h += `<span style="font-size:12px;color:var(--accent)"><i class="fas fa-square-check"></i> <span id="prospSelCount"></span></span>`;
   h += `</div>`;
-  h += `<table style="width:100%"><thead><tr><th style="width:28px"><input type="checkbox" id="chkSelTodosProspect" title="Selecionar todos" onclick="toggleSelecionarTodosProspect(this)"></th><th>CNPJ</th><th>Razão Social</th><th>Nome Fantasia</th><th>Cidade</th><th>Atividade</th><th>Filial nº</th><th>Abertura</th><th></th></tr></thead><tbody>`;
+  h += `<table style="width:100%"><thead><tr><th style="width:28px"><input type="checkbox" id="chkSelTodosProspect" title="Selecionar todos" onclick="toggleSelecionarTodosProspect(this)"></th><th title="Provável loja física (0-100)">Potencial</th><th>CNPJ</th><th>Razão Social</th><th>Nome Fantasia</th><th>Cidade</th><th>Atividade</th><th>Filial nº</th><th>Abertura</th><th></th></tr></thead><tbody>`;
   lista.forEach(emp => {
     const abertura = emp.dataInicio ? emp.dataInicio.split('-').reverse().join('/') : '—';
     const fantasia = emp.nomeFantasia && emp.nomeFantasia.trim() ? emp.nomeFantasia : '—';
     const filialTxt = (emp.ordemFilial && emp.ordemFilial > 1) ? String(emp.ordemFilial) : (emp.ordemFilial === 1 ? 'matriz' : '—');
     const marcado = prospeccaoSelecionados.has(emp.cnpj) ? 'checked' : '';
-    h += `<tr><td><input type="checkbox" class="chk-prospect" ${marcado} onclick="toggleSelecionadoProspect('${emp.cnpj}',this)"></td><td>${fmt(emp.cnpj)}</td><td>${emp.razao}${badgeNova(emp.dataInicio)}<span data-precad-slot="${emp.cnpj}"></span></td><td style="font-weight:600">${fantasia}</td><td style="font-size:12px;color:var(--muted)">${emp.cidade}/${emp.uf}</td><td style="font-size:12px;color:var(--muted)">${emp.atividade}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${filialTxt}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${abertura}</td>
+    h += `<tr><td><input type="checkbox" class="chk-prospect" ${marcado} onclick="toggleSelecionadoProspect('${emp.cnpj}',this)"></td><td>${badgePotencial(scoreCache.get(emp.cnpj))}</td><td>${fmt(emp.cnpj)}</td><td>${emp.razao}${badgeNova(emp.dataInicio)}<span data-precad-slot="${emp.cnpj}"></span></td><td style="font-weight:600">${fantasia}</td><td style="font-size:12px;color:var(--muted)">${emp.cidade}/${emp.uf}</td><td style="font-size:12px;color:var(--muted)">${emp.atividade}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${filialTxt}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${abertura}</td>
       <td class="td-actions">${botoesAcaoProspect(emp)}</td></tr>`;
   });
   h += '</tbody></table>';
@@ -4317,76 +4361,61 @@ function verEmpresasDoSocio(identEncoded) {
   openModal('redeSociosModal');
 }
 
-// ── INSIGHT COMERCIAL (IA — Groq + busca real na web via Tavily) ──────────
-// Duas etapas:
-//  1) TAVILY faz uma busca de verdade na internet (inclui site institucional,
-//     Instagram, LinkedIn, listas telefônicas etc.) usando razão social /
-//     nome fantasia / cidade da empresa.
-//  2) GROQ lê os trechos retornados pela busca e organiza tudo (resumo
-//     comercial + telefone/site/redes sociais encontrados, SEMPRE citando
-//     de qual resultado tirou cada contato — nunca inventa nada que não
-//     esteja nos trechos retornados pela busca).
+// ── IA (Perplexity Sonar — busca na web embutida) ──────────────────────────
+// A Perplexity já pesquisa na internet nativamente e cita as fontes, então
+// substitui o par Groq + Tavily de antes (uma chamada em vez de duas).
 //
-// ⚠️ Cole aqui suas chaves (ambas grátis, sem cartão):
-//   - Groq:   console.groq.com/keys
-//   - Tavily: app.tavily.com (1.000 buscas grátis/mês)
-// Atenção: como este é um site estático (GitHub Pages), as chaves ficam
-// visíveis no código-fonte para quem inspecionar a página. Para uso
-// pessoal/interno da equipe isso costuma ser aceitável; para publicar para
-// terceiros, o ideal é colocar essas chamadas atrás de um proxy simples
-// (ex.: Cloudflare Worker) para não expor as chaves.
-const GROQ_API_KEY = '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';
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+// ⚠️ A chave NÃO fica no código (o GitHub bloqueia commitar segredos, e num
+// site estático a chave ficaria exposta no fonte). Em vez disso, cada usuário
+// cola a chave uma vez e ela fica salva no navegador (localStorage). Como a
+// Perplexity é PAGA por uso, defina um limite de gasto (spending limit) na
+// conta. Ideal a longo prazo: pôr estas chamadas atrás de um proxy.
+let PPLX_API_KEY = localStorage.getItem('pplxApiKey') || '';
+const PPLX_API_URL = 'https://api.perplexity.ai/chat/completions';
+const PPLX_MODEL   = 'sonar'; // mais barato, já com busca web; troque por 'sonar-pro' se quiser mais profundidade
 
-const TAVILY_API_KEY = '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'; // <- cole sua chave tvly-xxxxxxxx aqui
-const TAVILY_API_URL = 'https://api.tavily.com/search';
-
-// Faz a busca real na web sobre a empresa (site, telefone, Instagram, LinkedIn).
-// Retorna uma lista de resultados [{title, url, content}]. Se a Tavily não
-// estiver configurada, retorna [] e o insight segue só com os dados da Receita.
-async function buscarContatoWeb(dadosEmpresa) {
-  if (!TAVILY_API_KEY) return [];
-
-  const nome = dadosEmpresa.nomeFantasia && dadosEmpresa.nomeFantasia !== '—'
-    ? dadosEmpresa.nomeFantasia : dadosEmpresa.razao;
-  const query = `${nome} ${dadosEmpresa.municipio} ${dadosEmpresa.uf} telefone contato site instagram linkedin`;
-
-  try {
-    const response = await fetch(TAVILY_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        api_key: TAVILY_API_KEY,
-        query,
-        search_depth: 'advanced',
-        include_answer: false,
-        max_results: 8
-      })
-    });
-    if (!response.ok) return [];
-    const data = await response.json();
-    return (data.results || []).map(r => ({
-      title: r.title || '',
-      url: r.url || '',
-      content: (r.content || '').slice(0, 500)
-    }));
-  } catch {
-    return []; // busca falhou (ex.: CORS no host onde o site está publicado) — segue sem contato web
+// Garante que há uma chave (pede e salva no navegador se ainda não houver).
+function garantirChavePerplexity() {
+  if (!PPLX_API_KEY) {
+    const k = (prompt('Cole sua chave da API Perplexity (começa com pplx-). Ela fica salva só neste navegador:') || '').trim();
+    if (k) { PPLX_API_KEY = k; localStorage.setItem('pplxApiKey', k); }
   }
+  return !!PPLX_API_KEY;
+}
+
+// Chamada única à Perplexity. Retorna { content, citations:[url,...] }.
+async function chamarPerplexity(messages, { temperature = 0.3 } = {}) {
+  if (!garantirChavePerplexity()) throw new Error('Chave da Perplexity não informada.');
+  const response = await fetch(PPLX_API_URL, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${PPLX_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: PPLX_MODEL, messages, temperature })
+  });
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '');
+    throw new Error(`Perplexity HTTP ${response.status} — ${errText.slice(0, 200)}`);
+  }
+  const data = await response.json();
+  const citations = data.citations || (data.search_results || []).map(s => s.url).filter(Boolean) || [];
+  return { content: data.choices?.[0]?.message?.content || '', citations };
+}
+
+// Extrai JSON de uma resposta que pode vir com cercas ```json ou texto ao redor.
+function extrairJSON(txt) {
+  if (!txt) return null;
+  try { return JSON.parse(txt); } catch {}
+  const limpo = txt.replace(/```json/gi, '').replace(/```/g, '');
+  try { return JSON.parse(limpo); } catch {}
+  const i = limpo.indexOf('{'), j = limpo.lastIndexOf('}');
+  if (i >= 0 && j > i) { try { return JSON.parse(limpo.slice(i, j + 1)); } catch {} }
+  return null;
 }
 
 async function consultarInsightIA(cnpj, dadosEmpresa) {
-  if (!GROQ_API_KEY) {
-    throw new Error('Configure sua chave da Groq na constante GROQ_API_KEY.');
-  }
+  const nome = dadosEmpresa.nomeFantasia && dadosEmpresa.nomeFantasia !== '—'
+    ? dadosEmpresa.nomeFantasia : dadosEmpresa.razao;
 
-  const resultadosWeb = await buscarContatoWeb(dadosEmpresa);
-  const blocoWeb = resultadosWeb.length
-    ? resultadosWeb.map((r, i) => `[${i + 1}] ${r.title}\nURL: ${r.url}\nTrecho: ${r.content}`).join('\n\n')
-    : '(nenhum resultado de busca disponível — Tavily não configurada ou sem resultados)';
-
-  const prompt = `Você é um analista comercial. Use os dados públicos da Receita Federal E os trechos de busca na internet abaixo para montar um insight comercial de abordagem B2B.
+  const prompt = `Você é um analista comercial B2B. Pesquise na internet sobre a empresa "${nome}" em ${dadosEmpresa.municipio}/${dadosEmpresa.uf} (site oficial, telefone, Instagram, LinkedIn, e-mail) e combine com os dados públicos da Receita Federal abaixo para montar um insight de abordagem.
 
 Dados da empresa (Receita Federal):
 - Razão Social: ${dadosEmpresa.razao}
@@ -4400,15 +4429,11 @@ Dados da empresa (Receita Federal):
 - Município/UF: ${dadosEmpresa.municipio}/${dadosEmpresa.uf}
 - Quadro Societário: ${(dadosEmpresa.socios||[]).map(s=>`${s.nome_socio||s.nome||''} (${s.qualificacao_socio||s.qualificacao||''})`).join('; ') || 'não informado'}
 
-Resultados de busca na internet sobre esta empresa:
-${blocoWeb}
-
 REGRAS IMPORTANTES:
 - Para "pontos_fortes", "sinais_atencao", "abordagem_sugerida" e "perguntas_qualificacao": baseie-se nos dados da Receita Federal, sem inventar.
-- Para "contatos_encontrados": preencha telefone, site, instagram, linkedin e email SOMENTE se aparecerem literalmente nos trechos de busca acima. Se não encontrar algum, deixe null. NUNCA invente um contato.
-- Em "fontes", liste apenas os números [n] dos resultados de busca que você realmente usou para extrair algum contato.
+- Para "contatos_encontrados": preencha telefone, site, instagram, linkedin e email SOMENTE se você realmente encontrou na sua busca na internet. Se não encontrar algum, deixe null. NUNCA invente um contato.
 
-Responda ESTRITAMENTE em JSON válido, sem nenhum texto antes ou depois, seguindo este formato exato:
+Responda ESTRITAMENTE em JSON válido, sem nenhum texto antes ou depois, no formato:
 {
   "resumo": "resumo de 2-3 frases sobre a empresa e o potencial comercial",
   "pontos_fortes": ["ponto 1", "ponto 2", "ponto 3"],
@@ -4421,43 +4446,19 @@ Responda ESTRITAMENTE em JSON válido, sem nenhum texto antes ou depois, seguind
     "site": "string ou null",
     "instagram": "string ou null",
     "linkedin": "string ou null",
-    "email": "string ou null",
-    "fontes": [1, 3]
+    "email": "string ou null"
   }
 }`;
 
-  const response = await fetch(GROQ_API_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${GROQ_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.3,
-      response_format: { type: 'json_object' }
-    })
-  });
+  const { content, citations } = await chamarPerplexity([
+    { role: 'system', content: 'Você é um analista comercial. Responde em português do Brasil e, quando pedirem JSON, retorna apenas o JSON, sem texto ao redor.' },
+    { role: 'user', content: prompt }
+  ], { temperature: 0.2 });
 
-  if (!response.ok) {
-    const errText = await response.text().catch(() => '');
-    throw new Error(`Groq HTTP ${response.status} — ${errText.slice(0,200)}`);
-  }
-
-  const data = await response.json();
-  const conteudo = data.choices?.[0]?.message?.content || '{}';
-
-  let parsed;
-  try {
-    parsed = JSON.parse(conteudo);
-  } catch {
-    throw new Error('A IA retornou um JSON inválido.');
-  }
+  const parsed = extrairJSON(content);
+  if (!parsed) throw new Error('A IA retornou um formato inesperado.');
 
   const contatos = parsed.contatos_encontrados || {};
-  const fontesIdx = Array.isArray(contatos.fontes) ? contatos.fontes : [];
-
   return {
     resumo: parsed.resumo || 'Sem resumo disponível.',
     pontos_fortes: parsed.pontos_fortes || [],
@@ -4465,14 +4466,14 @@ Responda ESTRITAMENTE em JSON válido, sem nenhum texto antes ou depois, seguind
     abordagem_sugerida: parsed.abordagem_sugerida || '',
     perguntas_qualificacao: parsed.perguntas_qualificacao || [],
     nivel_confianca: parsed.nivel_confianca || '—',
-    buscaWebRealizada: resultadosWeb.length > 0,
+    buscaWebRealizada: (citations || []).length > 0,
     contatos: {
       telefone: contatos.telefone || null,
       site: contatos.site || null,
       instagram: contatos.instagram || null,
       linkedin: contatos.linkedin || null,
       email: contatos.email || null,
-      fontes: fontesIdx.map(n => resultadosWeb[n - 1]).filter(Boolean)
+      fontes: (citations || []).slice(0, 8).map(u => ({ title: u, url: u, content: '' }))
     }
   };
 }
@@ -4498,7 +4499,7 @@ function renderEnrichBody(cnpj, dados) {
   html += `<div class="modal-section">
     <div class="modal-section-title purple"><i class="fas fa-address-book"></i> Contato Encontrado na Web</div>
     ${!dados.buscaWebRealizada
-      ? '<div class="enrich-empty">Busca na web não configurada (defina TAVILY_API_KEY no código) ou sem resultados.</div>'
+      ? '<div class="enrich-empty">A IA não retornou fontes da web para esta empresa.</div>'
       : !temContato
       ? '<div class="enrich-empty">Nenhum contato encontrado nos resultados de busca.</div>'
       : `<ul style="padding-left:18px;font-size:13px;line-height:1.9">
@@ -4535,7 +4536,7 @@ function renderEnrichBody(cnpj, dados) {
     </ul>
   </div>`;
 
-  html += `<div class="enrich-source-note"><i class="fas fa-circle-info"></i> Insight gerado via Groq (IA)${dados.buscaWebRealizada ? ' com busca real na web via Tavily' : ''} a partir dos dados públicos da Receita Federal${dados.buscaWebRealizada ? ' e de resultados de busca na internet' : ''}. Confirme os contatos encontrados antes de usar.</div>`;
+  html += `<div class="enrich-source-note"><i class="fas fa-circle-info"></i> Insight gerado via Perplexity (IA com busca na web) a partir dos dados públicos da Receita Federal${dados.buscaWebRealizada ? ' e de resultados de busca na internet' : ''}. Confirme os contatos encontrados antes de usar.</div>`;
 
   return html;
 }
@@ -4642,7 +4643,7 @@ function exportEnrichAtual() {
 async function gerarRankingLeads() {
   const cnpjs = Object.keys(allData);
   if (!cnpjs.length) { showToast('Nenhuma empresa consultada ainda.','error'); return; }
-  if (!GROQ_API_KEY) { showToast('Configure a GROQ_API_KEY para usar o ranking com IA.','error'); return; }
+  if (!garantirChavePerplexity()) { showToast('Chave da Perplexity não informada.','error'); return; }
 
   document.getElementById('rankingBody').innerHTML = `
     <div class="enrich-loading">
@@ -4665,23 +4666,11 @@ Priorize as empresas mais promissoras como leads comerciais (considere: situaç�
 Inclua no máximo os 15 melhores, ordenados do melhor para o pior.`;
 
   try {
-    const response = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        messages: [
-          { role: 'system', content: 'Você responde sempre em português do Brasil e apenas com JSON válido, sem texto adicional e sem markdown.' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.3,
-        response_format: { type: 'json_object' }
-      })
-    });
-    if (!response.ok) throw new Error(`Groq HTTP ${response.status}`);
-    const data = await response.json();
-    const texto = data.choices?.[0]?.message?.content || '{}';
-    const parsed = JSON.parse(texto);
+    const { content } = await chamarPerplexity([
+      { role: 'system', content: 'Você responde sempre em português do Brasil e apenas com JSON válido, sem texto adicional e sem markdown.' },
+      { role: 'user', content: prompt }
+    ], { temperature: 0.3 });
+    const parsed = extrairJSON(content) || {};
     renderRankingLeads(parsed.ranking || []);
   } catch (e) {
     document.getElementById('rankingBody').innerHTML = `<div class="alert alert-danger">Erro ao gerar ranking: ${e.message}</div>`;
@@ -4703,7 +4692,7 @@ function renderRankingLeads(ranking) {
         </div>
       </div>`).join('')}
   </div>
-  <div class="enrich-source-note" style="margin-top:12px"><i class="fas fa-circle-info"></i> Ranking gerado por IA (Groq) com base nos dados públicos já consultados. Use como apoio à priorização, não como decisão final.</div>`;
+  <div class="enrich-source-note" style="margin-top:12px"><i class="fas fa-circle-info"></i> Ranking gerado por IA (Perplexity) com base nos dados públicos já consultados. Use como apoio à priorização, não como decisão final.</div>`;
 }
 
 function exportarInsightsCSV(cnpjsFiltro) {
@@ -4840,7 +4829,7 @@ function exportPDF() {
 function delay(ms){return new Promise(r=>setTimeout(r,ms));}
 </script>
 
-<!-- ═══════════════ CHAT COM IA (Groq) ═══════════════ -->
+<!-- ═══════════════ CHAT COM IA (Perplexity) ═══════════════ -->
 
 <!-- Botão flutuante -->
 <button id="chatToggleBtn" onclick="chatToggle()" title="Chat com IA">
@@ -4863,10 +4852,9 @@ function delay(ms){return new Promise(r=>setTimeout(r,ms));}
 </div>
 
 <script>
-// ── CHAT COM IA (Groq) ────────────────────────────────────────────────────
-// Reaproveita a mesma chave/endpoint/modelo já configurados para o botão
-// "Insight IA" (constantes GROQ_API_KEY, GROQ_API_URL, GROQ_MODEL, definidas
-// mais acima no arquivo). O histórico da conversa fica salvo no navegador
+// ── CHAT COM IA (Perplexity) ───────────────────────────────────────────────
+// Reaproveita o helper chamarPerplexity() (constantes PPLX_* definidas mais
+// acima no arquivo). O histórico da conversa fica salvo no navegador
 // (localStorage), então sobrevive a um recarregamento de página.
 
 const CHAT_HISTORICO_MAX = 40; // limite de mensagens guardadas
@@ -4941,33 +4929,14 @@ function renderMensagensChat(){
   box.scrollTop = box.scrollHeight;
 }
 
-async function consultarGroqChat(mensagemUsuario){
-  if (!GROQ_API_KEY) {
-    throw new Error('Configure sua chave da Groq na constante GROQ_API_KEY.');
-  }
+async function consultarPerplexityChat(mensagemUsuario){
   const messagesPayload = [
     { role: 'system', content: montarSystemPromptChat() },
     ...chatHistorico.slice(-12).map(m => ({ role: m.role, content: m.texto })),
     { role: 'user', content: mensagemUsuario }
   ];
-  const response = await fetch(GROQ_API_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${GROQ_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      messages: messagesPayload,
-      temperature: 0.5
-    })
-  });
-  if (!response.ok) {
-    const errText = await response.text().catch(() => '');
-    throw new Error(`Groq HTTP ${response.status} — ${errText.slice(0,200)}`);
-  }
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || 'Desculpe, não consegui gerar uma resposta.';
+  const { content } = await chamarPerplexity(messagesPayload, { temperature: 0.5 });
+  return content || 'Desculpe, não consegui gerar uma resposta.';
 }
 
 async function chatEnviar(){
@@ -4982,7 +4951,7 @@ async function chatEnviar(){
   const btn = document.getElementById('chatSendBtn');
   btn.disabled = true;
   try {
-    const resposta = await consultarGroqChat(texto);
+    const resposta = await consultarPerplexityChat(texto);
     chatHistorico.push({ role:'assistant', texto: resposta });
   } catch(e) {
     chatHistorico.push({ role:'assistant', texto: `⚠️ Erro ao falar com a IA: ${e.message}` });
