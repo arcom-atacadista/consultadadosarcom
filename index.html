@@ -1412,6 +1412,21 @@
         <p style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px"><i class="fas fa-list-check"></i> Log de consultas (últimas 20)</p>
         <div id="adminLogList"><p style="color:var(--muted);font-size:13px">Carregando...</p></div>
       </div>
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;flex-wrap:wrap">
+          <p style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.6px;margin:0"><i class="fas fa-clock-rotate-left"></i> Histórico de atividades (últimas 60)</p>
+          <select id="filtroAtividade" onchange="renderHistoricoAtividades()" class="regional-input" style="width:auto;padding:4px 8px;font-size:12px">
+            <option value="">Todos os tipos</option>
+            <option value="login">Login</option>
+            <option value="consulta">Consulta</option>
+            <option value="prospeccao">Prospecção</option>
+            <option value="razao_social">Razão social</option>
+            <option value="precadastro">Pré-cadastro</option>
+            <option value="pdf_indicacao">PDF de indicação</option>
+          </select>
+        </div>
+        <div id="adminAtividadesList"><p style="color:var(--muted);font-size:13px">Carregando...</p></div>
+      </div>
     </div>
   </div>
 </div>
@@ -2445,6 +2460,28 @@ const auth = firebase.auth();
 const db = firebase.firestore();
 const usersCol = db.collection('usuarios'); // uma doc por usuário, id = uid, campos: nome, email, motivo, status, criadoEm
 const logsCol = db.collection('consultas_log'); // uma doc por lote de verificação, campos: uid, email, cnpjs, quantidade, criadoEm
+const atividadesCol = db.collection('atividades_log'); // histórico geral: {uid, email, nome, tipo, detalhe, criadoEm}
+
+// Usuário logado no momento (nome vem do Firestore) — usado no histórico de atividades.
+let usuarioAtual = null;
+let loginRegistrado = false; // evita registrar "login" mais de uma vez por carregamento de página
+
+// Registra um evento no histórico de atividades do site (login, consulta, prospecção, etc.).
+async function registrarAtividade(tipo, detalhe) {
+  try {
+    if (!auth.currentUser) return;
+    await atividadesCol.add({
+      uid: auth.currentUser.uid,
+      email: auth.currentUser.email,
+      nome: (usuarioAtual && usuarioAtual.nome) || '',
+      tipo: tipo,
+      detalhe: detalhe || '',
+      criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  } catch (e) {
+    console.error('Erro ao registrar atividade:', e);
+  }
+}
 
 function mostrarTelaInicial() {
   document.getElementById('coverScreen').style.display = 'flex';
@@ -2501,6 +2538,12 @@ async function mostrarApp(userDoc) {
   // Admin = e-mail fixo (super admin) OU campo isAdmin=true no Firestore (promovido pelo painel)
   const isAdmin = (auth.currentUser && auth.currentUser.email === ADMIN_EMAIL) || !!(userDoc && userDoc.isAdmin);
   document.getElementById('btnAdminPainel').style.display = isAdmin ? '' : 'none';
+  usuarioAtual = {
+    nome: (userDoc && userDoc.nome) || '',
+    email: auth.currentUser ? auth.currentUser.email : '',
+    uid: auth.currentUser ? auth.currentUser.uid : ''
+  };
+  if (!loginRegistrado) { loginRegistrado = true; registrarAtividade('login', 'entrou no sistema'); }
   atualizarCotaUsuario();
   carregarCnpjsPreCadastrados();
 }
@@ -2589,6 +2632,44 @@ async function abrirAdminPainel() {
   openModal('adminModal');
   await renderAdminPainel();
   await renderLogConsultasAdmin();
+  await renderHistoricoAtividades();
+}
+
+// Histórico geral de atividades do site (login, consulta, prospecção, etc.) — só admin.
+const ATIVIDADE_META = {
+  login:         { icon: 'fa-right-to-bracket', label: 'Login',            cor: '#4ADE80' },
+  consulta:      { icon: 'fa-magnifying-glass', label: 'Consulta',         cor: '#22D3EE' },
+  prospeccao:    { icon: 'fa-bullseye',         label: 'Prospecção',       cor: '#FBBF24' },
+  razao_social:  { icon: 'fa-building',         label: 'Razão social',     cor: '#A78BFA' },
+  precadastro:   { icon: 'fa-user-plus',        label: 'Pré-cadastro',     cor: '#4ADE80' },
+  pdf_indicacao: { icon: 'fa-file-pdf',         label: 'PDF de indicação', cor: '#F87171' }
+};
+async function renderHistoricoAtividades() {
+  const box = document.getElementById('adminAtividadesList');
+  if (!box) return;
+  const filtro = (document.getElementById('filtroAtividade') || {}).value || '';
+  box.innerHTML = '<p style="color:var(--muted);font-size:13px">Carregando...</p>';
+  try {
+    const snap = await atividadesCol.orderBy('criadoEm', 'desc').limit(200).get();
+    if (snap.empty) { box.innerHTML = '<p style="color:var(--muted);font-size:13px">Nenhuma atividade registrada ainda.</p>'; return; }
+    let docs = snap.docs.map(d => d.data());
+    if (filtro) docs = docs.filter(d => d.tipo === filtro);
+    docs = docs.slice(0, 60);
+    if (!docs.length) { box.innerHTML = '<p style="color:var(--muted);font-size:13px">Nenhuma atividade desse tipo.</p>'; return; }
+    box.innerHTML = docs.map(d => {
+      const meta = ATIVIDADE_META[d.tipo] || { icon: 'fa-circle-info', label: d.tipo || 'Atividade', cor: 'var(--muted)' };
+      const ts = d.criadoEm && d.criadoEm.toDate ? d.criadoEm.toDate().toLocaleString('pt-BR') : '—';
+      const quem = d.nome ? `${escapeHtml(d.nome)} <span style="color:var(--muted)">(${escapeHtml(d.email || '')})</span>` : escapeHtml(d.email || '—');
+      return `<div class="req-item">
+        <div class="req-item-info">
+          <strong><i class="fas ${meta.icon}" style="color:${meta.cor};margin-right:6px"></i>${meta.label} — ${quem}</strong>
+          <p>${escapeHtml(d.detalhe || '')} · ${ts}</p>
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    box.innerHTML = `<p style="color:var(--muted);font-size:13px">Erro ao carregar histórico: ${e.message}</p>`;
+  }
 }
 
 async function renderAdminPainel() {
@@ -2655,6 +2736,7 @@ async function registrarLogConsulta(cnpjs) {
       quantidade: cnpjs.length,
       criadoEm: firebase.firestore.FieldValue.serverTimestamp()
     });
+    registrarAtividade('consulta', `${cnpjs.length} CNPJ(s) consultado(s)`);
     atualizarCotaUsuario();
   } catch (e) {
     console.error('Erro ao registrar log de consulta:', e);
@@ -3035,6 +3117,8 @@ async function buscarProspeccao() {
   document.getElementById('btnSalvarListaProspeccao').classList.remove('hidden');
   document.getElementById('btnIndicacaoPDF').classList.remove('hidden');
   showToast(`${empresasEncontradas.length} prospect(s) encontrado(s)`, 'success');
+  const cidadesTxt = cidades.map(c => `${c.cidade}/${c.uf}`).join(', ');
+  registrarAtividade('prospeccao', `${empresasEncontradas.length} prospect(s) · ${cidadesTxt} · ${cnaesBusca.length} ramo(s)`);
 }
 
 // Radar de empresas novas: quantos meses desde a abertura (null se sem data).
@@ -3533,6 +3617,7 @@ async function gerarIndicacaoPDF(prospects, origem) {
     });
     await worker.save();
     showToast('PDF de indicação gerado!', 'success');
+    registrarAtividade('pdf_indicacao', `Gerou PDF de indicação com ${prospects.length} empresa(s)`);
   } catch (e) {
     showToast('Erro ao gerar o PDF: ' + (e.message || e), 'error');
   } finally {
@@ -3712,6 +3797,7 @@ async function salvarPreCadastro() {
       });
       closeModal('preCadastroModal');
       showToast('Pré-cadastro atualizado com sucesso.', 'success');
+      registrarAtividade('precadastro', `Atualizou pré-cadastro ${fmt(cnpj)}`);
       abrirListaPreCadastros();
     } else {
       const emp = dadosParaPreCadastro(cnpj) || {};
@@ -3726,6 +3812,7 @@ async function salvarPreCadastro() {
       atualizarBadgePreCadastro(cnpj);
       closeModal('preCadastroModal');
       showToast('Pré-cadastro salvo com sucesso.', 'success');
+      registrarAtividade('precadastro', `Pré-cadastrou ${emp.razao || fmt(cnpj)}`);
     }
   } catch (e) {
     showToast('Erro ao salvar pré-cadastro: ' + (e.message || e), 'error');
@@ -3902,6 +3989,7 @@ async function buscarPorRazaoSocial() {
   statusEl.textContent = `Concluído — ${nomes.length} razão(ões) social(is) consultada(s)`;
   pctEl.textContent = '100%';
   barEl.style.width = '100%';
+  registrarAtividade('razao_social', `${nomes.length} razão(ões) social(is) buscada(s)`);
 
   renderResultadoRazaoSocial();
 }
