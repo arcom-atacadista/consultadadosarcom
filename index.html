@@ -1213,6 +1213,25 @@
     }
     .export-cols label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); cursor: pointer; }
 
+    /* validação de loja física no modal de mapa */
+    .map-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+    .map-tab {
+      flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
+      padding: 9px 12px; border-radius: var(--radius-sm); cursor: pointer;
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--muted); font-family: var(--font); font-size: 13px; font-weight: 600;
+      transition: all .18s;
+    }
+    .map-tab:hover { color: var(--text); transform: translateY(-1px); }
+    .map-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .map-veredicto {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 10px 12px; font-size: 12.5px; color: var(--muted);
+      margin-bottom: 12px;
+    }
+    .map-veredicto .mv-sinais { line-height: 1.45; }
+
     /* ═══════════════ MICRO-ANIMAÇÕES ═══════════════ */
     @keyframes fadeInUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
     @keyframes fadeIn   { from { opacity: 0; } to { opacity: 1; } }
@@ -1836,11 +1855,17 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
     <div class="modal-body" style="padding:0">
       <div style="padding:16px 24px 0">
         <p style="font-size:12px;color:var(--muted);margin-bottom:12px" id="mapEndereco">—</p>
+        <div id="mapVeredicto" class="map-veredicto" style="display:none"></div>
+        <div class="map-tabs">
+          <button class="map-tab active" id="mapTabRua" onclick="mapSetView('rua')"><i class="fas fa-street-view"></i> Fachada (Street View)</button>
+          <button class="map-tab" id="mapTabMapa" onclick="mapSetView('mapa')"><i class="fas fa-map"></i> Mapa</button>
+        </div>
       </div>
       <iframe id="mapFrame"
         width="100%" height="380" style="border:0;display:block"
         loading="lazy" referrerpolicy="no-referrer-when-downgrade">
       </iframe>
+      <div id="mapSvAviso" style="display:none;padding:28px 24px;text-align:center;color:var(--muted);font-size:13px;line-height:1.5"></div>
     </div>
     <div class="modal-footer-row">
       <button class="btn btn-ghost" onclick="closeModal('mapModal')">Fechar</button>
@@ -3097,7 +3122,7 @@ function telMovel(tel) {
 // (ligar / WhatsApp / e-mail, quando existem) + pré-cadastrar. Os dados de
 // contato já vêm da API — antes eram descartados.
 function botoesAcaoProspect(emp) {
-  let btns = `<button class="btn-eye" title="Ver no mapa (validar loja física)" onclick="abrirMapaProspect('${emp.cnpj}')"><i class="fas fa-map-location-dot"></i></button>`;
+  let btns = `<button class="btn-eye" title="Ver a fachada (Street View) — validar se é loja física" onclick="abrirMapaProspect('${emp.cnpj}')"><i class="fas fa-street-view"></i></button>`;
   const tel = (emp.telefone || '').replace(/\D/g, '');
   if (tel) {
     btns += `<a class="btn-eye" title="Ligar para ${tel}" href="tel:${tel}"><i class="fas fa-phone"></i></a>`;
@@ -4321,6 +4346,8 @@ function copiarCNPJsProblema() {
 // Núcleo compartilhado: abre o mapa a partir de um registro qualquer
 // ({cnpj, razao, nomeFantasia, endereco}) — serve tanto pra Consulta
 // (allData) quanto pra Prospecção (prospeccaoUltimoResultado).
+var mapViewData = null;
+
 function abrirMapaComDados(data) {
   if (!data) return;
   const endereco = data.endereco || '';
@@ -4328,17 +4355,56 @@ function abrirMapaComDados(data) {
     showToast('Endereço não disponível para esta empresa.', 'error');
     return;
   }
+  mapViewData = data;
   mapaEnderecoAtual = endereco;
   // Busca sempre pelo TEXTO do endereço (não pela lat/long) — o Google Maps
-  // casa o endereço com o ponto comercial cadastrado e mostra o local/loja
-  // (com Street View), que é o que serve pra validar se existe fisicamente.
+  // casa o endereço com o ponto comercial cadastrado e mostra o local/loja.
   mapaQueryAtual = endereco;
   document.getElementById('mapCNPJ').textContent = fmt(data.cnpj);
   document.getElementById('mapRazao').textContent = data.nomeFantasia && data.nomeFantasia !== '—' && data.nomeFantasia !== '' ? `${data.razao} · ${data.nomeFantasia}` : data.razao;
   document.getElementById('mapEndereco').innerHTML = `<i class="fas fa-map-pin" style="color:var(--accent);margin-right:5px"></i>${endereco}`;
-  document.getElementById('mapFrame').src =
-    `https://maps.google.com/maps?q=${encodeURIComponent(mapaQueryAtual)}&t=&z=16&output=embed`;
+
+  // Faixa de veredicto (score "provável loja física") quando temos os sinais do prospect
+  const vBox = document.getElementById('mapVeredicto');
+  try {
+    if (data.cnaeCodigo !== undefined) {
+      const sc = scoreLojaFisica(data);
+      vBox.style.display = 'flex';
+      vBox.innerHTML = `${badgePotencial(sc)} <span class="mv-sinais"><strong>Provável loja física:</strong> ${sc.chips.length ? sc.chips.join(' · ') : 'poucos sinais'}. Confirme na fachada abaixo 👇</span>`;
+    } else { vBox.style.display = 'none'; }
+  } catch (e) { vBox.style.display = 'none'; }
+
+  // View inicial: abre direto na FACHADA (Street View) quando há coordenada — é o
+  // que mata a dúvida de "é loja física?". Sem coordenada, começa no mapa.
+  const temCoord = (typeof data.latitude === 'number' && typeof data.longitude === 'number');
+  mapSetView(temCoord ? 'rua' : 'mapa');
   openModal('mapModal');
+}
+
+function mapSetView(view) {
+  const d = mapViewData; if (!d) return;
+  const frame = document.getElementById('mapFrame');
+  const aviso = document.getElementById('mapSvAviso');
+  document.getElementById('mapTabRua').classList.toggle('active', view === 'rua');
+  document.getElementById('mapTabMapa').classList.toggle('active', view === 'mapa');
+  const temCoord = (typeof d.latitude === 'number' && typeof d.longitude === 'number');
+  if (view === 'rua') {
+    if (temCoord) {
+      aviso.style.display = 'none';
+      frame.style.display = 'block';
+      frame.src = `https://maps.google.com/maps?q=&layer=c&cbll=${d.latitude},${d.longitude}&cbp=12,0,0,0,0&output=svembed`;
+    } else {
+      frame.style.display = 'none';
+      aviso.style.display = 'block';
+      aviso.innerHTML = `<i class="fas fa-street-view" style="font-size:24px;color:var(--accent);margin-bottom:10px;display:block"></i>
+        Sem coordenada pra abrir a fachada aqui dentro.<br>
+        Clique em <strong>"Abrir no Google Maps"</strong> e arraste o boneco amarelo até a rua pra ver a fachada.`;
+    }
+  } else {
+    aviso.style.display = 'none';
+    frame.style.display = 'block';
+    frame.src = `https://maps.google.com/maps?q=${encodeURIComponent(mapaQueryAtual)}&t=&z=17&output=embed`;
+  }
 }
 function abrirMapa(cnpj) {
   const data = allData[cnpj];
@@ -4351,6 +4417,13 @@ function abrirMapaProspect(cnpj) {
 }
 
 function abrirMapaExterno() {
+  const d = mapViewData;
+  const naRua = document.getElementById('mapTabRua') && document.getElementById('mapTabRua').classList.contains('active');
+  // Se está na aba Fachada e tem coordenada, abre direto o Street View (panorama) no Google
+  if (d && naRua && typeof d.latitude === 'number' && typeof d.longitude === 'number') {
+    window.open(`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${d.latitude},${d.longitude}`, '_blank');
+    return;
+  }
   if (!mapaQueryAtual) return;
   window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapaQueryAtual)}`, '_blank');
 }
