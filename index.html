@@ -1757,6 +1757,28 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
       </div>
 
       <div class="table-card" style="margin-top:6px">
+        <div class="table-card-header"><i class="fas fa-users"></i> Atividade por usuário</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Usuário</th>
+                <th style="text-align:center">Logins</th>
+                <th style="text-align:center">Consultas</th>
+                <th style="text-align:center">Prospecções</th>
+                <th style="text-align:center">Razão social</th>
+                <th style="text-align:center">Pré-cad.</th>
+                <th style="text-align:center">PDFs</th>
+              </tr>
+            </thead>
+            <tbody id="dashPorUsuario">
+              <tr><td colspan="7" style="color:var(--muted);font-size:13px">Carregando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="table-card" style="margin-top:20px">
         <div class="table-card-header" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
           <span><i class="fas fa-clock-rotate-left"></i> Histórico de atividades</span>
           <div style="display:flex;gap:8px;align-items:center">
@@ -2671,18 +2693,30 @@ async function abrirAdminPainel() {
 // Dashboard do admin (aba "Painel"): métricas + histórico de atividades.
 function dashSet(id, v) { const el = document.getElementById(id); if (el) el.textContent = v; }
 async function renderAdminDashboard() {
-  // Métricas de atividade (qualquer usuário logado pode ler atividades_log)
+  // Métricas de atividade + agregação por usuário (qualquer logado pode ler atividades_log)
   try {
-    const snap = await atividadesCol.orderBy('criadoEm', 'desc').limit(1000).get();
+    const snap = await atividadesCol.orderBy('criadoEm', 'desc').limit(2000).get();
     const c = { login:0, consulta:0, prospeccao:0, pdf_indicacao:0 };
-    snap.forEach(doc => { const t = doc.data().tipo; if (c[t] !== undefined) c[t]++; });
+    const porUsuario = {}; // chave: email -> { nome, email, login, consulta, prospeccao, razao_social, precadastro, pdf_indicacao }
+    snap.forEach(doc => {
+      const d = doc.data();
+      const t = d.tipo;
+      if (c[t] !== undefined) c[t]++;
+      const chave = d.email || d.nome || '—';
+      if (!porUsuario[chave]) porUsuario[chave] = { nome: d.nome || '', email: d.email || '', login:0, consulta:0, prospeccao:0, razao_social:0, precadastro:0, pdf_indicacao:0 };
+      if (d.nome && !porUsuario[chave].nome) porUsuario[chave].nome = d.nome;
+      if (porUsuario[chave][t] !== undefined) porUsuario[chave][t]++;
+    });
     dashSet('dashLogins', c.login);
     dashSet('dashConsultas', c.consulta);
     dashSet('dashProspeccoes', c.prospeccao);
     dashSet('dashPdfs', c.pdf_indicacao);
+    renderPorUsuario(porUsuario);
   } catch (e) {
     console.error('Dashboard (atividades):', e);
     ['dashLogins','dashConsultas','dashProspeccoes','dashPdfs'].forEach(id => dashSet(id, '—'));
+    const tb = document.getElementById('dashPorUsuario');
+    if (tb) tb.innerHTML = `<tr><td colspan="7" style="color:var(--muted);font-size:13px">Erro ao carregar: ${e.message}</td></tr>`;
   }
   // Contas (usuarios) — pelas regras, listar todos exige admin; falha graciosa se não puder
   try {
@@ -2696,6 +2730,29 @@ async function renderAdminDashboard() {
     dashSet('dashPendentes', '—');
   }
   renderHistoricoAtividades();
+}
+
+// Tabela "Atividade por usuário" — quantos logins/consultas/prospecções/PDFs cada pessoa fez.
+function renderPorUsuario(porUsuario) {
+  const tb = document.getElementById('dashPorUsuario');
+  if (!tb) return;
+  const linhas = Object.values(porUsuario).sort((a, b) =>
+    (b.consulta + b.prospeccao + b.pdf_indicacao) - (a.consulta + a.prospeccao + a.pdf_indicacao)
+  );
+  if (!linhas.length) {
+    tb.innerHTML = '<tr><td colspan="7" style="color:var(--muted);font-size:13px">Nenhuma atividade ainda.</td></tr>';
+    return;
+  }
+  tb.innerHTML = linhas.map(u => {
+    const quem = u.nome
+      ? `<strong>${escapeHtml(u.nome)}</strong><br><span style="color:var(--muted);font-size:11px">${escapeHtml(u.email || '')}</span>`
+      : escapeHtml(u.email || '—');
+    const cel = n => `<td style="text-align:center">${n || 0}</td>`;
+    return `<tr>
+      <td>${quem}</td>
+      ${cel(u.login)}${cel(u.consulta)}${cel(u.prospeccao)}${cel(u.razao_social)}${cel(u.precadastro)}${cel(u.pdf_indicacao)}
+    </tr>`;
+  }).join('');
 }
 
 // Histórico geral de atividades do site (login, consulta, prospecção, etc.) — só admin.
