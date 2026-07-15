@@ -213,7 +213,8 @@
 
 
     .sidebar {
-      background: var(--accent2);
+      /* semi-transparente pra deixar as partículas do fundo aparecerem atrás */
+      background: color-mix(in srgb, var(--accent2) 76%, transparent);
       border-right: none;
       padding: 24px 16px;
       display: flex;
@@ -2132,9 +2133,9 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
       <div class="appearance-row" style="flex-direction:column;align-items:stretch;gap:6px">
         <div style="display:flex;justify-content:space-between">
           <label for="particleDensity">Densidade das partículas</label>
-          <small id="particleDensityVal">60</small>
+          <small id="particleDensityVal">95</small>
         </div>
-        <input type="range" id="particleDensity" min="10" max="150" value="60" oninput="updateParticleDensity()">
+        <input type="range" id="particleDensity" min="10" max="150" value="95" oninput="updateParticleDensity()">
       </div>
 
       <button class="btn btn-ghost" style="margin-top:12px;width:100%;font-size:12px" onclick="resetAccentColor()">
@@ -2307,7 +2308,7 @@ function resetAccentColor() {
 // ── PARTÍCULAS DE FUNDO (rede/constelação) ───────────────────────────────────
 let particleCanvas, particleCtx, particles = [], particleAnimId = null;
 let particleColor = { r: 0, g: 120, b: 64 }, particleFrame = 0;
-let particleSettings = JSON.parse(localStorage.getItem('particleSettings') || 'null') || { enabled: false, density: 60 };
+let particleSettings = JSON.parse(localStorage.getItem('particleSettings') || 'null') || { enabled: true, density: 95 };
 
 function hexToRgb(hex) {
   hex = (hex || '').replace('#', '');
@@ -2336,7 +2337,7 @@ function initParticles() {
       y: Math.random() * particleCanvas.height,
       vx: (Math.random() - 0.5) * 0.25,
       vy: (Math.random() - 0.5) * 0.25,
-      r: Math.random() * 1.4 + 0.6
+      r: Math.random() * 1.8 + 0.9
     });
   }
   if (particleAnimId) cancelAnimationFrame(particleAnimId);
@@ -2354,12 +2355,12 @@ function animateParticles() {
     if (p.x < 0 || p.x > particleCanvas.width) p.vx *= -1;
     if (p.y < 0 || p.y > particleCanvas.height) p.vy *= -1;
   });
-  const maxDist = 140;
+  const maxDist = 170;
   for (let i = 0; i < particles.length; i++) {
     const p1 = particles[i];
     particleCtx.beginPath();
     particleCtx.arc(p1.x, p1.y, p1.r, 0, Math.PI * 2);
-    particleCtx.fillStyle = `rgba(${r},${g},${b},0.65)`;
+    particleCtx.fillStyle = `rgba(${r},${g},${b},0.8)`;
     particleCtx.fill();
     for (let j = i + 1; j < particles.length; j++) {
       const p2 = particles[j];
@@ -2369,7 +2370,7 @@ function animateParticles() {
         particleCtx.beginPath();
         particleCtx.moveTo(p1.x, p1.y);
         particleCtx.lineTo(p2.x, p2.y);
-        particleCtx.strokeStyle = `rgba(${r},${g},${b},${0.18 * (1 - dist / maxDist)})`;
+        particleCtx.strokeStyle = `rgba(${r},${g},${b},${0.3 * (1 - dist / maxDist)})`;
         particleCtx.lineWidth = 1;
         particleCtx.stroke();
       }
