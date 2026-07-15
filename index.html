@@ -213,7 +213,8 @@
 
 
     .sidebar {
-      background: var(--accent2);
+      /* semi-transparente pra deixar as partículas do fundo aparecerem atrás */
+      background: color-mix(in srgb, var(--accent2) 76%, transparent);
       border-right: none;
       padding: 24px 16px;
       display: flex;
@@ -1391,7 +1392,6 @@
     <span>/ CDA (Consulta dados Arcom)</span>
   </a>
   <div class="topbar-spacer"></div>
-  <span id="cotaUsuario" class="tech-pill" style="display:none;margin-right:4px;cursor:default" title="Total de CNPJs consultados por você neste mês"></span>
   <button class="topbar-btn" id="btnAdminPainel" style="display:none" onclick="abrirAdminPainel()" title="Solicitações de acesso"><i class="fas fa-user-clock"></i></button>
   <button class="topbar-btn" id="btnDarkMode" onclick="toggleDarkMode()" title="Alternar tema"><i class="fas fa-moon"></i></button>
   <button class="topbar-btn" onclick="openSettings()" title="Configurações"><i class="fas fa-sliders-h"></i></button>
@@ -2133,9 +2133,9 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
       <div class="appearance-row" style="flex-direction:column;align-items:stretch;gap:6px">
         <div style="display:flex;justify-content:space-between">
           <label for="particleDensity">Densidade das partículas</label>
-          <small id="particleDensityVal">60</small>
+          <small id="particleDensityVal">95</small>
         </div>
-        <input type="range" id="particleDensity" min="10" max="150" value="60" oninput="updateParticleDensity()">
+        <input type="range" id="particleDensity" min="10" max="150" value="95" oninput="updateParticleDensity()">
       </div>
 
       <button class="btn btn-ghost" style="margin-top:12px;width:100%;font-size:12px" onclick="resetAccentColor()">
@@ -2307,7 +2307,8 @@ function resetAccentColor() {
 
 // ── PARTÍCULAS DE FUNDO (rede/constelação) ───────────────────────────────────
 let particleCanvas, particleCtx, particles = [], particleAnimId = null;
-let particleSettings = JSON.parse(localStorage.getItem('particleSettings') || 'null') || { enabled: false, density: 60 };
+let particleColor = { r: 0, g: 120, b: 64 }, particleFrame = 0;
+let particleSettings = JSON.parse(localStorage.getItem('particleSettings') || 'null') || { enabled: true, density: 95 };
 
 function hexToRgb(hex) {
   hex = (hex || '').replace('#', '');
@@ -2336,7 +2337,7 @@ function initParticles() {
       y: Math.random() * particleCanvas.height,
       vx: (Math.random() - 0.5) * 0.25,
       vy: (Math.random() - 0.5) * 0.25,
-      r: Math.random() * 1.4 + 0.6
+      r: Math.random() * 1.8 + 0.9
     });
   }
   if (particleAnimId) cancelAnimationFrame(particleAnimId);
@@ -2346,18 +2347,20 @@ function initParticles() {
 function animateParticles() {
   if (!particleCtx || !particleSettings.enabled) return;
   particleCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
-  const { r, g, b } = hexToRgb(getParticleColorHex());
+  // Recalcula a cor (leitura de estilo custosa) só ~2x/s, não a cada frame.
+  if ((particleFrame++ % 30) === 0) particleColor = hexToRgb(getParticleColorHex());
+  const { r, g, b } = particleColor;
   particles.forEach(p => {
     p.x += p.vx; p.y += p.vy;
     if (p.x < 0 || p.x > particleCanvas.width) p.vx *= -1;
     if (p.y < 0 || p.y > particleCanvas.height) p.vy *= -1;
   });
-  const maxDist = 140;
+  const maxDist = 170;
   for (let i = 0; i < particles.length; i++) {
     const p1 = particles[i];
     particleCtx.beginPath();
     particleCtx.arc(p1.x, p1.y, p1.r, 0, Math.PI * 2);
-    particleCtx.fillStyle = `rgba(${r},${g},${b},0.65)`;
+    particleCtx.fillStyle = `rgba(${r},${g},${b},0.8)`;
     particleCtx.fill();
     for (let j = i + 1; j < particles.length; j++) {
       const p2 = particles[j];
@@ -2367,7 +2370,7 @@ function animateParticles() {
         particleCtx.beginPath();
         particleCtx.moveTo(p1.x, p1.y);
         particleCtx.lineTo(p2.x, p2.y);
-        particleCtx.strokeStyle = `rgba(${r},${g},${b},${0.18 * (1 - dist / maxDist)})`;
+        particleCtx.strokeStyle = `rgba(${r},${g},${b},${0.3 * (1 - dist / maxDist)})`;
         particleCtx.lineWidth = 1;
         particleCtx.stroke();
       }
@@ -2597,7 +2600,6 @@ async function mostrarApp(userDoc) {
   };
   // Só registra "login" quando foi um login intencional (e-mail/senha), não em F5/refresh
   if (loginIntencional) { loginIntencional = false; registrarAtividade('login', 'entrou no sistema'); }
-  atualizarCotaUsuario();
   carregarCnpjsPreCadastrados();
 }
 
@@ -2858,30 +2860,11 @@ async function registrarLogConsulta(cnpjs) {
       criadoEm: firebase.firestore.FieldValue.serverTimestamp()
     });
     registrarAtividade('consulta', `${cnpjs.length} CNPJ(s) consultado(s)`);
-    atualizarCotaUsuario();
   } catch (e) {
     console.error('Erro ao registrar log de consulta:', e);
   }
 }
 
-async function atualizarCotaUsuario() {
-  const el = document.getElementById('cotaUsuario');
-  if (!el || !auth.currentUser) return;
-  try {
-    const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0,0,0,0);
-    const snap = await logsCol.where('uid', '==', auth.currentUser.uid).get();
-    let total = 0;
-    snap.forEach(doc => {
-      const d = doc.data();
-      const ts = d.criadoEm && d.criadoEm.toDate ? d.criadoEm.toDate() : null;
-      if (!ts || ts >= inicioMes) total += (d.quantidade || 0);
-    });
-    el.innerHTML = `<i class="fas fa-gauge"></i> ${total} consulta(s) este mês`;
-    el.style.display = 'inline-flex';
-  } catch (e) {
-    console.error('Erro ao calcular cota de uso:', e);
-  }
-}
 
 // Lista as últimas consultas de todos os usuários (só pra admin, exibido no painel de administração).
 async function renderLogConsultasAdmin() {
@@ -3393,8 +3376,17 @@ function renderProspeccaoResultado(empresas) {
   lista.forEach(e => scoreCache.set(e.cnpj, scoreLojaFisica(e)));
   lista = lista.slice().sort((a, b) => scoreCache.get(b.cnpj).score - scoreCache.get(a.cnpj).score);
 
+  // Teto de renderização: evita travar o navegador em buscas muito amplas.
+  // A lista completa continua em prospeccaoUltimoResultado (PDF/exportação/seleção).
+  const LIMITE_RENDER = 500;
+  const totalLista = lista.length;
+  const listaRender = lista.slice(0, LIMITE_RENDER);
+  const capNote = totalLista > LIMITE_RENDER
+    ? ` <span style="color:var(--accent)">(mostrando os ${LIMITE_RENDER} de maior potencial; os ${totalLista} entram no PDF/exportação)</span>`
+    : '';
+
   let h = `<p style="font-size:12px;color:var(--muted);margin-bottom:6px">
-      ${empresas.length} prospect(s) encontrado(s) em <strong>${cidadesEnvolvidas.join(', ')}</strong> — empresas ativas que ainda não são clientes Arcom.
+      ${empresas.length} prospect(s) encontrado(s) em <strong>${cidadesEnvolvidas.join(', ')}</strong> — empresas ativas que ainda não são clientes Arcom.${capNote}
     </p>`;
   h += `<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">`;
   h += `<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer">
@@ -3410,7 +3402,7 @@ function renderProspeccaoResultado(empresas) {
   h += `<span style="font-size:12px;color:var(--accent)"><i class="fas fa-square-check"></i> <span id="prospSelCount"></span></span>`;
   h += `</div>`;
   h += `<table style="width:100%"><thead><tr><th style="width:28px"><input type="checkbox" id="chkSelTodosProspect" title="Selecionar todos" onclick="toggleSelecionarTodosProspect(this)"></th><th title="Provável loja física (0-100)">Potencial</th><th>CNPJ</th><th>Razão Social</th><th>Nome Fantasia</th><th>Cidade</th><th>Atividade</th><th>Filial nº</th><th>Abertura</th><th></th></tr></thead><tbody>`;
-  lista.forEach(emp => {
+  listaRender.forEach(emp => {
     const abertura = emp.dataInicio ? emp.dataInicio.split('-').reverse().join('/') : '—';
     const fantasia = emp.nomeFantasia && emp.nomeFantasia.trim() ? emp.nomeFantasia : '—';
     const filialTxt = (emp.ordemFilial && emp.ordemFilial > 1) ? String(emp.ordemFilial) : (emp.ordemFilial === 1 ? 'matriz' : '—');
@@ -4583,10 +4575,8 @@ function abrirMapaComDados(data) {
     } else { vBox.style.display = 'none'; }
   } catch (e) { vBox.style.display = 'none'; }
 
-  // View inicial: abre direto na FACHADA (Street View) quando há coordenada — é o
-  // que mata a dúvida de "é loja física?". Sem coordenada, começa no mapa.
-  const temCoord = (typeof data.latitude === 'number' && typeof data.longitude === 'number');
-  mapSetView(temCoord ? 'rua' : 'mapa');
+  // Abre direto na FACHADA (Street View), pelo endereço do CNPJ.
+  mapSetView('rua');
   openModal('mapModal');
 }
 
@@ -4596,23 +4586,16 @@ function mapSetView(view) {
   const aviso = document.getElementById('mapSvAviso');
   document.getElementById('mapTabRua').classList.toggle('active', view === 'rua');
   document.getElementById('mapTabMapa').classList.toggle('active', view === 'mapa');
-  const temCoord = (typeof d.latitude === 'number' && typeof d.longitude === 'number');
+  aviso.style.display = 'none';
+  frame.style.display = 'block';
+  // IMPORTANTE: tanto o mapa quanto a fachada abrem pelo ENDEREÇO do CNPJ.
+  // A coordenada (latitude/longitude) da API de prospecção é imprecisa e às vezes
+  // repete entre empresas — usá-la fazia a fachada vir igual pra CNPJs diferentes.
+  const q = encodeURIComponent(mapaQueryAtual || d.endereco || '');
   if (view === 'rua') {
-    if (temCoord) {
-      aviso.style.display = 'none';
-      frame.style.display = 'block';
-      frame.src = `https://maps.google.com/maps?q=&layer=c&cbll=${d.latitude},${d.longitude}&cbp=12,0,0,0,0&output=svembed`;
-    } else {
-      frame.style.display = 'none';
-      aviso.style.display = 'block';
-      aviso.innerHTML = `<i class="fas fa-street-view" style="font-size:24px;color:var(--accent);margin-bottom:10px;display:block"></i>
-        Sem coordenada pra abrir a fachada aqui dentro.<br>
-        Clique em <strong>"Abrir no Google Maps"</strong> e arraste o boneco amarelo até a rua pra ver a fachada.`;
-    }
+    frame.src = `https://maps.google.com/maps?q=${q}&layer=c&output=svembed`;
   } else {
-    aviso.style.display = 'none';
-    frame.style.display = 'block';
-    frame.src = `https://maps.google.com/maps?q=${encodeURIComponent(mapaQueryAtual)}&t=&z=17&output=embed`;
+    frame.src = `https://maps.google.com/maps?q=${q}&t=&z=17&output=embed`;
   }
 }
 function abrirMapa(cnpj) {
@@ -4626,13 +4609,7 @@ function abrirMapaProspect(cnpj) {
 }
 
 function abrirMapaExterno() {
-  const d = mapViewData;
-  const naRua = document.getElementById('mapTabRua') && document.getElementById('mapTabRua').classList.contains('active');
-  // Se está na aba Fachada e tem coordenada, abre direto o Street View (panorama) no Google
-  if (d && naRua && typeof d.latitude === 'number' && typeof d.longitude === 'number') {
-    window.open(`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${d.latitude},${d.longitude}`, '_blank');
-    return;
-  }
+  // Sempre pelo ENDEREÇO (a coordenada da API é imprecisa/repetida entre CNPJs).
   if (!mapaQueryAtual) return;
   window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapaQueryAtual)}`, '_blank');
 }
