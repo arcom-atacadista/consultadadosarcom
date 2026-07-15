@@ -1433,10 +1433,14 @@
 
     <div class="sidebar-label" style="margin-top:20px">Fonte de Dados</div>
     <div class="api-select">
-      <p>API selecionada</p>
-      <div class="api-option" style="cursor:default">
+      <p>Fonte da consulta</p>
+      <div class="api-option" id="apiOptArcom" onclick="selecionarApi('arcom')">
         <i class="fas fa-circle-check" style="color:var(--accent)"></i>
-        <label><strong>Consulta CNPJ Arcom</strong><small>API própria Arcom</small></label>
+        <label><strong>Consulta CNPJ Arcom</strong><small>API própria · mostra se é cliente Arcom · em lote</small></label>
+      </div>
+      <div class="api-option" id="apiOptBrasil" onclick="selecionarApi('brasilapi')">
+        <i class="fas fa-circle" style="color:var(--muted)"></i>
+        <label><strong>Brasil API</strong><small>Pública e gratuita · 1 CNPJ por vez</small></label>
       </div>
     </div>
 
@@ -2490,6 +2494,7 @@ window.addEventListener('load', () => {
   document.getElementById('particleDensity').value = particleSettings.density;
   document.getElementById('particleDensityVal').textContent = particleSettings.density;
   initParticles();
+  atualizarSeletorApi();
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2928,6 +2933,25 @@ async function obterArcomToken(forcar) {
 // formato do lote, já confirmado com amostra real e tratado por
 // mapArcomBatchRecord. Rotear por aqui também traz o "Cliente Arcom"
 // (ja_cliente) na consulta individual, que o GET não devolvia.
+// Fonte de dados selecionada na consulta CNPJ: 'arcom' (padrão) ou 'brasilapi'.
+var apiSelecionada = localStorage.getItem('apiSelecionada') || 'arcom';
+function selecionarApi(api) {
+  apiSelecionada = api;
+  localStorage.setItem('apiSelecionada', api);
+  atualizarSeletorApi();
+}
+function atualizarSeletorApi() {
+  const opts = { arcom: document.getElementById('apiOptArcom'), brasilapi: document.getElementById('apiOptBrasil') };
+  Object.keys(opts).forEach(k => {
+    const el = opts[k]; if (!el) return;
+    const sel = (apiSelecionada === k);
+    const ic = el.querySelector('i');
+    ic.className = sel ? 'fas fa-circle-check' : 'fas fa-circle';
+    ic.style.color = sel ? 'var(--accent)' : 'var(--muted)';
+    el.style.background = sel ? 'rgba(255,255,255,.10)' : '';
+  });
+}
+
 async function consultarNovaAPI(cnpj) {
   if (!isValidCNPJ(cnpj)) throw new Error('CNPJ inválido');
   const [item] = await consultarLoteArcomBruto([cnpj]);
@@ -3009,6 +3033,66 @@ function mapArcomBatchRecord(d, jaClienteOverride) {
     longitude: (typeof d.longitude === 'number') ? d.longitude : null,
     api: 'Consulta CNPJ Arcom',
     municipio: nomeMunicipio
+  };
+}
+
+// ── BRASIL API (pública, gratuita, 1 CNPJ por requisição) ───────────────────
+// https://brasilapi.com.br/api/cnpj/v1/{cnpj} — sem chave. Não informa se é
+// cliente Arcom nem coordenadas. Normaliza pro mesmo formato interno.
+async function consultarBrasilAPI(cnpj) {
+  if (!isValidCNPJ(cnpj)) throw new Error('CNPJ inválido');
+  const limpo = cnpj.replace(/\D/g, '');
+  const r = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${limpo}`);
+  if (r.status === 404) throw new Error('CNPJ não encontrado');
+  if (r.status === 429) throw new Error('Brasil API: muitas requisições, aguarde um instante');
+  if (!r.ok) throw new Error('Brasil API: erro HTTP ' + r.status);
+  return mapBrasilApiRecord(await r.json());
+}
+
+function mapBrasilApiRecord(d) {
+  const enderecoInicio = [[d.descricao_tipo_de_logradouro, d.logradouro].filter(Boolean).join(' '), d.numero].filter(Boolean).join(', ');
+  const complemento = d.complemento ? ` (${d.complemento})` : '';
+  const enderecoFim = [d.bairro, d.municipio, d.uf].filter(Boolean).join(', ');
+  const endereco = (enderecoInicio || enderecoFim)
+    ? (enderecoInicio + complemento + (enderecoFim ? ' - ' + enderecoFim : ''))
+    : '—';
+  return {
+    situacao: (d.descricao_situacao_cadastral || 'INDEFINIDA').toUpperCase(),
+    dataSituacaoCadastral: d.data_situacao_cadastral || '—',
+    motivoSituacaoCadastral: d.descricao_motivo_situacao_cadastral || d.motivo_situacao_cadastral || '—',
+    situacaoEspecial: d.situacao_especial || '—',
+    dataSituacaoEspecial: d.data_situacao_especial || '—',
+    razao: d.razao_social || '—',
+    porte: d.porte || d.codigo_porte || '—',
+    clienteArcom: '—', // Brasil API não sabe se é cliente Arcom
+    natureza: d.natureza_juridica || '—',
+    atividade: d.cnae_fiscal_descricao || '—',
+    cnaesSecundarios: (d.cnaes_secundarios || []).map(c => ({ codigo: c.codigo, descricao: c.descricao })),
+    matrizFilial: d.descricao_identificador_matriz_filial || '—',
+    uf: (d.uf || '—').substring(0, 2),
+    nomeFantasia: d.nome_fantasia || '—',
+    dataInicio: d.data_inicio_atividade || '—',
+    capitalSocial: d.capital_social != null ? 'R$ ' + Number(d.capital_social).toLocaleString('pt-BR') : '—',
+    endereco: endereco,
+    cep: d.cep || '—',
+    telefone: d.ddd_telefone_1 || '—',
+    telefone2: d.ddd_telefone_2 || '—',
+    fax: '—',
+    email: d.email || '—',
+    socios: (d.qsa || []).map(s => ({
+      nome_socio: s.nome_socio,
+      cpf: s.cnpj_cpf_do_socio || '',
+      qualificacao_socio: s.qualificacao_socio || '',
+      faixa_etaria: s.faixa_etaria || '',
+      data_entrada_sociedade: s.data_entrada_sociedade || ''
+    })),
+    simples: simNaoOuTraco(d.opcao_pelo_simples),
+    mei: simNaoOuTraco(d.opcao_pelo_mei),
+    regimeTributario: [],
+    latitude: null,
+    longitude: null,
+    api: 'Brasil API',
+    municipio: d.municipio || ''
   };
 }
 
@@ -4261,8 +4345,8 @@ async function startVerification() {
     updateStats(total,baix,inap,susp,erro);
   }
 
-  if (validos.length > 1) {
-    // ── MAIS DE 1 CNPJ → usa cache para os já conhecidos e /v1/cnpj/batch pro resto ──
+  if (apiSelecionada === 'arcom' && validos.length > 1) {
+    // ── ARCOM + MAIS DE 1 CNPJ → usa cache para os já conhecidos e /v1/cnpj/batch pro resto ──
     const jaEmCache = [];
     const precisaBuscar = [];
     validos.forEach(cnpj => {
@@ -4292,18 +4376,18 @@ async function startVerification() {
       }
     }
   } else {
-    // ── 1 único CNPJ → consulta individual (com cache) ──
+    // ── Consulta individual (1 CNPJ na Arcom, ou qualquer quantidade na Brasil API) ──
     for (let n=0; n<validos.length; n++) {
       const cnpj = validos[n];
       document.getElementById('status').textContent=`Consultando ${fmt(cnpj)} (${n+1}/${validos.length})`;
       document.getElementById('barFill').style.width=((n/validos.length)*100)+'%';
       document.getElementById('percentage').textContent=Math.round((n/validos.length)*100)+'%';
-      const cached = getCachedResult(cnpj, 'arcom');
+      const cached = getCachedResult(cnpj, apiSelecionada);
       if (cached) { renderLinha(cnpj, cached.result, cached); continue; }
-      if (n>0) await new Promise(r=>setTimeout(r,300));
+      if (n>0) await new Promise(r=>setTimeout(r, apiSelecionada === 'brasilapi' ? 400 : 300));
       try {
-        const result = await consultarNovaAPI(cnpj);
-        saveToCache(cnpj, 'arcom', result);
+        const result = apiSelecionada === 'brasilapi' ? await consultarBrasilAPI(cnpj) : await consultarNovaAPI(cnpj);
+        saveToCache(cnpj, apiSelecionada, result);
         renderLinha(cnpj, result);
       } catch(e) {
         renderErro(cnpj, e.message||'Erro na consulta');
