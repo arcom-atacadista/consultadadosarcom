@@ -1391,7 +1391,6 @@
     <span>/ CDA (Consulta dados Arcom)</span>
   </a>
   <div class="topbar-spacer"></div>
-  <span id="cotaUsuario" class="tech-pill" style="display:none;margin-right:4px;cursor:default" title="Total de CNPJs consultados por você neste mês"></span>
   <button class="topbar-btn" id="btnAdminPainel" style="display:none" onclick="abrirAdminPainel()" title="Solicitações de acesso"><i class="fas fa-user-clock"></i></button>
   <button class="topbar-btn" id="btnDarkMode" onclick="toggleDarkMode()" title="Alternar tema"><i class="fas fa-moon"></i></button>
   <button class="topbar-btn" onclick="openSettings()" title="Configurações"><i class="fas fa-sliders-h"></i></button>
@@ -2600,7 +2599,6 @@ async function mostrarApp(userDoc) {
   };
   // Só registra "login" quando foi um login intencional (e-mail/senha), não em F5/refresh
   if (loginIntencional) { loginIntencional = false; registrarAtividade('login', 'entrou no sistema'); }
-  atualizarCotaUsuario();
   carregarCnpjsPreCadastrados();
 }
 
@@ -2861,31 +2859,11 @@ async function registrarLogConsulta(cnpjs) {
       criadoEm: firebase.firestore.FieldValue.serverTimestamp()
     });
     registrarAtividade('consulta', `${cnpjs.length} CNPJ(s) consultado(s)`);
-    atualizarCotaUsuario();
   } catch (e) {
     console.error('Erro ao registrar log de consulta:', e);
   }
 }
 
-async function atualizarCotaUsuario() {
-  const el = document.getElementById('cotaUsuario');
-  if (!el || !auth.currentUser) return;
-  try {
-    const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0,0,0,0);
-    // Limite de segurança: evita ler o histórico inteiro (que só cresce) a cada consulta.
-    const snap = await logsCol.where('uid', '==', auth.currentUser.uid).limit(1000).get();
-    let total = 0;
-    snap.forEach(doc => {
-      const d = doc.data();
-      const ts = d.criadoEm && d.criadoEm.toDate ? d.criadoEm.toDate() : null;
-      if (!ts || ts >= inicioMes) total += (d.quantidade || 0);
-    });
-    el.innerHTML = `<i class="fas fa-gauge"></i> ${total} consulta(s) este mês`;
-    el.style.display = 'inline-flex';
-  } catch (e) {
-    console.error('Erro ao calcular cota de uso:', e);
-  }
-}
 
 // Lista as últimas consultas de todos os usuários (só pra admin, exibido no painel de administração).
 async function renderLogConsultasAdmin() {
