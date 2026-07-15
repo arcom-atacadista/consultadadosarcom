@@ -2935,6 +2935,45 @@ function botoesAcaoProspect(emp) {
   return btns;
 }
 
+// Score "provável loja física" (0-100) — 100% client-side, com o que a
+// Prospecção já entrega. Joga pro topo quem tem cara de loja de balcão
+// (varejo, com nome fantasia, endereço com número, telefone fixo, madura) e
+// pro fim holding/imobiliária/serviço. É um apoio à priorização, não verdade.
+function scoreLojaFisica(emp) {
+  let score = 0; const chips = [];
+  const p2 = (emp.cnaeCodigo || '').toString().slice(0, 2);
+  let cnaeScore, cnaeLabel;
+  if (p2 === '47') { cnaeScore = 40; cnaeLabel = 'Varejo'; }
+  else if (p2 === '56') { cnaeScore = 26; cnaeLabel = 'Alimentação'; }
+  else if (p2 === '45') { cnaeScore = 24; cnaeLabel = 'Veículos'; }
+  else if (p2 === '86') { cnaeScore = 20; cnaeLabel = 'Saúde'; }
+  else if (['10','11','13','14','15','16','17','18','20','22','23','25','31','32','33'].includes(p2)) { cnaeScore = 14; cnaeLabel = 'Indústria'; }
+  else if (['64','65','66','68','69','70','82'].includes(p2)) { cnaeScore = 0; cnaeLabel = 'Serviço/holding'; }
+  else { cnaeScore = 12; cnaeLabel = 'Outro'; }
+  score += cnaeScore; if (cnaeScore >= 24) chips.push(cnaeLabel);
+
+  if (emp.nomeFantasia && emp.nomeFantasia.trim()) { score += 15; chips.push('Nome fantasia'); }
+  const logradouro = (emp.endereco || '').split(' - ')[0] || '';
+  const temNumero = /\d/.test(logradouro) && !/\bS\/?N\b/i.test(emp.endereco || '');
+  if (temNumero) { score += 15; chips.push('Endereço c/ número'); }
+  const tel = (emp.telefone || '').replace(/\D/g, '');
+  if (tel) { score += 8; if (!telMovel(tel)) { score += 6; chips.push('Tel fixo'); } else chips.push('Telefone'); }
+  if (emp.porte && emp.porte !== 'MICRO EMPRESA' && emp.porte !== '—') { score += 8; }
+  if (emp.latitude != null) score += 5;
+  const meses = mesesDesdeAbertura(emp.dataInicio);
+  if (meses != null && meses >= 24) { score += 8; chips.push(`${Math.floor(meses / 12)} anos`); }
+
+  score = Math.max(0, Math.min(100, score));
+  const temp = score >= 65 ? 'quente' : score >= 40 ? 'morno' : 'frio';
+  return { score, temp, chips };
+}
+function badgePotencial(sc) {
+  const cor = sc.temp === 'quente' ? 'badge-ativa' : sc.temp === 'morno' ? 'badge-inapta' : 'badge-baixada';
+  const emoji = sc.temp === 'quente' ? '🟢' : sc.temp === 'morno' ? '🟡' : '🔴';
+  const dica = sc.chips.length ? sc.chips.join(' · ') : 'poucos sinais de loja física';
+  return `<span class="badge ${cor}" title="Provável loja física: ${sc.score}/100 — ${dica}">${emoji} ${sc.score}</span>`;
+}
+
 function renderProspeccaoResultado(empresas) {
   const resultado = document.getElementById('prosResultado');
   const cidadesEnvolvidas = [...new Set(empresas.map(e => `${e.cidade}/${e.uf}`))];
@@ -2945,6 +2984,11 @@ function renderProspeccaoResultado(empresas) {
   if (prosCortarRedes) lista = lista.filter(e => !eGrandeRede(e));
   const qtdNovas = lista.filter(eNova).length;
   if (prosSomenteNovas) lista = lista.filter(eNova);
+
+  // Calcula o score uma vez por empresa e ordena por potencial (melhor no topo).
+  const scoreCache = new Map();
+  lista.forEach(e => scoreCache.set(e.cnpj, scoreLojaFisica(e)));
+  lista = lista.slice().sort((a, b) => scoreCache.get(b.cnpj).score - scoreCache.get(a.cnpj).score);
 
   let h = `<p style="font-size:12px;color:var(--muted);margin-bottom:6px">
       ${empresas.length} prospect(s) encontrado(s) em <strong>${cidadesEnvolvidas.join(', ')}</strong> — empresas ativas que ainda não são clientes Arcom.
@@ -2962,13 +3006,13 @@ function renderProspeccaoResultado(empresas) {
     </label>`;
   h += `<span style="font-size:12px;color:var(--accent)"><i class="fas fa-square-check"></i> <span id="prospSelCount"></span></span>`;
   h += `</div>`;
-  h += `<table style="width:100%"><thead><tr><th style="width:28px"><input type="checkbox" id="chkSelTodosProspect" title="Selecionar todos" onclick="toggleSelecionarTodosProspect(this)"></th><th>CNPJ</th><th>Razão Social</th><th>Nome Fantasia</th><th>Cidade</th><th>Atividade</th><th>Filial nº</th><th>Abertura</th><th></th></tr></thead><tbody>`;
+  h += `<table style="width:100%"><thead><tr><th style="width:28px"><input type="checkbox" id="chkSelTodosProspect" title="Selecionar todos" onclick="toggleSelecionarTodosProspect(this)"></th><th title="Provável loja física (0-100)">Potencial</th><th>CNPJ</th><th>Razão Social</th><th>Nome Fantasia</th><th>Cidade</th><th>Atividade</th><th>Filial nº</th><th>Abertura</th><th></th></tr></thead><tbody>`;
   lista.forEach(emp => {
     const abertura = emp.dataInicio ? emp.dataInicio.split('-').reverse().join('/') : '—';
     const fantasia = emp.nomeFantasia && emp.nomeFantasia.trim() ? emp.nomeFantasia : '—';
     const filialTxt = (emp.ordemFilial && emp.ordemFilial > 1) ? String(emp.ordemFilial) : (emp.ordemFilial === 1 ? 'matriz' : '—');
     const marcado = prospeccaoSelecionados.has(emp.cnpj) ? 'checked' : '';
-    h += `<tr><td><input type="checkbox" class="chk-prospect" ${marcado} onclick="toggleSelecionadoProspect('${emp.cnpj}',this)"></td><td>${fmt(emp.cnpj)}</td><td>${emp.razao}${badgeNova(emp.dataInicio)}<span data-precad-slot="${emp.cnpj}"></span></td><td style="font-weight:600">${fantasia}</td><td style="font-size:12px;color:var(--muted)">${emp.cidade}/${emp.uf}</td><td style="font-size:12px;color:var(--muted)">${emp.atividade}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${filialTxt}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${abertura}</td>
+    h += `<tr><td><input type="checkbox" class="chk-prospect" ${marcado} onclick="toggleSelecionadoProspect('${emp.cnpj}',this)"></td><td>${badgePotencial(scoreCache.get(emp.cnpj))}</td><td>${fmt(emp.cnpj)}</td><td>${emp.razao}${badgeNova(emp.dataInicio)}<span data-precad-slot="${emp.cnpj}"></span></td><td style="font-weight:600">${fantasia}</td><td style="font-size:12px;color:var(--muted)">${emp.cidade}/${emp.uf}</td><td style="font-size:12px;color:var(--muted)">${emp.atividade}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${filialTxt}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${abertura}</td>
       <td class="td-actions">${botoesAcaoProspect(emp)}</td></tr>`;
   });
   h += '</tbody></table>';
