@@ -4575,10 +4575,8 @@ function abrirMapaComDados(data) {
     } else { vBox.style.display = 'none'; }
   } catch (e) { vBox.style.display = 'none'; }
 
-  // View inicial: abre direto na FACHADA (Street View) quando há coordenada — é o
-  // que mata a dúvida de "é loja física?". Sem coordenada, começa no mapa.
-  const temCoord = (typeof data.latitude === 'number' && typeof data.longitude === 'number');
-  mapSetView(temCoord ? 'rua' : 'mapa');
+  // Abre direto na FACHADA (Street View), pelo endereço do CNPJ.
+  mapSetView('rua');
   openModal('mapModal');
 }
 
@@ -4588,23 +4586,16 @@ function mapSetView(view) {
   const aviso = document.getElementById('mapSvAviso');
   document.getElementById('mapTabRua').classList.toggle('active', view === 'rua');
   document.getElementById('mapTabMapa').classList.toggle('active', view === 'mapa');
-  const temCoord = (typeof d.latitude === 'number' && typeof d.longitude === 'number');
+  aviso.style.display = 'none';
+  frame.style.display = 'block';
+  // IMPORTANTE: tanto o mapa quanto a fachada abrem pelo ENDEREÇO do CNPJ.
+  // A coordenada (latitude/longitude) da API de prospecção é imprecisa e às vezes
+  // repete entre empresas — usá-la fazia a fachada vir igual pra CNPJs diferentes.
+  const q = encodeURIComponent(mapaQueryAtual || d.endereco || '');
   if (view === 'rua') {
-    if (temCoord) {
-      aviso.style.display = 'none';
-      frame.style.display = 'block';
-      frame.src = `https://maps.google.com/maps?q=&layer=c&cbll=${d.latitude},${d.longitude}&cbp=12,0,0,0,0&output=svembed`;
-    } else {
-      frame.style.display = 'none';
-      aviso.style.display = 'block';
-      aviso.innerHTML = `<i class="fas fa-street-view" style="font-size:24px;color:var(--accent);margin-bottom:10px;display:block"></i>
-        Sem coordenada pra abrir a fachada aqui dentro.<br>
-        Clique em <strong>"Abrir no Google Maps"</strong> e arraste o boneco amarelo até a rua pra ver a fachada.`;
-    }
+    frame.src = `https://maps.google.com/maps?q=${q}&layer=c&output=svembed`;
   } else {
-    aviso.style.display = 'none';
-    frame.style.display = 'block';
-    frame.src = `https://maps.google.com/maps?q=${encodeURIComponent(mapaQueryAtual)}&t=&z=17&output=embed`;
+    frame.src = `https://maps.google.com/maps?q=${q}&t=&z=17&output=embed`;
   }
 }
 function abrirMapa(cnpj) {
@@ -4618,13 +4609,7 @@ function abrirMapaProspect(cnpj) {
 }
 
 function abrirMapaExterno() {
-  const d = mapViewData;
-  const naRua = document.getElementById('mapTabRua') && document.getElementById('mapTabRua').classList.contains('active');
-  // Se está na aba Fachada e tem coordenada, abre direto o Street View (panorama) no Google
-  if (d && naRua && typeof d.latitude === 'number' && typeof d.longitude === 'number') {
-    window.open(`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${d.latitude},${d.longitude}`, '_blank');
-    return;
-  }
+  // Sempre pelo ENDEREÇO (a coordenada da API é imprecisa/repetida entre CNPJs).
   if (!mapaQueryAtual) return;
   window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapaQueryAtual)}`, '_blank');
 }
