@@ -149,6 +149,7 @@
       position: sticky;
       top: 0;
       z-index: 100;
+      zoom: .9;
       height: 56px;
       background: rgba(255,255,255,.9);
       backdrop-filter: blur(16px);
@@ -195,7 +196,7 @@
     .topbar-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,120,64,.08); }
 
     
-    .page { display: grid; grid-template-columns: 280px 1fr; min-height: calc(100vh - 56px); position: relative; z-index: 1; transition: grid-template-columns .25s ease; }
+    .page { display: grid; grid-template-columns: 280px 1fr; min-height: calc(100vh - 56px); position: relative; z-index: 1; transition: grid-template-columns .25s ease; zoom: .9; }
     /* ── mini-rail: navegação recolhida vira barra só de ícones ── */
     .page.nav-collapsed { grid-template-columns: 68px 1fr; }
     .page.nav-collapsed .sidebar { padding-left: 10px; padding-right: 10px; align-items: center; }
@@ -438,7 +439,7 @@
     .stat-card.c-gray  { border-top: 2px solid var(--muted);  } .stat-card.c-gray   .stat-val { color: var(--muted);  }
 
     
-    .bottom-grid { display: grid; grid-template-columns: 1fr 280px; gap: 20px; margin-bottom: 24px; }
+    .bottom-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 24px; }
 
     
     .table-card {
@@ -479,7 +480,7 @@
     .td-razao { font-weight: 500; }
     .td-fav { cursor: pointer; font-size: 15px; color: var(--muted); transition: color .2s; }
     .td-fav:hover { color: var(--yellow); }
-    .td-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .td-actions { display: flex; gap: 6px; flex-wrap: nowrap; white-space: nowrap; }
 
     /* ── BADGES ── */
     .badge {
@@ -500,17 +501,18 @@
 
     /* ── MINI BTN ── */
     .btn-eye {
-      padding: 5px 12px;
+      padding: 4px 9px;
       border-radius: 6px;
       border: 1px solid var(--border);
       background: transparent;
       color: var(--muted);
-      font-size: 12px;
+      font-size: 11.5px;
       cursor: pointer;
       font-family: var(--font);
       transition: all .2s;
       white-space: nowrap;
     }
+    .btn-eye i { font-size: 11px; margin-right: 2px; }
     .btn-eye:hover { border-color: var(--accent); color: var(--accent); }
 
     /* ── CHART PANEL ── */
@@ -520,10 +522,13 @@
       border-radius: var(--radius);
       padding: 20px;
       display: flex;
-      flex-direction: column;
+      flex-wrap: wrap;
+      gap: 32px;
+      align-items: flex-start;
     }
+    .chart-group { flex: 1 1 240px; min-width: 220px; }
     .chart-panel-title { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 16px; }
-    .chart-wrap { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 200px; }
+    .chart-wrap { display: flex; align-items: center; justify-content: center; min-height: 180px; }
 
     /* ── EMPTY STATE ── */
     .empty-state { padding: 48px 24px; text-align: center; color: var(--muted); }
@@ -1562,7 +1567,7 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
                   <th id="thPorteCol">Cliente Arcom</th>
                   <th style="text-align:center" title="Nº da ocorrência de cadastro do cliente na Arcom">Ocorrência</th>
                   <th>UF</th>
-                  <th style="width:170px"></th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody id="tbody">
@@ -1580,13 +1585,17 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
         </div>
 
         <div class="chart-panel">
-          <div class="chart-panel-title"><i class="fas fa-chart-pie" style="color:var(--accent);margin-right:6px"></i>Distribuição</div>
-          <div class="chart-wrap" style="min-height:180px">
-            <canvas id="chartSituacao" style="max-width:180px;max-height:180px"></canvas>
+          <div class="chart-group">
+            <div class="chart-panel-title"><i class="fas fa-chart-pie" style="color:var(--accent);margin-right:6px"></i>Distribuição</div>
+            <div class="chart-wrap">
+              <canvas id="chartSituacao" style="max-width:180px;max-height:180px"></canvas>
+            </div>
           </div>
-          <div class="chart-panel-title" style="margin-top:18px"><i class="fas fa-chart-bar" style="color:var(--accent);margin-right:6px"></i>Top UFs</div>
-          <div class="chart-wrap" style="min-height:140px">
-            <canvas id="chartUF" style="max-height:140px"></canvas>
+          <div class="chart-group">
+            <div class="chart-panel-title"><i class="fas fa-chart-bar" style="color:var(--accent);margin-right:6px"></i>Top UFs</div>
+            <div class="chart-wrap">
+              <canvas id="chartUF" style="max-height:160px"></canvas>
+            </div>
           </div>
         </div>
       </div>
@@ -4189,10 +4198,10 @@ async function startVerification() {
       <td style="font-size:12px;font-family:var(--mono);text-align:center">${result.ocorrencia != null ? result.ocorrencia : '<span style="color:var(--muted)">—</span>'}</td>
       <td style="color:var(--muted);font-size:12px;font-family:var(--mono)">${result.uf}</td>
       <td class="td-actions">
-        <button class="btn-eye" title="Ver detalhes" onclick="openDetailsModal('${cnpj}')"><i class="fas fa-eye"></i></button>
-        <button class="btn-eye btn-purple" title="Gerar Insight com IA" onclick="enriquecerDados('${cnpj}')" id="enrichBtn-${cnpj}"><i class="fas fa-lightbulb"></i></button>
-        <button class="btn-eye" title="Mapa / fachada (Street View)" onclick="abrirMapa('${cnpj}')"><i class="fas fa-map-location-dot"></i></button>
-        <button class="btn-eye" title="Pré-cadastrar" onclick="abrirPreCadastro('${cnpj}')"><i class="fas fa-user-plus"></i></button>
+        <button class="btn-eye" title="Ver detalhes" onclick="openDetailsModal('${cnpj}')"><i class="fas fa-eye"></i> Ver</button>
+        <button class="btn-eye btn-purple" title="Gerar Insight com IA" onclick="enriquecerDados('${cnpj}')" id="enrichBtn-${cnpj}"><i class="fas fa-lightbulb"></i> Insight</button>
+        <button class="btn-eye" title="Mapa / fachada (Street View)" onclick="abrirMapa('${cnpj}')"><i class="fas fa-map-location-dot"></i> Mapa</button>
+        <button class="btn-eye" title="Pré-cadastrar" onclick="abrirPreCadastro('${cnpj}')"><i class="fas fa-user-plus"></i> Pré-cad.</button>
       </td>
     </tr>`;
     updateStats(total,baix,inap,susp,erro);
@@ -5073,7 +5082,7 @@ async function enriquecerDados(cnpj) {
   openModal('enrichModal');
 
   const btn = document.getElementById('enrichBtn-'+cnpj);
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>'; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> …'; }
 
   try {
     if (!enrichData[cnpj]) {
@@ -5085,12 +5094,12 @@ async function enriquecerDados(cnpj) {
       document.getElementById('btnWhatsappEnrich').style.display = 'inline-flex';
       document.getElementById('btnEmailEnrich').style.display = 'inline-flex';
     }
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check"></i>'; btn.title = 'Insight gerado — clique para ver'; btn.classList.add('badge-purple'); }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check"></i> Gerado'; btn.title = 'Insight gerado — clique para ver'; btn.classList.add('badge-purple'); }
   } catch (e) {
     if (currentEnrichCNPJ === cnpj) {
       document.getElementById('enrichBody').innerHTML = `<div class="alert alert-danger">Erro ao gerar o insight com IA: ${e.message}</div>`;
     }
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate-right"></i>'; btn.title = 'Erro — tentar novamente'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate-right"></i> Tentar'; btn.title = 'Erro — tentar novamente'; }
   }
 }
 
@@ -5133,12 +5142,12 @@ async function enriquecerTodos() {
     btn.innerHTML = `<span class="spinner"></span> Gerando insight ${i+1}/${cnpjs.length}…`;
     if (!enrichData[cnpj]) {
       const rowBtn = document.getElementById('enrichBtn-'+cnpj);
-      if (rowBtn) { rowBtn.disabled = true; rowBtn.innerHTML = '<span class="spinner"></span>'; }
+      if (rowBtn) { rowBtn.disabled = true; rowBtn.innerHTML = '<span class="spinner"></span> …'; }
       try {
         enrichData[cnpj] = await consultarInsightIA(cnpj, allData[cnpj]);
-        if (rowBtn) { rowBtn.disabled = false; rowBtn.innerHTML = '<i class="fas fa-check"></i>'; rowBtn.title = 'Insight gerado — clique para ver'; rowBtn.classList.add('badge-purple'); }
+        if (rowBtn) { rowBtn.disabled = false; rowBtn.innerHTML = '<i class="fas fa-check"></i> Gerado'; rowBtn.title = 'Insight gerado — clique para ver'; rowBtn.classList.add('badge-purple'); }
       } catch(e) {
-        if (rowBtn) { rowBtn.disabled = false; rowBtn.innerHTML = '<i class="fas fa-rotate-right"></i>'; rowBtn.title = 'Erro — tentar novamente'; }
+        if (rowBtn) { rowBtn.disabled = false; rowBtn.innerHTML = '<i class="fas fa-rotate-right"></i> Tentar'; rowBtn.title = 'Erro — tentar novamente'; }
       }
       await delay(250);
     }
