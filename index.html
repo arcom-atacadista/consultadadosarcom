@@ -3882,21 +3882,29 @@ async function gerarIndicacaoPDF(prospects, origem) {
     document.body.appendChild(palco);
     document.body.appendChild(aviso);
     const nomeArq = 'Indicacao_clientes_' + (cidades.length === 1 ? cidades[0].replace(/[^a-zA-Z]/g, '') : 'varias') + '_' + new Date().toISOString().split('T')[0] + '.pdf';
-    const worker = html2pdf().set({ margin: 10, filename: nomeArq, pagebreak: { mode: ['css', 'legacy'] }, html2canvas: { scale: 2, backgroundColor: '#ffffff', useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(el).toPdf();
-    await worker.get('pdf').then(pdf => {
-      // el tem 760px de largura e o conteúdo ocupa 190mm (A4 210 - 2×10 de margem).
-      const F = 190 / 760;
-      pdf.setPage(1);
-      const addLink = (id, url) => {
-        if (!url) return;
-        const b = el.querySelector('#' + id);
-        if (!b) return;
-        pdf.link(10 + b.offsetLeft * F, 10 + b.offsetTop * F, b.offsetWidth * F, b.offsetHeight * F, { url });
-      };
-      addLink('pdfRotaMapsBtn', mapsUrl);
-      addLink('pdfRotaWazeBtn', wazeUrl);
-    });
-    await worker.save();
+    // el tem 760px de largura e o conteúdo ocupa 190mm (A4 210 - 2×10 de margem).
+    const F = 190 / 760;
+    // Encadeia o save() DEPOIS de adicionar os links (fazer separado pode perder as
+    // anotações). Posiciona pelo getBoundingClientRect (preciso) e calcula a página.
+    await html2pdf().set({ margin: 10, filename: nomeArq, pagebreak: { mode: ['css', 'legacy'] }, html2canvas: { scale: 2, backgroundColor: '#ffffff', useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } })
+      .from(el).toPdf().get('pdf').then(pdf => {
+        const elRect = el.getBoundingClientRect();
+        const alturaPagina = pdf.internal.pageSize.getHeight() - 20; // área útil entre margens
+        const addLink = (id, url) => {
+          if (!url) return;
+          const b = el.querySelector('#' + id);
+          if (!b) return;
+          const r = b.getBoundingClientRect();
+          const xMM = (r.left - elRect.left) * F;
+          const yMM = (r.top - elRect.top) * F;
+          const pagina = Math.floor(yMM / alturaPagina) + 1;
+          const yNaPagina = 10 + (yMM - (pagina - 1) * alturaPagina);
+          pdf.setPage(pagina);
+          pdf.link(10 + xMM, yNaPagina, r.width * F, r.height * F, { url });
+        };
+        addLink('pdfRotaMapsBtn', mapsUrl);
+        addLink('pdfRotaWazeBtn', wazeUrl);
+      }).save();
     showToast('PDF de indicação gerado!', 'success');
     const cnpjsPdf = prospects.map(p => (p.cnpj || '').replace(/\D/g, '')).filter(Boolean);
     registrarAtividade('pdf_indicacao', `Gerou PDF de indicação com ${prospects.length} empresa(s)`, { cnpjs: cnpjsPdf });
