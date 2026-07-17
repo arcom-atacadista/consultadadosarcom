@@ -1759,12 +1759,19 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
         <div class="stat-card c-cyan"><div class="stat-val" id="dashLogins">—</div><div class="stat-lbl">Logins</div></div>
         <div class="stat-card c-green"><div class="stat-val" id="dashConsultas">—</div><div class="stat-lbl">Consultas</div></div>
         <div class="stat-card c-yellow"><div class="stat-val" id="dashProspeccoes">—</div><div class="stat-lbl">Prospecções</div></div>
-        <div class="stat-card c-red"><div class="stat-val" id="dashPdfs">—</div><div class="stat-lbl">PDFs gerados</div></div>
+        <div class="stat-card c-red" onclick="abrirCnpjsPdf()" style="cursor:pointer" title="Ver todos os CNPJs já enviados em PDFs de indicação">
+          <div class="stat-val" id="dashPdfs">—</div>
+          <div class="stat-lbl">PDFs gerados <i class="fas fa-arrow-up-right-from-square" style="font-size:9px;opacity:.7"></i></div>
+          <div id="dashPdfsHint" style="font-size:10.5px;color:var(--accent);margin-top:4px">clique p/ ver</div>
+        </div>
       </div>
 
       <div class="table-card" style="margin-top:6px">
-        <div class="table-card-header"><i class="fas fa-users"></i> Atividade por usuário</div>
-        <div class="table-wrap">
+        <div class="table-card-header" onclick="toggleDashUsuarios()" style="cursor:pointer;display:flex;align-items:center;gap:8px">
+          <i class="fas fa-users"></i> Atividade por usuário
+          <i class="fas fa-chevron-down" id="dashUsuariosChevron" style="margin-left:auto;font-size:12px;color:var(--muted);transition:transform .2s"></i>
+        </div>
+        <div class="table-wrap" id="dashUsuariosWrap">
           <table>
             <thead>
               <tr>
@@ -1909,6 +1916,27 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
       <button class="btn btn-purple" id="btnExportEnrich" onclick="exportEnrichAtual()" style="display:none">
         <i class="fas fa-download"></i> Exportar insight
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: CNPJs enviados em PDFs de indicação (admin) -->
+<div class="modal-overlay" id="cnpjsPdfModal">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-head">
+      <div>
+        <p class="modal-head-razao">CNPJs enviados em PDFs de indicação</p>
+        <p class="modal-head-cnpj" id="cnpjsPdfCount" style="color:var(--muted)"></p>
+      </div>
+      <button class="modal-close" onclick="closeModal('cnpjsPdfModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Todos os CNPJs (sem pontuação) já indicados aos assessores. Use "Consultar" pra ver quais já viraram clientes Arcom.</p>
+      <textarea id="cnpjsPdfBody" readonly style="width:100%;min-height:220px;background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--mono);font-size:13px;padding:12px;resize:vertical"></textarea>
+    </div>
+    <div class="modal-footer-row">
+      <button class="btn btn-ghost" onclick="copiarCnpjsPdf()"><i class="fas fa-copy"></i> Copiar todos</button>
+      <button class="btn btn-primary" onclick="consultarCnpjsPdf()"><i class="fas fa-magnifying-glass"></i> Consultar na aba CNPJ</button>
     </div>
   </div>
 </div>
@@ -2531,17 +2559,18 @@ let usuarioAtual = null;
 let loginIntencional = false; // true só quando o usuário DIGITA e-mail/senha (não em refresh/restauração de sessão)
 
 // Registra um evento no histórico de atividades do site (login, consulta, prospecção, etc.).
-async function registrarAtividade(tipo, detalhe) {
+// `extra` (opcional) adiciona campos ao registro — ex: { cnpjs: [...] } no PDF de indicação.
+async function registrarAtividade(tipo, detalhe, extra) {
   try {
     if (!auth.currentUser) return;
-    await atividadesCol.add({
+    await atividadesCol.add(Object.assign({
       uid: auth.currentUser.uid,
       email: auth.currentUser.email,
       nome: (usuarioAtual && usuarioAtual.nome) || '',
       tipo: tipo,
       detalhe: detalhe || '',
       criadoEm: firebase.firestore.FieldValue.serverTimestamp()
-    });
+    }, extra || {}));
   } catch (e) {
     console.error('Erro ao registrar atividade:', e);
   }
@@ -2704,26 +2733,63 @@ async function abrirAdminPainel() {
 }
 
 // Dashboard do admin (aba "Painel"): métricas + histórico de atividades.
+var cnpjsPdfIndicados = []; // todos os CNPJs (só dígitos) já enviados em PDFs de indicação
 function dashSet(id, v) { const el = document.getElementById(id); if (el) el.textContent = v; }
+
+// Abre o modal com todos os CNPJs já enviados em PDFs de indicação (pra acompanhar cadastro).
+function abrirCnpjsPdf() {
+  const box = document.getElementById('cnpjsPdfBody');
+  const cont = document.getElementById('cnpjsPdfCount');
+  if (!cnpjsPdfIndicados.length) {
+    if (cont) cont.textContent = 'Nenhum CNPJ registrado em PDFs ainda.';
+    if (box) box.value = '';
+  } else {
+    if (cont) cont.textContent = `${cnpjsPdfIndicados.length} CNPJ(s) único(s) enviados em PDFs de indicação`;
+    if (box) box.value = cnpjsPdfIndicados.join('\n');
+  }
+  openModal('cnpjsPdfModal');
+}
+function copiarCnpjsPdf() {
+  if (!cnpjsPdfIndicados.length) { showToast('Nenhum CNPJ pra copiar.', 'error'); return; }
+  navigator.clipboard.writeText(cnpjsPdfIndicados.join('\n'))
+    .then(() => showToast(`${cnpjsPdfIndicados.length} CNPJ(s) copiados!`, 'success'))
+    .catch(() => showToast('Erro ao copiar.', 'error'));
+}
+function consultarCnpjsPdf() {
+  if (!cnpjsPdfIndicados.length) { showToast('Nenhum CNPJ pra consultar.', 'error'); return; }
+  const inp = document.getElementById('input');
+  if (inp) inp.value = cnpjsPdfIndicados.join('\n');
+  closeModal('cnpjsPdfModal');
+  const navConsulta = document.querySelector('.nav-item[onclick*="\'consulta\'"]');
+  showTab('consulta', navConsulta);
+  startVerification();
+}
 async function renderAdminDashboard() {
   // Métricas de atividade + agregação por usuário (qualquer logado pode ler atividades_log)
   try {
     const snap = await atividadesCol.orderBy('criadoEm', 'desc').limit(2000).get();
     const c = { login:0, consulta:0, prospeccao:0, pdf_indicacao:0 };
     const porUsuario = {}; // chave: email -> { nome, email, login, consulta, prospeccao, razao_social, precadastro, pdf_indicacao }
+    const cnpjsPdfSet = new Set(); // todos os CNPJs já enviados em PDFs de indicação
     snap.forEach(doc => {
       const d = doc.data();
       const t = d.tipo;
       if (c[t] !== undefined) c[t]++;
+      if (t === 'pdf_indicacao' && Array.isArray(d.cnpjs)) {
+        d.cnpjs.forEach(cn => { const limpo = (cn || '').replace(/\D/g, ''); if (limpo) cnpjsPdfSet.add(limpo); });
+      }
       const chave = d.email || d.nome || '—';
       if (!porUsuario[chave]) porUsuario[chave] = { nome: d.nome || '', email: d.email || '', login:0, consulta:0, prospeccao:0, razao_social:0, precadastro:0, pdf_indicacao:0 };
       if (d.nome && !porUsuario[chave].nome) porUsuario[chave].nome = d.nome;
       if (porUsuario[chave][t] !== undefined) porUsuario[chave][t]++;
     });
+    cnpjsPdfIndicados = [...cnpjsPdfSet];
     dashSet('dashLogins', c.login);
     dashSet('dashConsultas', c.consulta);
     dashSet('dashProspeccoes', c.prospeccao);
     dashSet('dashPdfs', c.pdf_indicacao);
+    const hintPdf = document.getElementById('dashPdfsHint');
+    if (hintPdf) hintPdf.textContent = cnpjsPdfIndicados.length ? `${cnpjsPdfIndicados.length} CNPJ(s) — clique p/ ver` : 'clique p/ ver';
     renderPorUsuario(porUsuario);
   } catch (e) {
     console.error('Dashboard (atividades):', e);
@@ -2743,6 +2809,16 @@ async function renderAdminDashboard() {
     dashSet('dashPendentes', '—');
   }
   renderHistoricoAtividades();
+}
+
+// Recolher/expandir a tabela "Atividade por usuário".
+function toggleDashUsuarios() {
+  const wrap = document.getElementById('dashUsuariosWrap');
+  const chev = document.getElementById('dashUsuariosChevron');
+  if (!wrap) return;
+  const escondido = wrap.style.display === 'none';
+  wrap.style.display = escondido ? '' : 'none';
+  if (chev) chev.style.transform = escondido ? '' : 'rotate(-90deg)';
 }
 
 // Tabela "Atividade por usuário" — quantos logins/consultas/prospecções/PDFs cada pessoa fez.
@@ -3822,7 +3898,8 @@ async function gerarIndicacaoPDF(prospects, origem) {
     });
     await worker.save();
     showToast('PDF de indicação gerado!', 'success');
-    registrarAtividade('pdf_indicacao', `Gerou PDF de indicação com ${prospects.length} empresa(s)`);
+    const cnpjsPdf = prospects.map(p => (p.cnpj || '').replace(/\D/g, '')).filter(Boolean);
+    registrarAtividade('pdf_indicacao', `Gerou PDF de indicação com ${prospects.length} empresa(s)`, { cnpjs: cnpjsPdf });
   } catch (e) {
     showToast('Erro ao gerar o PDF: ' + (e.message || e), 'error');
   } finally {
