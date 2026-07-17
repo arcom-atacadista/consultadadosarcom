@@ -1566,13 +1566,14 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
                   <th>Razão Social</th>
                   <th>Situação</th>
                   <th id="thPorteCol">Cliente Arcom</th>
+                  <th title="Nº da ocorrência de cadastro do cliente na Arcom">Ocorrência</th>
                   <th>UF</th>
                   <th style="width:170px"></th>
                 </tr>
               </thead>
               <tbody id="tbody">
                 <tr>
-                  <td colspan="7">
+                  <td colspan="8">
                     <div class="empty-state">
                       <i class="fas fa-search"></i>
                       <p>Nenhuma consulta realizada</p>
@@ -1830,6 +1831,7 @@ Ex: PETROLEO BRASILEIRO S A PETROBRAS"></textarea>
           <div class="modal-field" style="grid-column:1/-1"><label>Nome Fantasia</label><p id="detailNomeFantasia" style="font-weight:600"></p></div>
           <div class="modal-field"><label>Situação</label><p><span class="badge" id="detailSituacao"></span></p></div>
           <div class="modal-field"><label id="detailPorteLabel">Cliente Arcom</label><p id="detailPorte"></p></div>
+          <div class="modal-field"><label>Ocorrência</label><p id="detailOcorrencia"></p></div>
           <div class="modal-field"><label>Porte</label><p id="detailPorteEmpresa"></p></div>
           <div class="modal-field"><label>Matriz/Filial</label><p id="detailMatrizFilial"></p></div>
           <div class="modal-field"><label>Natureza Jurídica</label><p id="detailNatureza"></p></div>
@@ -2959,7 +2961,7 @@ async function consultarNovaAPI(cnpj) {
   if (!item) throw new Error('Erro na Consulta CNPJ Arcom: resposta vazia');
   if (item.error) throw new Error(item.error);
   if (!item.found) throw new Error('CNPJ não encontrado');
-  return mapArcomBatchRecord(item.data, item.ja_cliente);
+  return mapArcomBatchRecord(item.data, item.ja_cliente, item.id_ocor_cadastro);
 }
 
 function simNaoOuTraco(v) {
@@ -2983,7 +2985,7 @@ function simNaoBadgeHTML(label) {
 // status de Simples/MEI têm formato próprio. Normaliza tudo pro formato
 // interno que o resto do app (tabela, modal, exportações) consome, sem
 // precisar saber de qual chamada o registro veio.
-function mapArcomBatchRecord(d, jaClienteOverride) {
+function mapArcomBatchRecord(d, jaClienteOverride, ocorrencia) {
   const empresa = d.empresa || {};
   const simples = d.simples || {};
   const nomeMunicipio = (d.municipio && d.municipio.descricao) || '';
@@ -3003,6 +3005,7 @@ function mapArcomBatchRecord(d, jaClienteOverride) {
     razao: empresa.razao_social || '—',
     porte: (empresa.porte_empresa && empresa.porte_empresa.descricao) || '—',
     clienteArcom: simNaoOuTraco(jaClienteOverride ?? d.ja_cliente),
+    ocorrencia: (ocorrencia != null ? ocorrencia : null),
     natureza: (empresa.natureza_juridica && empresa.natureza_juridica.descricao) || '—',
     atividade: (d.cnae_fiscal_principal && d.cnae_fiscal_principal.descricao) || '—',
     cnaesSecundarios: d.cnae_fiscal_secundaria || [],
@@ -4297,7 +4300,7 @@ async function startVerification() {
       tbody.innerHTML+=`<tr>
         <td class="td-fav">☆</td>
         <td class="td-cnpj">${fmt(cnpj)}</td>
-        <td colspan="4"><span class="badge badge-error">CNPJ Inválido</span></td>
+        <td colspan="5"><span class="badge badge-error">CNPJ Inválido</span></td>
         <td></td></tr>`;
       total++; erro++; erroCNPJs.push({cnpj, motivo:'CNPJ Inválido'});
     } else {
@@ -4323,6 +4326,7 @@ async function startVerification() {
       <td class="td-razao">${result.razao}${cacheTagHtml}${(result.nomeFantasia && result.nomeFantasia!=='—') ? `<span style="display:block;font-size:11px;color:var(--muted)"><i class="fas fa-store" style="margin-right:3px"></i>${result.nomeFantasia}</span>` : ''}<span data-precad-slot="${cnpj}"></span></td>
       <td><span class="badge ${bc}">${result.situacao}</span></td>
       <td style="color:var(--muted);font-size:12px">${simNaoBadgeHTML(result.clienteArcom)}</td>
+      <td style="font-size:12px;font-family:var(--mono)">${result.ocorrencia != null ? result.ocorrencia : '<span style="color:var(--muted)">—</span>'}</td>
       <td style="color:var(--muted);font-size:12px;font-family:var(--mono)">${result.uf}</td>
       <td class="td-actions">
         <button class="btn-eye" onclick="openDetailsModal('${cnpj}')"><i class="fas fa-eye"></i> Ver</button>
@@ -4341,7 +4345,7 @@ async function startVerification() {
     tbody.innerHTML+=`<tr>
       <td class="td-fav">☆</td>
       <td class="td-cnpj">${fmt(cnpj)}</td>
-      <td colspan="4"><span class="badge badge-error">${mensagem}</span></td>
+      <td colspan="5"><span class="badge badge-error">${mensagem}</span></td>
       <td></td></tr>`;
     total++; erro++; erroCNPJs.push({cnpj, motivo:mensagem});
     updateStats(total,baix,inap,susp,erro);
@@ -4368,7 +4372,7 @@ async function startVerification() {
           resultados.forEach(item => {
             if (item.error) { renderErro(item.cnpj, item.error); return; }
             if (!item.found) { renderErro(item.cnpj, 'CNPJ não encontrado'); return; }
-            const result = mapArcomBatchRecord(item.data, item.ja_cliente);
+            const result = mapArcomBatchRecord(item.data, item.ja_cliente, item.id_ocor_cadastro);
             saveToCache(item.cnpj, 'arcom', result);
             renderLinha(item.cnpj, result);
           });
@@ -4436,6 +4440,7 @@ function openDetailsModal(cnpj) {
   const sb=document.getElementById('detailSituacao');
   sb.textContent=data.situacao; sb.className='badge '+bc;
   document.getElementById('detailPorte').textContent=data.clienteArcom||'—';
+  document.getElementById('detailOcorrencia').textContent=(data.ocorrencia!=null?data.ocorrencia:'—');
   document.getElementById('detailPorteEmpresa').textContent=data.porte||'—';
   document.getElementById('detailMatrizFilial').textContent=data.matrizFilial||'—';
   document.getElementById('detailNatureza').textContent=data.natureza;
@@ -4596,7 +4601,7 @@ function removeFavTag(cnpj, tag, e) {
 
 function clearAll() {
   document.getElementById('input').value='';
-  document.getElementById('tbody').innerHTML=`<tr><td colspan="7"><div class="empty-state"><i class="fas fa-search"></i><p>Nenhuma consulta realizada</p></div></td></tr>`;
+  document.getElementById('tbody').innerHTML=`<tr><td colspan="8"><div class="empty-state"><i class="fas fa-search"></i><p>Nenhuma consulta realizada</p></div></td></tr>`;
   document.getElementById('btnExport').classList.add('hidden');
   document.getElementById('btnEnrichAll').classList.add('hidden');
   document.getElementById('btnRankingLeads').classList.add('hidden');
