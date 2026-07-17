@@ -4410,10 +4410,10 @@ async function startVerification() {
       <td style="font-size:12px;font-family:var(--mono);text-align:center">${result.ocorrencia != null ? result.ocorrencia : '<span style="color:var(--muted)">—</span>'}</td>
       <td style="color:var(--muted);font-size:12px;font-family:var(--mono)">${result.uf}</td>
       <td class="td-actions">
-        <button class="btn-eye" onclick="openDetailsModal('${cnpj}')"><i class="fas fa-eye"></i> Ver</button>
-        <button class="btn-eye btn-purple" onclick="enriquecerDados('${cnpj}')" id="enrichBtn-${cnpj}"><i class="fas fa-lightbulb"></i> Insight IA</button>
-        <button class="btn-eye" onclick="abrirMapa('${cnpj}')"><i class="fas fa-map-location-dot"></i> Mapa</button>
-        <button class="btn-eye" onclick="abrirPreCadastro('${cnpj}')"><i class="fas fa-user-plus"></i> Pré-cadastrar</button>
+        <button class="btn-eye" title="Ver detalhes" onclick="openDetailsModal('${cnpj}')"><i class="fas fa-eye"></i></button>
+        <button class="btn-eye btn-purple" title="Gerar Insight com IA" onclick="enriquecerDados('${cnpj}')" id="enrichBtn-${cnpj}"><i class="fas fa-lightbulb"></i></button>
+        <button class="btn-eye" title="Mapa / fachada (Street View)" onclick="abrirMapa('${cnpj}')"><i class="fas fa-map-location-dot"></i></button>
+        <button class="btn-eye" title="Pré-cadastrar" onclick="abrirPreCadastro('${cnpj}')"><i class="fas fa-user-plus"></i></button>
       </td>
     </tr>`;
     updateStats(total,baix,inap,susp,erro);
@@ -5294,7 +5294,7 @@ async function enriquecerDados(cnpj) {
   openModal('enrichModal');
 
   const btn = document.getElementById('enrichBtn-'+cnpj);
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> ...'; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>'; }
 
   try {
     if (!enrichData[cnpj]) {
@@ -5306,12 +5306,12 @@ async function enriquecerDados(cnpj) {
       document.getElementById('btnWhatsappEnrich').style.display = 'inline-flex';
       document.getElementById('btnEmailEnrich').style.display = 'inline-flex';
     }
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check"></i> Insight gerado'; btn.classList.add('badge-purple'); }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check"></i>'; btn.title = 'Insight gerado — clique para ver'; btn.classList.add('badge-purple'); }
   } catch (e) {
     if (currentEnrichCNPJ === cnpj) {
       document.getElementById('enrichBody').innerHTML = `<div class="alert alert-danger">Erro ao gerar o insight com IA: ${e.message}</div>`;
     }
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-lightbulb"></i> Tentar novamente'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate-right"></i>'; btn.title = 'Erro — tentar novamente'; }
   }
 }
 
@@ -5354,12 +5354,12 @@ async function enriquecerTodos() {
     btn.innerHTML = `<span class="spinner"></span> Gerando insight ${i+1}/${cnpjs.length}…`;
     if (!enrichData[cnpj]) {
       const rowBtn = document.getElementById('enrichBtn-'+cnpj);
-      if (rowBtn) { rowBtn.disabled = true; rowBtn.innerHTML = '<span class="spinner"></span> ...'; }
+      if (rowBtn) { rowBtn.disabled = true; rowBtn.innerHTML = '<span class="spinner"></span>'; }
       try {
         enrichData[cnpj] = await consultarInsightIA(cnpj, allData[cnpj]);
-        if (rowBtn) { rowBtn.disabled = false; rowBtn.innerHTML = '<i class="fas fa-check"></i> Insight gerado'; rowBtn.classList.add('badge-purple'); }
+        if (rowBtn) { rowBtn.disabled = false; rowBtn.innerHTML = '<i class="fas fa-check"></i>'; rowBtn.title = 'Insight gerado — clique para ver'; rowBtn.classList.add('badge-purple'); }
       } catch(e) {
-        if (rowBtn) { rowBtn.disabled = false; rowBtn.innerHTML = '<i class="fas fa-lightbulb"></i> Tentar novamente'; }
+        if (rowBtn) { rowBtn.disabled = false; rowBtn.innerHTML = '<i class="fas fa-rotate-right"></i>'; rowBtn.title = 'Erro — tentar novamente'; }
       }
       await delay(250);
     }
