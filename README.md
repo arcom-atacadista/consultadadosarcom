@@ -42,9 +42,6 @@ Aplicação web (single-page, HTML/CSS/JS puro) para consulta, prospecção e en
 - Ordenação por proximidade a partir do ponto de partida do assessor (bairro ou GPS).
 - Rota de visita no **Google Maps/Waze** (link clicável, QR code e botões no PDF).
 
-### Busca por Razão Social
-- Cole uma ou várias razões sociais e encontre os CNPJs correspondentes (via API da Casa dos Dados).
-
 ### Insight Comercial com IA
 - Geração de insight comercial por empresa usando **Groq** (Llama 3.3 70B) combinado com busca na web via **Tavily**.
 - Geração em lote, **ranking de leads por IA** e chat livre com histórico no navegador.
@@ -79,7 +76,7 @@ Aplicação web (single-page, HTML/CSS/JS puro) para consulta, prospecção e en
 | Exportação | SheetJS (xlsx), html2pdf.js, QR Code (qrcodejs) |
 | Mapa/validação | Google Maps + Street View (embed, por endereço) |
 | IA | Groq (chat completions) + Tavily (busca na web) |
-| Dados de CNPJ | API própria "Consulta CNPJ Arcom", Casa dos Dados (busca por razão social) |
+| Dados de CNPJ | API própria "Consulta CNPJ Arcom", BrasilAPI |
 | Hospedagem | GitHub Pages |
 
 Não há back-end, bundler ou dependências de build — é um único arquivo `index.html` que roda direto no navegador.
@@ -106,7 +103,6 @@ No arquivo HTML, procure e preencha estas constantes antes de usar em produção
 | `firebaseConfig` | Login e Firestore | [Console do Firebase](https://console.firebase.google.com) |
 | `ADMIN_EMAIL` | E-mail do super admin | — |
 | `ARCOM_API_KEY` | Consulta CNPJ Arcom | API interna da Arcom |
-| `CASADOSDADOS_API_KEY` | Busca por razão social | [Casa dos Dados](https://casadosdados.com.br) |
 | `GROQ_API_KEY` | Insight IA e chat | [console.groq.com/keys](https://console.groq.com/keys) |
 | `TAVILY_API_KEY` | Busca na web para o insight | [tavily.com](https://tavily.com) |
 
