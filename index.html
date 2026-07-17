@@ -1566,7 +1566,7 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
                   <th>Razão Social</th>
                   <th>Situação</th>
                   <th id="thPorteCol">Cliente Arcom</th>
-                  <th title="Nº da ocorrência de cadastro do cliente na Arcom">Ocorrência</th>
+                  <th style="text-align:center" title="Nº da ocorrência de cadastro do cliente na Arcom">Ocorrência</th>
                   <th>UF</th>
                   <th style="width:170px"></th>
                 </tr>
@@ -4403,7 +4403,7 @@ async function startVerification() {
       <td class="td-razao">${result.razao}${cacheTagHtml}${(result.nomeFantasia && result.nomeFantasia!=='—') ? `<span style="display:block;font-size:11px;color:var(--muted)"><i class="fas fa-store" style="margin-right:3px"></i>${result.nomeFantasia}</span>` : ''}<span data-precad-slot="${cnpj}"></span></td>
       <td><span class="badge ${bc}">${result.situacao}</span></td>
       <td style="color:var(--muted);font-size:12px">${simNaoBadgeHTML(result.clienteArcom)}</td>
-      <td style="font-size:12px;font-family:var(--mono)">${result.ocorrencia != null ? result.ocorrencia : '<span style="color:var(--muted)">—</span>'}</td>
+      <td style="font-size:12px;font-family:var(--mono);text-align:center">${result.ocorrencia != null ? result.ocorrencia : '<span style="color:var(--muted)">—</span>'}</td>
       <td style="color:var(--muted);font-size:12px;font-family:var(--mono)">${result.uf}</td>
       <td class="td-actions">
         <button class="btn-eye" onclick="openDetailsModal('${cnpj}')"><i class="fas fa-eye"></i> Ver</button>
