@@ -480,9 +480,11 @@
     .td-razao { font-weight: 500; }
     .td-fav { cursor: pointer; font-size: 15px; color: var(--muted); transition: color .2s; }
     .td-fav:hover { color: var(--yellow); }
-    .td-actions { display: flex; gap: 6px; flex-wrap: nowrap; white-space: nowrap; justify-content: flex-end; }
-    /* coluna de ações com largura fixa, ancorada à direita da tabela */
-    thead th.col-actions, tbody td.td-actions { width: 250px; }
+    /* alinhados à esquerda da própria célula (align-items:center centraliza na vertical).
+       A célula é auto (tamanho do conteúdo) e a Razão Social (width:100%) absorve a folga,
+       então a coluna de ações nunca é espremida nem invade a coluna vizinha. */
+    .td-actions { display: flex; gap: 6px; flex-wrap: nowrap; white-space: nowrap; align-items: center; }
+    thead th.col-actions { white-space: nowrap; }
 
     /* ── BADGES ── */
     .badge {
@@ -1564,7 +1566,7 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
                 <tr>
                   <th style="width:32px"></th>
                   <th>CNPJ</th>
-                  <th>Razão Social</th>
+                  <th style="width:100%">Razão Social</th>
                   <th>Situação</th>
                   <th id="thPorteCol">Cliente Arcom</th>
                   <th style="text-align:center" title="Nº da ocorrência de cadastro do cliente na Arcom">Ocorrência</th>
