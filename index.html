@@ -1494,9 +1494,6 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
           <button class="btn btn-success-outline hidden" id="btnMapaTodos" onclick="abrirMapaTodos()">
             <i class="fas fa-route"></i> Roteiro de visita (Google Maps)
           </button>
-          <button class="btn btn-success-outline hidden" id="btnRedeSocios" onclick="abrirRedeSocios()">
-            <i class="fas fa-people-arrows"></i> Rede de sócios
-          </button>
         </div>
       </div>
 
@@ -4495,7 +4492,6 @@ async function startVerification() {
     document.getElementById('btnEnrichAll').classList.remove('hidden');
     document.getElementById('btnRankingLeads').classList.remove('hidden');
     document.getElementById('btnMapaTodos').classList.remove('hidden');
-    document.getElementById('btnRedeSocios').classList.remove('hidden');
   }
   document.getElementById('btnCopiarErros').classList.toggle('hidden', erroCNPJs.length===0);
   registrarLogConsulta(Object.keys(allData));
