@@ -480,7 +480,9 @@
     .td-razao { font-weight: 500; }
     .td-fav { cursor: pointer; font-size: 15px; color: var(--muted); transition: color .2s; }
     .td-fav:hover { color: var(--yellow); }
-    .td-actions { display: flex; gap: 6px; flex-wrap: nowrap; white-space: nowrap; }
+    .td-actions { display: flex; gap: 6px; flex-wrap: nowrap; white-space: nowrap; justify-content: flex-end; }
+    /* coluna de ações com largura fixa, ancorada à direita da tabela */
+    thead th.col-actions, tbody td.td-actions { width: 250px; }
 
     /* ── BADGES ── */
     .badge {
@@ -1567,7 +1569,7 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
                   <th id="thPorteCol">Cliente Arcom</th>
                   <th style="text-align:center" title="Nº da ocorrência de cadastro do cliente na Arcom">Ocorrência</th>
                   <th>UF</th>
-                  <th></th>
+                  <th class="col-actions"></th>
                 </tr>
               </thead>
               <tbody id="tbody">
