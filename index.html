@@ -4162,15 +4162,31 @@ async function startVerification() {
   if (!list.length) { document.getElementById('status').textContent='⚠ Nenhum CNPJ encontrado'; return; }
   let total=0,baix=0,inap=0,susp=0,erro=0;
 
+  // Cache lido UMA vez (evita reparsear/regravar o localStorage inteiro por CNPJ,
+  // que era um dos motivos de travar com listas grandes).
+  const cacheObj = getCnpjCache();
+  let cacheAlterado = false;
+  const lookupCache = (cnpj, api) => {
+    const entry = cacheObj[cnpj];
+    if (!entry || entry.api !== api) return null;
+    if (Date.now() - entry.ts > CACHE_VALIDADE_MS) return null;
+    return entry;
+  };
+  const putCache = (cnpj, api, result) => { cacheObj[cnpj] = { api, result, ts: Date.now() }; cacheAlterado = true; };
+
+  // Acumuladores para atualizar histórico/selos UMA vez no fim (em vez de por linha).
+  const renderedCnpjs = [];
+  const histNovos = [];
+
   // separa formato inválido (checado no cliente, sem gastar chamada de API) dos válidos
   const validos = [];
   list.forEach(cnpj => {
     if (!isValidCNPJ(cnpj)) {
-      tbody.innerHTML+=`<tr>
+      tbody.insertAdjacentHTML('beforeend', `<tr>
         <td class="td-fav">☆</td>
         <td class="td-cnpj">${fmt(cnpj)}</td>
         <td colspan="5"><span class="badge badge-error">CNPJ Inválido</span></td>
-        <td></td></tr>`;
+        <td></td></tr>`);
       total++; erro++; erroCNPJs.push({cnpj, motivo:'CNPJ Inválido'});
     } else {
       validos.push(cnpj);
@@ -4189,7 +4205,7 @@ async function startVerification() {
     const cacheTagHtml = cacheInfo
       ? `<span class="cache-tag" title="Resultado em cache — consultado em ${new Date(cacheInfo.ts).toLocaleString('pt-BR')}"><i class="fas fa-clock-rotate-left"></i>cache · ${formatRelativeTime(cacheInfo.ts)}</span>`
       : '';
-    tbody.innerHTML+=`<tr id="row-${cnpj}">
+    tbody.insertAdjacentHTML('beforeend', `<tr id="row-${cnpj}">
       <td class="td-fav" onclick="toggleFavorite('${cnpj}',event)">${isFav}</td>
       <td class="td-cnpj">${fmt(cnpj)}</td>
       <td class="td-razao">${result.razao}${cacheTagHtml}${(result.nomeFantasia && result.nomeFantasia!=='—') ? `<span style="display:block;font-size:11px;color:var(--muted)"><i class="fas fa-store" style="margin-right:3px"></i>${result.nomeFantasia}</span>` : ''}<span data-precad-slot="${cnpj}"></span></td>
@@ -4203,19 +4219,21 @@ async function startVerification() {
         <button class="btn-eye" title="Mapa / fachada (Street View)" onclick="abrirMapa('${cnpj}')"><i class="fas fa-map-location-dot"></i> Mapa</button>
         <button class="btn-eye" title="Pré-cadastrar" onclick="abrirPreCadastro('${cnpj}')"><i class="fas fa-user-plus"></i> Pré-cad.</button>
       </td>
-    </tr>`;
+    </tr>`);
+    // barato e imediato: mantém stats e favoritos por linha; histórico/selo são
+    // atualizados UMA vez no fim (via renderedCnpjs/histNovos) pra não travar em lote.
     updateStats(total,baix,inap,susp,erro);
-    addToHistory(cnpj,result.razao);
     renderFavTags(cnpj);
-    atualizarBadgePreCadastro(cnpj);
+    renderedCnpjs.push(cnpj);
+    histNovos.push({ cnpj, razao: result.razao });
   }
 
   function renderErro(cnpj, mensagem) {
-    tbody.innerHTML+=`<tr>
+    tbody.insertAdjacentHTML('beforeend', `<tr>
       <td class="td-fav">☆</td>
       <td class="td-cnpj">${fmt(cnpj)}</td>
       <td colspan="5"><span class="badge badge-error">${mensagem}</span></td>
-      <td></td></tr>`;
+      <td></td></tr>`);
     total++; erro++; erroCNPJs.push({cnpj, motivo:mensagem});
     updateStats(total,baix,inap,susp,erro);
   }
@@ -4225,10 +4243,10 @@ async function startVerification() {
     const jaEmCache = [];
     const precisaBuscar = [];
     validos.forEach(cnpj => {
-      const cached = getCachedResult(cnpj, 'arcom');
-      if (cached) jaEmCache.push(cnpj); else precisaBuscar.push(cnpj);
+      const cached = lookupCache(cnpj, 'arcom');
+      if (cached) jaEmCache.push([cnpj, cached]); else precisaBuscar.push(cnpj);
     });
-    jaEmCache.forEach(cnpj => renderLinha(cnpj, getCachedResult(cnpj,'arcom').result, getCachedResult(cnpj,'arcom')));
+    jaEmCache.forEach(([cnpj, cached]) => renderLinha(cnpj, cached.result, cached));
     if (precisaBuscar.length) {
       try {
         await consultarLoteArcom(precisaBuscar, (loteAtual, totalLotes, tamanhoLote) => {
@@ -4242,7 +4260,7 @@ async function startVerification() {
             if (item.error) { renderErro(item.cnpj, item.error); return; }
             if (!item.found) { renderErro(item.cnpj, 'CNPJ não encontrado'); return; }
             const result = mapArcomBatchRecord(item.data, item.ja_cliente, item.id_ocor_cadastro);
-            saveToCache(item.cnpj, 'arcom', result);
+            putCache(item.cnpj, 'arcom', result);
             renderLinha(item.cnpj, result);
           });
         });
@@ -4257,18 +4275,29 @@ async function startVerification() {
       document.getElementById('status').textContent=`Consultando ${fmt(cnpj)} (${n+1}/${validos.length})`;
       document.getElementById('barFill').style.width=((n/validos.length)*100)+'%';
       document.getElementById('percentage').textContent=Math.round((n/validos.length)*100)+'%';
-      const cached = getCachedResult(cnpj, apiSelecionada);
+      const cached = lookupCache(cnpj, apiSelecionada);
       if (cached) { renderLinha(cnpj, cached.result, cached); continue; }
       if (n>0) await new Promise(r=>setTimeout(r, apiSelecionada === 'brasilapi' ? 400 : 300));
       try {
         const result = apiSelecionada === 'brasilapi' ? await consultarBrasilAPI(cnpj) : await consultarNovaAPI(cnpj);
-        saveToCache(cnpj, apiSelecionada, result);
+        putCache(cnpj, apiSelecionada, result);
         renderLinha(cnpj, result);
       } catch(e) {
         renderErro(cnpj, e.message||'Erro na consulta');
       }
     }
   }
+
+  // ── flush único: grava o cache, atualiza histórico e selos de pré-cadastro
+  // de uma só vez (em vez de por linha) — é o que destrava listas grandes ──
+  if (cacheAlterado) setCnpjCache(cacheObj);
+  if (histNovos.length) {
+    histNovos.forEach(h => { historyLog = historyLog.filter(x => x.cnpj !== h.cnpj); historyLog.unshift({ cnpj: h.cnpj, razao: h.razao }); });
+    if (historyLog.length > 20) historyLog = historyLog.slice(0, 20);
+    localStorage.setItem('cnpjHistory', JSON.stringify(historyLog));
+    renderHistory();
+  }
+  if (renderedCnpjs.length) atualizarBadgePreCadastro(renderedCnpjs);
 
   document.getElementById('barFill').style.width='100%';
   document.getElementById('percentage').textContent='100%';
