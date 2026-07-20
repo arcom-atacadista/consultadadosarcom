@@ -1707,6 +1707,7 @@ Patos de Minas"></textarea>
       </div>
 
       <div class="stats-row dash" style="margin-top:18px">
+        <div class="stat-card c-green"><div class="stat-val" id="dashOnline" style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:#22C55E;display:inline-block;box-shadow:0 0 8px #22C55E"></span>—</div><div class="stat-lbl">Online agora</div></div>
         <div class="stat-card c-green"><div class="stat-val" id="dashContas">—</div><div class="stat-lbl">Contas criadas</div></div>
         <div class="stat-card c-yellow"><div class="stat-val" id="dashPendentes">—</div><div class="stat-lbl">Contas pendentes</div></div>
         <div class="stat-card c-cyan"><div class="stat-val" id="dashLogins">—</div><div class="stat-lbl">Logins</div></div>
@@ -1720,6 +1721,15 @@ Patos de Minas"></textarea>
       </div>
 
       <div class="table-card" style="margin-top:6px">
+        <div class="table-card-header" style="display:flex;align-items:center;gap:8px">
+          <span style="width:9px;height:9px;border-radius:50%;background:#22C55E;display:inline-block;box-shadow:0 0 8px #22C55E"></span> Online agora
+        </div>
+        <div id="dashOnlineList" style="padding:12px 18px">
+          <p style="color:var(--muted);font-size:13px">Carregando...</p>
+        </div>
+      </div>
+
+      <div class="table-card" style="margin-top:20px">
         <div class="table-card-header" onclick="toggleDashUsuarios()" style="cursor:pointer;display:flex;align-items:center;gap:8px">
           <i class="fas fa-users"></i> Atividade por usuário
           <i class="fas fa-chevron-down" id="dashUsuariosChevron" style="margin-left:auto;font-size:12px;color:var(--muted);transition:transform .2s"></i>
@@ -2416,25 +2426,7 @@ function badgeClass(sit) {
   return '';
 }
 
-// ── CACHE DE CONSULTAS (evita reconsultar a mesma API pro mesmo CNPJ em menos de 24h) ──
-const CACHE_VALIDADE_MS = 24 * 60 * 60 * 1000; // 24 horas
-// v3: bump de versão pra invalidar cache da consulta individual que ficou
-// salvo em branco/"INDEFINIDA" enquanto ela usava o mapeador "flat" errado.
-// Agora consulta individual e em lote usam o mesmo formato (mapArcomBatchRecord).
-function getCnpjCache() { try { return JSON.parse(localStorage.getItem('cnpjCache_v3') || '{}'); } catch { return {}; } }
-function setCnpjCache(cache) { localStorage.setItem('cnpjCache_v3', JSON.stringify(cache)); }
-function getCachedResult(cnpj, api) {
-  const cache = getCnpjCache();
-  const entry = cache[cnpj];
-  if (!entry || entry.api !== api) return null;
-  if (Date.now() - entry.ts > CACHE_VALIDADE_MS) return null;
-  return entry;
-}
-function saveToCache(cnpj, api, result) {
-  const cache = getCnpjCache();
-  cache[cnpj] = { api, result, ts: Date.now() };
-  setCnpjCache(cache);
-}
+// Cache de consultas REMOVIDO — toda consulta bate na API, sem reaproveitar resultado.
 function formatRelativeTime(ts) {
   const diffMin = Math.round((Date.now() - ts) / 60000);
   if (diffMin < 1) return 'agora mesmo';
@@ -2592,11 +2584,12 @@ async function mostrarApp(userDoc) {
   // Só registra "login" quando foi um login intencional (e-mail/senha), não em F5/refresh
   if (loginIntencional) { loginIntencional = false; registrarAtividade('login', 'entrou no sistema'); }
   carregarCnpjsPreCadastrados();
+  iniciarPresenca();
 }
 
 // Reage a qualquer mudança de login (login, logout, refresh da página)
 auth.onAuthStateChanged(async (user) => {
-  if (!user) { mostrarTelaInicial(); return; }
+  if (!user) { if (presencaTimer) { clearInterval(presencaTimer); presencaTimer = null; } mostrarTelaInicial(); return; }
   try {
     const doc = await usersCol.doc(user.uid).get();
     if (!doc.exists) { mostrarTelaStatus(null); return; }
@@ -2674,8 +2667,38 @@ async function enviarSolicitacao(event) {
 }
 
 function logout() {
+  pararPresenca();
   auth.signOut();
 }
+
+// ── PRESENÇA (quem está online agora) ───────────────────────────────────────
+// Cada usuário logado marca "estou aqui" a cada 60s (só com a aba visível).
+// No painel admin, quem sinalizou nos últimos 3 min conta como online.
+const presencaCol = db.collection('presenca');
+const PRESENCA_INTERVALO_MS = 60000;      // grava a cada 60s
+const PRESENCA_ONLINE_MS = 3 * 60 * 1000; // online = visto nos últimos 3 min
+let presencaTimer = null;
+async function escreverPresenca() {
+  if (!auth.currentUser || document.hidden) return;
+  try {
+    await presencaCol.doc(auth.currentUser.uid).set({
+      nome: (typeof usuarioAtual !== 'undefined' && usuarioAtual && usuarioAtual.nome) || '',
+      email: auth.currentUser.email || '',
+      lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  } catch (e) { /* regras podem bloquear — presença é best-effort */ }
+}
+function iniciarPresenca() {
+  escreverPresenca();
+  if (presencaTimer) clearInterval(presencaTimer);
+  presencaTimer = setInterval(escreverPresenca, PRESENCA_INTERVALO_MS);
+}
+async function pararPresenca() {
+  if (presencaTimer) { clearInterval(presencaTimer); presencaTimer = null; }
+  try { if (auth.currentUser) await presencaCol.doc(auth.currentUser.uid).delete(); } catch (e) {}
+}
+// registra a presença assim que a aba volta a ficar visível (listener único)
+document.addEventListener('visibilitychange', () => { if (!document.hidden) escreverPresenca(); });
 
 // ── PAINEL DE ADMINISTRAÇÃO (aprovar / negar) ──────────────────────────────
 async function abrirAdminPainel() {
@@ -2759,7 +2782,40 @@ async function renderAdminDashboard() {
     dashSet('dashContas', '—');
     dashSet('dashPendentes', '—');
   }
+  // Quem está online agora (presença dos últimos 3 min)
+  try {
+    const ps = await presencaCol.get();
+    const agora = Date.now();
+    const online = [];
+    ps.forEach(doc => {
+      const x = doc.data();
+      const ls = (x.lastSeen && x.lastSeen.toMillis) ? x.lastSeen.toMillis() : 0;
+      if (ls && (agora - ls) <= PRESENCA_ONLINE_MS) online.push({ nome: x.nome, email: x.email, ls });
+    });
+    online.sort((a, b) => b.ls - a.ls);
+    dashSet('dashOnline', online.length);
+    renderOnline(online);
+  } catch (e) {
+    dashSet('dashOnline', '—');
+    const box = document.getElementById('dashOnlineList');
+    if (box) box.innerHTML = `<p style="color:var(--muted);font-size:13px">Não foi possível ler a presença (verifique as regras do Firestore para a coleção "presenca").</p>`;
+  }
+
   renderHistoricoAtividades();
+}
+
+// Lista de quem está online agora.
+function renderOnline(online) {
+  const box = document.getElementById('dashOnlineList');
+  if (!box) return;
+  if (!online.length) { box.innerHTML = '<p style="color:var(--muted);font-size:13px">Ninguém online agora.</p>'; return; }
+  box.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">` + online.map(u => {
+    const quem = u.nome ? `<strong>${escapeHtml(u.nome)}</strong> <span style="color:var(--muted);font-size:12px">${escapeHtml(u.email || '')}</span>` : escapeHtml(u.email || '—');
+    return `<div style="display:flex;align-items:center;gap:8px">
+        <span style="width:8px;height:8px;border-radius:50%;background:#22C55E;display:inline-block;box-shadow:0 0 6px #22C55E;flex:none"></span>
+        <span style="font-size:13px">${quem}</span>
+      </div>`;
+  }).join('') + `</div>`;
 }
 
 // Recolher/expandir a tabela "Atividade por usuário".
@@ -4162,18 +4218,7 @@ async function startVerification() {
   if (!list.length) { document.getElementById('status').textContent='⚠ Nenhum CNPJ encontrado'; return; }
   let total=0,baix=0,inap=0,susp=0,erro=0;
 
-  // Cache lido UMA vez (evita reparsear/regravar o localStorage inteiro por CNPJ,
-  // que era um dos motivos de travar com listas grandes).
-  const cacheObj = getCnpjCache();
-  let cacheAlterado = false;
-  const lookupCache = (cnpj, api) => {
-    const entry = cacheObj[cnpj];
-    if (!entry || entry.api !== api) return null;
-    if (Date.now() - entry.ts > CACHE_VALIDADE_MS) return null;
-    return entry;
-  };
-  const putCache = (cnpj, api, result) => { cacheObj[cnpj] = { api, result, ts: Date.now() }; cacheAlterado = true; };
-
+  // Cache DESATIVADO: toda consulta bate na API (não reaproveita resultado anterior).
   // Acumuladores para atualizar histórico/selos UMA vez no fim (em vez de por linha).
   const renderedCnpjs = [];
   const histNovos = [];
@@ -4196,7 +4241,7 @@ async function startVerification() {
 
   // Atualiza o estado (contadores, allData, histórico) e RETORNA o HTML da linha,
   // sem inserir no DOM. O selo de pré-cadastro já vai embutido (evita varrer o DOM depois).
-  function linhaHtml(cnpj, result, cacheInfo) {
+  function linhaHtml(cnpj, result) {
     allData[cnpj]=result; total++;
     if (result.situacao.includes('INAPTA')) inap++;
     else if (result.situacao.includes('BAIXADA')) baix++;
@@ -4206,15 +4251,12 @@ async function startVerification() {
     histNovos.push({ cnpj, razao: result.razao });
     const bc=badgeClass(result.situacao);
     const isFav=favorites.includes(cnpj)?'⭐':'☆';
-    const cacheTagHtml = cacheInfo
-      ? `<span class="cache-tag" title="Resultado em cache — consultado em ${new Date(cacheInfo.ts).toLocaleString('pt-BR')}"><i class="fas fa-clock-rotate-left"></i>cache · ${formatRelativeTime(cacheInfo.ts)}</span>`
-      : '';
     const precadHtml = (typeof cnpjsPreCadastrados !== 'undefined' && cnpjsPreCadastrados.has && cnpjsPreCadastrados.has(cnpj))
       ? '<span class="fav-tag-chip"><i class="fas fa-user-check"></i> Pré-cadastrado</span>' : '';
     return `<tr id="row-${cnpj}">
       <td class="td-fav" onclick="toggleFavorite('${cnpj}',event)">${isFav}</td>
       <td class="td-cnpj">${fmt(cnpj)}</td>
-      <td class="td-razao">${result.razao}${cacheTagHtml}${(result.nomeFantasia && result.nomeFantasia!=='—') ? `<span style="display:block;font-size:11px;color:var(--muted)"><i class="fas fa-store" style="margin-right:3px"></i>${result.nomeFantasia}</span>` : ''}<span data-precad-slot="${cnpj}">${precadHtml}</span></td>
+      <td class="td-razao">${result.razao}${(result.nomeFantasia && result.nomeFantasia!=='—') ? `<span style="display:block;font-size:11px;color:var(--muted)"><i class="fas fa-store" style="margin-right:3px"></i>${result.nomeFantasia}</span>` : ''}<span data-precad-slot="${cnpj}">${precadHtml}</span></td>
       <td><span class="badge ${bc}">${result.situacao}</span></td>
       <td style="color:var(--muted);font-size:12px">${simNaoBadgeHTML(result.clienteArcom)}</td>
       <td style="font-size:12px;font-family:var(--mono);text-align:center">${result.ocorrencia != null ? result.ocorrencia : '<span style="color:var(--muted)">—</span>'}</td>
@@ -4236,8 +4278,8 @@ async function startVerification() {
       <td></td></tr>`;
   }
   // Wrappers para o caminho individual (insere imediatamente, uma linha por vez).
-  function renderLinha(cnpj, result, cacheInfo) {
-    tbody.insertAdjacentHTML('beforeend', linhaHtml(cnpj, result, cacheInfo));
+  function renderLinha(cnpj, result) {
+    tbody.insertAdjacentHTML('beforeend', linhaHtml(cnpj, result));
     updateStats(total,baix,inap,susp,erro);
     renderFavTags(cnpj);
   }
@@ -4261,15 +4303,9 @@ async function startVerification() {
 
   if (apiSelecionada === 'arcom' && validos.length > 1) {
     // ── ARCOM + MAIS DE 1 CNPJ → usa cache para os já conhecidos e /v1/cnpj/batch pro resto ──
-    const jaEmCache = [];
-    const precisaBuscar = [];
-    validos.forEach(cnpj => {
-      const cached = lookupCache(cnpj, 'arcom');
-      if (cached) jaEmCache.push([cnpj, cached]); else precisaBuscar.push(cnpj);
-    });
+    const precisaBuscar = validos.slice(); // sem cache: todos vão pra API
     // monta o HTML de todas as linhas (sem tocar o DOM ainda) e insere em blocos depois
     const partes = [];
-    jaEmCache.forEach(([cnpj, cached]) => partes.push(linhaHtml(cnpj, cached.result, cached)));
     if (precisaBuscar.length) {
       try {
         await consultarLoteArcom(precisaBuscar, (loteAtual, totalLotes, tamanhoLote) => {
@@ -4283,7 +4319,6 @@ async function startVerification() {
             if (item.error) { partes.push(erroHtml(item.cnpj, item.error)); return; }
             if (!item.found) { partes.push(erroHtml(item.cnpj, 'CNPJ não encontrado')); return; }
             const result = mapArcomBatchRecord(item.data, item.ja_cliente, item.id_ocor_cadastro);
-            putCache(item.cnpj, 'arcom', result);
             partes.push(linhaHtml(item.cnpj, result));
           });
         });
@@ -4302,12 +4337,9 @@ async function startVerification() {
       document.getElementById('status').textContent=`Consultando ${fmt(cnpj)} (${n+1}/${validos.length})`;
       document.getElementById('barFill').style.width=((n/validos.length)*100)+'%';
       document.getElementById('percentage').textContent=Math.round((n/validos.length)*100)+'%';
-      const cached = lookupCache(cnpj, apiSelecionada);
-      if (cached) { renderLinha(cnpj, cached.result, cached); continue; }
       if (n>0) await new Promise(r=>setTimeout(r, apiSelecionada === 'brasilapi' ? 400 : 300));
       try {
         const result = apiSelecionada === 'brasilapi' ? await consultarBrasilAPI(cnpj) : await consultarNovaAPI(cnpj);
-        putCache(cnpj, apiSelecionada, result);
         renderLinha(cnpj, result);
       } catch(e) {
         renderErro(cnpj, e.message||'Erro na consulta');
@@ -4315,9 +4347,7 @@ async function startVerification() {
     }
   }
 
-  // ── flush único: grava o cache, atualiza histórico e selos de pré-cadastro
-  // de uma só vez (em vez de por linha) — é o que destrava listas grandes ──
-  if (cacheAlterado) setCnpjCache(cacheObj);
+  // ── flush único: atualiza histórico de uma só vez (em vez de por linha) ──
   if (histNovos.length) {
     histNovos.forEach(h => { historyLog = historyLog.filter(x => x.cnpj !== h.cnpj); historyLog.unshift({ cnpj: h.cnpj, razao: h.razao }); });
     if (historyLog.length > 20) historyLog = historyLog.slice(0, 20);
