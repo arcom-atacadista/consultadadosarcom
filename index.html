@@ -2183,6 +2183,14 @@ Patos de Minas,MG"></textarea>
       <label style="display:flex;align-items:center;gap:10px;padding:10px 0;cursor:pointer;font-size:14px">
         <input type="checkbox" id="colPorte" checked> Porte
       </label>
+
+      <p style="font-size:12px;color:var(--muted);margin:20px 0 8px;text-transform:uppercase;letter-spacing:.8px;font-weight:600">Segurança</p>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <input type="password" id="senhaAtual" class="regional-input" placeholder="Senha atual" autocomplete="current-password">
+        <input type="password" id="senhaNova" class="regional-input" placeholder="Nova senha (mín. 6 caracteres)" autocomplete="new-password">
+        <input type="password" id="senhaConf" class="regional-input" placeholder="Confirmar nova senha" autocomplete="new-password">
+        <button class="btn btn-primary" id="btnTrocarSenha" onclick="trocarSenha()" style="font-size:13px"><i class="fas fa-key"></i> Trocar minha senha</button>
+      </div>
     </div>
     <div class="modal-footer-row">
       <button class="btn btn-primary" onclick="closeModal('settingsModal')">Salvar</button>
@@ -2312,6 +2320,35 @@ document.querySelectorAll('.modal-overlay').forEach(el => {
   el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
 });
 function openSettings() { openModal('settingsModal'); }
+
+// Troca a senha do próprio usuário logado (Firebase exige reautenticar antes).
+async function trocarSenha() {
+  const atual = (document.getElementById('senhaAtual') || {}).value || '';
+  const nova = (document.getElementById('senhaNova') || {}).value || '';
+  const conf = (document.getElementById('senhaConf') || {}).value || '';
+  if (!atual || !nova) { showToast('Preencha a senha atual e a nova.', 'error'); return; }
+  if (nova.length < 6) { showToast('A nova senha precisa ter ao menos 6 caracteres.', 'error'); return; }
+  if (nova !== conf) { showToast('A confirmação não bate com a nova senha.', 'error'); return; }
+  const user = auth.currentUser;
+  if (!user) { showToast('Você precisa estar logado.', 'error'); return; }
+  const btn = document.getElementById('btnTrocarSenha');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Trocando…'; }
+  try {
+    const cred = firebase.auth.EmailAuthProvider.credential(user.email, atual);
+    await user.reauthenticateWithCredential(cred); // confirma a senha atual
+    await user.updatePassword(nova);
+    ['senhaAtual', 'senhaNova', 'senhaConf'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+    showToast('Senha alterada com sucesso!', 'success');
+  } catch (e) {
+    let msg = e && e.message ? e.message : String(e);
+    if (e && (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential')) msg = 'Senha atual incorreta.';
+    else if (e && e.code === 'auth/weak-password') msg = 'Senha muito fraca (mínimo 6 caracteres).';
+    else if (e && e.code === 'auth/too-many-requests') msg = 'Muitas tentativas. Tente de novo mais tarde.';
+    showToast('Erro ao trocar a senha: ' + msg, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-key"></i> Trocar minha senha'; }
+  }
+}
 function showExportMenu() { renderExportColsPicker(); openModal('exportModal'); }
 
 // ── DARK MODE ─────────────────────────────────────────────────────────────
