@@ -1770,12 +1770,11 @@ Patos de Minas,MG"></textarea>
                 <th>Usuário</th>
                 <th style="text-align:center">Consultas</th>
                 <th style="text-align:center">Prospecções</th>
-                <th style="text-align:center">Pré-cad.</th>
                 <th style="text-align:center">PDFs</th>
               </tr>
             </thead>
             <tbody id="dashPorUsuario">
-              <tr><td colspan="5" style="color:var(--muted);font-size:13px">Carregando...</td></tr>
+              <tr><td colspan="4" style="color:var(--muted);font-size:13px">Carregando...</td></tr>
             </tbody>
           </table>
         </div>
@@ -2890,7 +2889,7 @@ async function renderAdminDashboard() {
     console.error('Dashboard (atividades):', e);
     ['dashLogins','dashConsultas','dashProspeccoes','dashPdfs'].forEach(id => dashSet(id, '—'));
     const tb = document.getElementById('dashPorUsuario');
-    if (tb) tb.innerHTML = `<tr><td colspan="5" style="color:var(--muted);font-size:13px">Erro ao carregar: ${e.message}</td></tr>`;
+    if (tb) tb.innerHTML = `<tr><td colspan="4" style="color:var(--muted);font-size:13px">Erro ao carregar: ${e.message}</td></tr>`;
   }
   // Contas (usuarios) — pelas regras, listar todos exige admin; falha graciosa se não puder
   try {
@@ -2957,7 +2956,7 @@ function renderPorUsuario(porUsuario) {
     (b.consulta + b.prospeccao + b.pdf_indicacao) - (a.consulta + a.prospeccao + a.pdf_indicacao)
   );
   if (!linhas.length) {
-    tb.innerHTML = '<tr><td colspan="5" style="color:var(--muted);font-size:13px">Nenhuma atividade ainda.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="4" style="color:var(--muted);font-size:13px">Nenhuma atividade ainda.</td></tr>';
     return;
   }
   tb.innerHTML = linhas.map(u => {
@@ -2967,7 +2966,7 @@ function renderPorUsuario(porUsuario) {
     const cel = n => `<td style="text-align:center">${n || 0}</td>`;
     return `<tr>
       <td>${quem}</td>
-      ${cel(u.consulta)}${cel(u.prospeccao)}${cel(u.precadastro)}${cel(u.pdf_indicacao)}
+      ${cel(u.consulta)}${cel(u.prospeccao)}${cel(u.pdf_indicacao)}
     </tr>`;
   }).join('');
 }
