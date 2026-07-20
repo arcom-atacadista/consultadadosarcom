@@ -4060,12 +4060,15 @@ function setListasSalvas(lista) { localStorage.setItem('prospeccaoListasSalvas',
 
 function salvarListaProspeccao() {
   if (!prospeccaoUltimoResultado.length) { showToast('Nenhum resultado para salvar.','error'); return; }
-  const nome = prompt('Nome da lista (ex: "Farmácias - Uberlândia - Jan/2026"):');
+  // Salva APENAS as empresas selecionadas (marcadas na caixinha).
+  const selecionados = prospeccaoUltimoResultado.filter(e => prospeccaoSelecionados.has(e.cnpj));
+  if (!selecionados.length) { showToast('Selecione as empresas que quer salvar (caixinhas à esquerda) antes de salvar a lista.','error'); return; }
+  const nome = prompt(`Nome da lista (${selecionados.length} empresa(s) selecionada(s)):`);
   if (!nome || !nome.trim()) return;
   const listas = getListasSalvas();
-  listas.unshift({ nome: nome.trim(), ts: Date.now(), empresas: prospeccaoUltimoResultado });
+  listas.unshift({ nome: nome.trim(), ts: Date.now(), empresas: selecionados });
   setListasSalvas(listas);
-  showToast('Lista salva com sucesso!','success');
+  showToast(`Lista salva com ${selecionados.length} empresa(s) selecionada(s)!`,'success');
 }
 
 function abrirListasSalvas() {
