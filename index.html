@@ -4170,7 +4170,7 @@ async function renderListasSalvas() {
       </div>
       <div class="req-item-actions">
         <button class="req-approve" title="Carregar" onclick="carregarListaSalva('${lista.id}')"><i class="fas fa-folder-open"></i></button>
-        <button class="req-deny" title="Excluir" onclick="excluirListaSalva('${lista.id}')"><i class="fas fa-trash"></i></button>
+        ${usuarioEhAdmin ? `<button class="req-deny" title="Excluir (somente admin)" onclick="excluirListaSalva('${lista.id}')"><i class="fas fa-trash"></i></button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -4192,6 +4192,7 @@ function carregarListaSalva(id) {
 }
 
 async function excluirListaSalva(id) {
+  if (!usuarioEhAdmin) { showToast('Só o administrador pode excluir listas.', 'error'); return; }
   if (!confirm('Excluir esta lista salva?')) return;
   try {
     await listasCol.doc(id).delete();
