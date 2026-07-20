@@ -192,7 +192,9 @@
     .topbar-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,120,64,.08); }
 
     
-    .page { display: grid; grid-template-columns: 280px 1fr; min-height: calc(100vh - 56px); position: relative; z-index: 1; transition: grid-template-columns .25s ease; zoom: .9; }
+    /* min-height compensa o zoom .9 (senão a página/sidebar não chega ao rodapé
+       em abas de conteúdo curto, como a Prospecção): (100vh - 50.4) / 0.9 */
+    .page { display: grid; grid-template-columns: 280px 1fr; min-height: calc(111.11vh - 56px); position: relative; z-index: 1; transition: grid-template-columns .25s ease; zoom: .9; }
     /* ── mini-rail: navegação recolhida vira barra só de ícones ── */
     .page.nav-collapsed { grid-template-columns: 68px 1fr; }
     .page.nav-collapsed .sidebar { padding-left: 10px; padding-right: 10px; align-items: center; }
