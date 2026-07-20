@@ -1707,6 +1707,7 @@ Patos de Minas"></textarea>
       </div>
 
       <div class="stats-row dash" style="margin-top:18px">
+        <div class="stat-card c-green"><div class="stat-val" id="dashOnline" style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:#22C55E;display:inline-block;box-shadow:0 0 8px #22C55E"></span>—</div><div class="stat-lbl">Online agora</div></div>
         <div class="stat-card c-green"><div class="stat-val" id="dashContas">—</div><div class="stat-lbl">Contas criadas</div></div>
         <div class="stat-card c-yellow"><div class="stat-val" id="dashPendentes">—</div><div class="stat-lbl">Contas pendentes</div></div>
         <div class="stat-card c-cyan"><div class="stat-val" id="dashLogins">—</div><div class="stat-lbl">Logins</div></div>
@@ -1720,6 +1721,15 @@ Patos de Minas"></textarea>
       </div>
 
       <div class="table-card" style="margin-top:6px">
+        <div class="table-card-header" style="display:flex;align-items:center;gap:8px">
+          <span style="width:9px;height:9px;border-radius:50%;background:#22C55E;display:inline-block;box-shadow:0 0 8px #22C55E"></span> Online agora
+        </div>
+        <div id="dashOnlineList" style="padding:12px 18px">
+          <p style="color:var(--muted);font-size:13px">Carregando...</p>
+        </div>
+      </div>
+
+      <div class="table-card" style="margin-top:20px">
         <div class="table-card-header" onclick="toggleDashUsuarios()" style="cursor:pointer;display:flex;align-items:center;gap:8px">
           <i class="fas fa-users"></i> Atividade por usuário
           <i class="fas fa-chevron-down" id="dashUsuariosChevron" style="margin-left:auto;font-size:12px;color:var(--muted);transition:transform .2s"></i>
@@ -2574,11 +2584,12 @@ async function mostrarApp(userDoc) {
   // Só registra "login" quando foi um login intencional (e-mail/senha), não em F5/refresh
   if (loginIntencional) { loginIntencional = false; registrarAtividade('login', 'entrou no sistema'); }
   carregarCnpjsPreCadastrados();
+  iniciarPresenca();
 }
 
 // Reage a qualquer mudança de login (login, logout, refresh da página)
 auth.onAuthStateChanged(async (user) => {
-  if (!user) { mostrarTelaInicial(); return; }
+  if (!user) { if (presencaTimer) { clearInterval(presencaTimer); presencaTimer = null; } mostrarTelaInicial(); return; }
   try {
     const doc = await usersCol.doc(user.uid).get();
     if (!doc.exists) { mostrarTelaStatus(null); return; }
@@ -2656,8 +2667,38 @@ async function enviarSolicitacao(event) {
 }
 
 function logout() {
+  pararPresenca();
   auth.signOut();
 }
+
+// ── PRESENÇA (quem está online agora) ───────────────────────────────────────
+// Cada usuário logado marca "estou aqui" a cada 60s (só com a aba visível).
+// No painel admin, quem sinalizou nos últimos 3 min conta como online.
+const presencaCol = db.collection('presenca');
+const PRESENCA_INTERVALO_MS = 60000;      // grava a cada 60s
+const PRESENCA_ONLINE_MS = 3 * 60 * 1000; // online = visto nos últimos 3 min
+let presencaTimer = null;
+async function escreverPresenca() {
+  if (!auth.currentUser || document.hidden) return;
+  try {
+    await presencaCol.doc(auth.currentUser.uid).set({
+      nome: (typeof usuarioAtual !== 'undefined' && usuarioAtual && usuarioAtual.nome) || '',
+      email: auth.currentUser.email || '',
+      lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  } catch (e) { /* regras podem bloquear — presença é best-effort */ }
+}
+function iniciarPresenca() {
+  escreverPresenca();
+  if (presencaTimer) clearInterval(presencaTimer);
+  presencaTimer = setInterval(escreverPresenca, PRESENCA_INTERVALO_MS);
+}
+async function pararPresenca() {
+  if (presencaTimer) { clearInterval(presencaTimer); presencaTimer = null; }
+  try { if (auth.currentUser) await presencaCol.doc(auth.currentUser.uid).delete(); } catch (e) {}
+}
+// registra a presença assim que a aba volta a ficar visível (listener único)
+document.addEventListener('visibilitychange', () => { if (!document.hidden) escreverPresenca(); });
 
 // ── PAINEL DE ADMINISTRAÇÃO (aprovar / negar) ──────────────────────────────
 async function abrirAdminPainel() {
@@ -2741,7 +2782,40 @@ async function renderAdminDashboard() {
     dashSet('dashContas', '—');
     dashSet('dashPendentes', '—');
   }
+  // Quem está online agora (presença dos últimos 3 min)
+  try {
+    const ps = await presencaCol.get();
+    const agora = Date.now();
+    const online = [];
+    ps.forEach(doc => {
+      const x = doc.data();
+      const ls = (x.lastSeen && x.lastSeen.toMillis) ? x.lastSeen.toMillis() : 0;
+      if (ls && (agora - ls) <= PRESENCA_ONLINE_MS) online.push({ nome: x.nome, email: x.email, ls });
+    });
+    online.sort((a, b) => b.ls - a.ls);
+    dashSet('dashOnline', online.length);
+    renderOnline(online);
+  } catch (e) {
+    dashSet('dashOnline', '—');
+    const box = document.getElementById('dashOnlineList');
+    if (box) box.innerHTML = `<p style="color:var(--muted);font-size:13px">Não foi possível ler a presença (verifique as regras do Firestore para a coleção "presenca").</p>`;
+  }
+
   renderHistoricoAtividades();
+}
+
+// Lista de quem está online agora.
+function renderOnline(online) {
+  const box = document.getElementById('dashOnlineList');
+  if (!box) return;
+  if (!online.length) { box.innerHTML = '<p style="color:var(--muted);font-size:13px">Ninguém online agora.</p>'; return; }
+  box.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">` + online.map(u => {
+    const quem = u.nome ? `<strong>${escapeHtml(u.nome)}</strong> <span style="color:var(--muted);font-size:12px">${escapeHtml(u.email || '')}</span>` : escapeHtml(u.email || '—');
+    return `<div style="display:flex;align-items:center;gap:8px">
+        <span style="width:8px;height:8px;border-radius:50%;background:#22C55E;display:inline-block;box-shadow:0 0 6px #22C55E;flex:none"></span>
+        <span style="font-size:13px">${quem}</span>
+      </div>`;
+  }).join('') + `</div>`;
 }
 
 // Recolher/expandir a tabela "Atividade por usuário".
