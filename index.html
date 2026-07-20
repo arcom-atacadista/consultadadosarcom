@@ -5219,17 +5219,12 @@ Responda ESTRITAMENTE em JSON válido, sem nenhum texto antes ou depois, seguind
 function renderEnrichBody(cnpj, dados) {
   const semPontos = !dados.pontos_fortes || !dados.pontos_fortes.length;
   const semAtencao = !dados.sinais_atencao || !dados.sinais_atencao.length;
-  const nivel = (dados.nivel_confianca||'—');
-  const nivelClasse = nivel.toLowerCase().includes('alto') ? 'badge-ativa'
-    : nivel.toLowerCase().includes('médio')||nivel.toLowerCase().includes('medio') ? 'badge-inapta'
-    : 'badge-baixada';
 
   let html = '';
 
   html += `<div class="modal-section">
     <div class="modal-section-title purple"><i class="fas fa-file-lines"></i> Panorama Comercial</div>
     <p style="font-size:13px;line-height:1.6">${dados.resumo||'Sem resumo disponível.'}</p>
-    <div style="margin-top:10px"><span class="badge ${nivelClasse}">Confiança dos dados: ${nivel}</span></div>
   </div>`;
 
   const c = dados.contatos || {};
