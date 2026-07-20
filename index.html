@@ -2226,6 +2226,32 @@ function carregarLib(nome) {
   return _libsPromise[nome];
 }
 
+// ── AVISO DE NOVA VERSÃO ────────────────────────────────────────────────────
+// Detecta quando o index.html publicado mudou (via ETag/Last-Modified do
+// GitHub Pages) e oferece um botão "Atualizar" — sem precisar dar F5 na mão,
+// e sem eu ter que numerar versão (qualquer deploy é detectado sozinho).
+let _versaoRef = null;
+async function _versaoServidor() {
+  try {
+    const r = await fetch(location.pathname + '?_v=' + Date.now(), { method: 'HEAD', cache: 'no-store' });
+    return r.headers.get('etag') || r.headers.get('last-modified') || null;
+  } catch (e) { return null; }
+}
+async function checarNovaVersao() {
+  const v = await _versaoServidor();
+  if (!v) return;
+  if (!_versaoRef) { _versaoRef = v; return; } // 1ª medição = referência
+  if (v !== _versaoRef && !document.getElementById('updateBanner')) mostrarBannerAtualizacao();
+}
+function mostrarBannerAtualizacao() {
+  const bar = document.createElement('div');
+  bar.id = 'updateBanner';
+  bar.style.cssText = 'position:fixed;left:16px;right:16px;bottom:16px;z-index:3000;background:var(--accent);color:#fff;padding:12px 18px;border-radius:12px;display:flex;align-items:center;justify-content:center;gap:16px;font-size:14px;font-weight:600;box-shadow:0 8px 28px rgba(0,0,0,.35);flex-wrap:wrap';
+  bar.innerHTML = '<span><i class="fas fa-arrows-rotate"></i> Nova versão do site disponível.</span>'
+    + '<button onclick="location.reload()" style="background:#fff;color:var(--accent);border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer">Atualizar agora</button>';
+  document.body.appendChild(bar);
+}
+
 // ── TOASTS ──────────────────────────────────────────────────────────────────
 function showToast(msg, type) {
   type = type || 'info';
@@ -2521,7 +2547,11 @@ window.addEventListener('load', () => {
   initParticles();
   atualizarSeletorApi();
   montarPainelCnae();
+  // aviso de nova versão: mede a referência e checa periodicamente
+  checarNovaVersao();
+  setInterval(checarNovaVersao, 5 * 60 * 1000);
 });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checarNovaVersao(); });
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ── LOGIN / SOLICITAÇÃO DE ACESSO (Firebase Auth + Firestore) ──────────────
@@ -4140,7 +4170,7 @@ async function renderListasSalvas() {
       </div>
       <div class="req-item-actions">
         <button class="req-approve" title="Carregar" onclick="carregarListaSalva('${lista.id}')"><i class="fas fa-folder-open"></i></button>
-        <button class="req-deny" title="Excluir" onclick="excluirListaSalva('${lista.id}')"><i class="fas fa-trash"></i></button>
+        ${usuarioEhAdmin ? `<button class="req-deny" title="Excluir (somente admin)" onclick="excluirListaSalva('${lista.id}')"><i class="fas fa-trash"></i></button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -4162,6 +4192,7 @@ function carregarListaSalva(id) {
 }
 
 async function excluirListaSalva(id) {
+  if (!usuarioEhAdmin) { showToast('Só o administrador pode excluir listas.', 'error'); return; }
   if (!confirm('Excluir esta lista salva?')) return;
   try {
     await listasCol.doc(id).delete();
