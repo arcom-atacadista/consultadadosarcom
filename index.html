@@ -4194,21 +4194,27 @@ async function startVerification() {
   });
   updateStats(total,baix,inap,susp,erro);
 
-  function renderLinha(cnpj, result, cacheInfo) {
+  // Atualiza o estado (contadores, allData, histórico) e RETORNA o HTML da linha,
+  // sem inserir no DOM. O selo de pré-cadastro já vai embutido (evita varrer o DOM depois).
+  function linhaHtml(cnpj, result, cacheInfo) {
     allData[cnpj]=result; total++;
     if (result.situacao.includes('INAPTA')) inap++;
     else if (result.situacao.includes('BAIXADA')) baix++;
     else if (result.situacao.includes('SUSPENSA')) susp++;
     rows.push([fmt(cnpj),result.razao,result.situacao]);
+    renderedCnpjs.push(cnpj);
+    histNovos.push({ cnpj, razao: result.razao });
     const bc=badgeClass(result.situacao);
     const isFav=favorites.includes(cnpj)?'⭐':'☆';
     const cacheTagHtml = cacheInfo
       ? `<span class="cache-tag" title="Resultado em cache — consultado em ${new Date(cacheInfo.ts).toLocaleString('pt-BR')}"><i class="fas fa-clock-rotate-left"></i>cache · ${formatRelativeTime(cacheInfo.ts)}</span>`
       : '';
-    tbody.insertAdjacentHTML('beforeend', `<tr id="row-${cnpj}">
+    const precadHtml = (typeof cnpjsPreCadastrados !== 'undefined' && cnpjsPreCadastrados.has && cnpjsPreCadastrados.has(cnpj))
+      ? '<span class="fav-tag-chip"><i class="fas fa-user-check"></i> Pré-cadastrado</span>' : '';
+    return `<tr id="row-${cnpj}">
       <td class="td-fav" onclick="toggleFavorite('${cnpj}',event)">${isFav}</td>
       <td class="td-cnpj">${fmt(cnpj)}</td>
-      <td class="td-razao">${result.razao}${cacheTagHtml}${(result.nomeFantasia && result.nomeFantasia!=='—') ? `<span style="display:block;font-size:11px;color:var(--muted)"><i class="fas fa-store" style="margin-right:3px"></i>${result.nomeFantasia}</span>` : ''}<span data-precad-slot="${cnpj}"></span></td>
+      <td class="td-razao">${result.razao}${cacheTagHtml}${(result.nomeFantasia && result.nomeFantasia!=='—') ? `<span style="display:block;font-size:11px;color:var(--muted)"><i class="fas fa-store" style="margin-right:3px"></i>${result.nomeFantasia}</span>` : ''}<span data-precad-slot="${cnpj}">${precadHtml}</span></td>
       <td><span class="badge ${bc}">${result.situacao}</span></td>
       <td style="color:var(--muted);font-size:12px">${simNaoBadgeHTML(result.clienteArcom)}</td>
       <td style="font-size:12px;font-family:var(--mono);text-align:center">${result.ocorrencia != null ? result.ocorrencia : '<span style="color:var(--muted)">—</span>'}</td>
@@ -4219,23 +4225,38 @@ async function startVerification() {
         <button class="btn-eye" title="Mapa / fachada (Street View)" onclick="abrirMapa('${cnpj}')"><i class="fas fa-map-location-dot"></i> Mapa</button>
         <button class="btn-eye" title="Pré-cadastrar" onclick="abrirPreCadastro('${cnpj}')"><i class="fas fa-user-plus"></i> Pré-cad.</button>
       </td>
-    </tr>`);
-    // barato e imediato: mantém stats e favoritos por linha; histórico/selo são
-    // atualizados UMA vez no fim (via renderedCnpjs/histNovos) pra não travar em lote.
-    updateStats(total,baix,inap,susp,erro);
-    renderFavTags(cnpj);
-    renderedCnpjs.push(cnpj);
-    histNovos.push({ cnpj, razao: result.razao });
+    </tr>`;
   }
-
-  function renderErro(cnpj, mensagem) {
-    tbody.insertAdjacentHTML('beforeend', `<tr>
+  function erroHtml(cnpj, mensagem) {
+    total++; erro++; erroCNPJs.push({cnpj, motivo:mensagem});
+    return `<tr>
       <td class="td-fav">☆</td>
       <td class="td-cnpj">${fmt(cnpj)}</td>
       <td colspan="5"><span class="badge badge-error">${mensagem}</span></td>
-      <td></td></tr>`);
-    total++; erro++; erroCNPJs.push({cnpj, motivo:mensagem});
+      <td></td></tr>`;
+  }
+  // Wrappers para o caminho individual (insere imediatamente, uma linha por vez).
+  function renderLinha(cnpj, result, cacheInfo) {
+    tbody.insertAdjacentHTML('beforeend', linhaHtml(cnpj, result, cacheInfo));
     updateStats(total,baix,inap,susp,erro);
+    renderFavTags(cnpj);
+  }
+  function renderErro(cnpj, mensagem) {
+    tbody.insertAdjacentHTML('beforeend', erroHtml(cnpj, mensagem));
+    updateStats(total,baix,inap,susp,erro);
+  }
+  // Insere muitas linhas em blocos, cedendo o controle ao navegador entre os blocos
+  // (evita travar a aba ao renderizar centenas/milhares de linhas de uma vez).
+  async function inserirLinhasEmBlocos(partes, tamanhoBloco) {
+    for (let i = 0; i < partes.length; i += tamanhoBloco) {
+      tbody.insertAdjacentHTML('beforeend', partes.slice(i, i + tamanhoBloco).join(''));
+      updateStats(total,baix,inap,susp,erro);
+      const feitos = Math.min(i + tamanhoBloco, partes.length);
+      document.getElementById('status').textContent = `Exibindo resultados… ${feitos}/${partes.length}`;
+      document.getElementById('barFill').style.width = Math.round((feitos/partes.length)*100)+'%';
+      document.getElementById('percentage').textContent = Math.round((feitos/partes.length)*100)+'%';
+      await new Promise(r => setTimeout(r, 0)); // deixa o navegador pintar e respirar
+    }
   }
 
   if (apiSelecionada === 'arcom' && validos.length > 1) {
@@ -4246,7 +4267,9 @@ async function startVerification() {
       const cached = lookupCache(cnpj, 'arcom');
       if (cached) jaEmCache.push([cnpj, cached]); else precisaBuscar.push(cnpj);
     });
-    jaEmCache.forEach(([cnpj, cached]) => renderLinha(cnpj, cached.result, cached));
+    // monta o HTML de todas as linhas (sem tocar o DOM ainda) e insere em blocos depois
+    const partes = [];
+    jaEmCache.forEach(([cnpj, cached]) => partes.push(linhaHtml(cnpj, cached.result, cached)));
     if (precisaBuscar.length) {
       try {
         await consultarLoteArcom(precisaBuscar, (loteAtual, totalLotes, tamanhoLote) => {
@@ -4257,17 +4280,21 @@ async function startVerification() {
           document.getElementById('percentage').textContent=Math.round((loteAtual/totalLotes)*100)+'%';
         }).then(resultados => {
           resultados.forEach(item => {
-            if (item.error) { renderErro(item.cnpj, item.error); return; }
-            if (!item.found) { renderErro(item.cnpj, 'CNPJ não encontrado'); return; }
+            if (item.error) { partes.push(erroHtml(item.cnpj, item.error)); return; }
+            if (!item.found) { partes.push(erroHtml(item.cnpj, 'CNPJ não encontrado')); return; }
             const result = mapArcomBatchRecord(item.data, item.ja_cliente, item.id_ocor_cadastro);
             putCache(item.cnpj, 'arcom', result);
-            renderLinha(item.cnpj, result);
+            partes.push(linhaHtml(item.cnpj, result));
           });
         });
       } catch(e) {
-        precisaBuscar.forEach(cnpj => renderErro(cnpj, e.message || 'Erro na consulta em lote'));
+        precisaBuscar.forEach(cnpj => partes.push(erroHtml(cnpj, e.message || 'Erro na consulta em lote')));
       }
     }
+    document.getElementById('status').textContent = 'Montando a tabela…';
+    await inserirLinhasEmBlocos(partes, 120);
+    // favoritos (raros) recebem as etiquetas depois que as linhas já estão no DOM
+    renderedCnpjs.forEach(cnpj => { if (favorites.includes(cnpj)) renderFavTags(cnpj); });
   } else {
     // ── Consulta individual (1 CNPJ na Arcom, ou qualquer quantidade na Brasil API) ──
     for (let n=0; n<validos.length; n++) {
@@ -4297,7 +4324,7 @@ async function startVerification() {
     localStorage.setItem('cnpjHistory', JSON.stringify(historyLog));
     renderHistory();
   }
-  if (renderedCnpjs.length) atualizarBadgePreCadastro(renderedCnpjs);
+  // (o selo de pré-cadastro já é embutido em cada linha por linhaHtml — sem varredura do DOM aqui)
 
   document.getElementById('barFill').style.width='100%';
   document.getElementById('percentage').textContent='100%';
