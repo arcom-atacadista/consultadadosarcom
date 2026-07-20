@@ -3513,8 +3513,31 @@ function toggleSomenteNovas() {
 // grandes redes têm setor próprio.
 let prosCortarRedes = true;
 let prosLimiteFiliais = 20;
+
+// Corte por NOME: grandes redes/franquias que passam pelo corte por nº de filial
+// (cada loja pode ser matriz/filial 1 de um CNPJ próprio). Comparação sem acento
+// e por palavra inteira (\b), pra não pegar nomes parecidos por acaso.
+const REDES_CONHECIDAS = [
+  // farmácias / drogarias
+  'pague menos','paguemenos','pague-menos','ultrapopular','ultrafarma','drogasil','droga raia','drogaraia','raia','drogaria sao paulo','drogarias pacheco','pacheco','venancio','panvel','extrafarma','nissei','drogaria araujo','araujo','bifarma','onofre','drogal','drogao','indiana','sao joao','drogaria sao joao','pague','drogarias globo','globo',
+  // perfumaria / cosméticos
+  'o boticario','boticario','natura','jequiti','eudora','quem disse berenice','mahogany','avon','the beauty box',
+  // supermercados / atacado
+  'carrefour','atacadao','assai','pao de acucar','bompreco','sams club','makro','tenda atacado','grupo mateus','gbarbosa','angeloni','condor','muffato','zaffari','savegnago','sonda','st marche','supermercados bh','super nosso','verdemar','epa','dma','tonin','cencosud','bh supermercados','apoio mineiro','villefort','coop',
+  // varejo geral / franquias
+  'magazine luiza','magalu','casas bahia','ponto frio','americanas','lojas americanas','riachuelo','lojas renner','renner','marisa','pernambucanas','havan','polishop','kalunga','leroy merlin','telhanorte','cobasi','petz','cacau show','kopenhagen','ri happy','centauro',
+  // fast food / franquias de alimentacao
+  'mcdonalds','burger king','subway','outback','habibs','giraffas','pizza hut','spoleto','bobs',
+];
+function semAcento(s) { return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+const _redesRegex = new RegExp('\\b(' + REDES_CONHECIDAS.map(r => semAcento(r).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')\\b');
+function eRedeConhecida(emp) {
+  const txt = semAcento((emp.razao || '') + ' ' + (emp.nomeFantasia || ''));
+  return _redesRegex.test(txt);
+}
 function eGrandeRede(emp) {
-  return prosCortarRedes && (emp.ordemFilial || 1) >= prosLimiteFiliais;
+  if (!prosCortarRedes) return false;
+  return (emp.ordemFilial || 1) >= prosLimiteFiliais || eRedeConhecida(emp);
 }
 function toggleCortarRedes() {
   prosCortarRedes = document.getElementById('chkCortarRedes').checked;
@@ -3642,7 +3665,7 @@ function renderProspeccaoResultado(empresas) {
   const cidadesEnvolvidas = [...new Set(empresas.map(e => `${e.cidade}/${e.uf}`))];
   const eNova = e => { const m = mesesDesdeAbertura(e.dataInicio); return m != null && m >= 0 && m <= RADAR_MESES_NOVA; };
 
-  const qtdRedes = empresas.filter(e => (e.ordemFilial || 1) >= prosLimiteFiliais).length;
+  const qtdRedes = empresas.filter(e => (e.ordemFilial || 1) >= prosLimiteFiliais || eRedeConhecida(e)).length;
   let lista = empresas;
   if (prosCortarRedes) lista = lista.filter(e => !eGrandeRede(e));
   const qtdNovas = lista.filter(eNova).length;
@@ -3668,7 +3691,7 @@ function renderProspeccaoResultado(empresas) {
   h += `<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">`;
   h += `<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer">
       <input type="checkbox" id="chkCortarRedes" ${prosCortarRedes?'checked':''} onchange="toggleCortarRedes()">
-      <i class="fas fa-ban" style="color:var(--red)"></i> Cortar grandes redes: esconder empresas com filial nº ≥
+      <i class="fas fa-ban" style="color:var(--red)"></i> Cortar grandes redes: esconde redes conhecidas (Pague Menos, Ultrapopular, O Boticário…) e empresas com filial nº ≥
       <input type="number" id="inpLimiteFiliais" value="${prosLimiteFiliais}" min="2" style="width:64px;padding:2px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-family:var(--mono)" onchange="mudarLimiteFiliais()" onclick="event.preventDefault()">
       — <strong>${qtdRedes}</strong> cortada(s)
     </label>`;
