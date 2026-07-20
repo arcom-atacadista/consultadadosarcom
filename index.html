@@ -3602,8 +3602,14 @@ const REDES_CONHECIDAS = [
 function semAcento(s) { return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
 const _redesRegex = new RegExp('\\b(' + REDES_CONHECIDAS.map(r => semAcento(r).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')\\b');
 function eRedeConhecida(emp) {
+  // Memoizado no próprio objeto: razão/fantasia não mudam, então a regex de
+  // ~80 redes roda uma única vez por empresa (e não a cada render/toggle).
+  // Campo não-enumerável pra não vazar na hora de salvar a lista no Firestore.
+  if (emp._redeConhecida !== undefined) return emp._redeConhecida;
   const txt = semAcento((emp.razao || '') + ' ' + (emp.nomeFantasia || ''));
-  return _redesRegex.test(txt);
+  const v = _redesRegex.test(txt);
+  Object.defineProperty(emp, '_redeConhecida', { value: v, writable: true, configurable: true });
+  return v;
 }
 function eGrandeRede(emp) {
   if (!prosCortarRedes) return false;
@@ -3680,6 +3686,10 @@ function botoesAcaoProspect(emp) {
 // (varejo, com nome fantasia, endereço com número, telefone fixo, madura) e
 // pro fim holding/imobiliária/serviço. É um apoio à priorização, não verdade.
 function scoreLojaFisica(emp) {
+  // Memoizado: o score só depende de campos imutáveis da empresa, então não
+  // precisa ser recalculado a cada render/toggle de filtro. Não-enumerável pra
+  // não ser salvo no Firestore junto com a lista.
+  if (emp._scoreCache) return emp._scoreCache;
   let score = 0; const chips = [];
   const p2 = (emp.cnaeCodigo || '').toString().slice(0, 2);
   let cnaeScore, cnaeLabel;
@@ -3705,7 +3715,9 @@ function scoreLojaFisica(emp) {
 
   score = Math.max(0, Math.min(100, score));
   const temp = score >= 65 ? 'quente' : score >= 40 ? 'morno' : 'frio';
-  return { score, temp, chips };
+  const res = { score, temp, chips };
+  Object.defineProperty(emp, '_scoreCache', { value: res, writable: true, configurable: true });
+  return res;
 }
 function badgePotencial(sc) {
   const cor = sc.temp === 'quente' ? 'badge-ativa' : sc.temp === 'morno' ? 'badge-inapta' : 'badge-baixada';
@@ -3715,6 +3727,13 @@ function badgePotencial(sc) {
 }
 
 // Busca rápida sobre os resultados JÁ renderizados (esconde/mostra linhas).
+// Agenda o filtro com debounce: digitar rápido não dispara uma varredura por
+// tecla (que, com 500 linhas, causava travamento).
+let _prosBuscaTimer = null;
+function agendarFiltroProspeccao() {
+  clearTimeout(_prosBuscaTimer);
+  _prosBuscaTimer = setTimeout(filtrarProspeccaoResultado, 150);
+}
 function filtrarProspeccaoResultado() {
   const input = document.getElementById('prosBuscaResultado');
   const termos = (input ? input.value : '').trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -3722,7 +3741,10 @@ function filtrarProspeccaoResultado() {
   if (!tbody) return;
   let visiveis = 0;
   tbody.querySelectorAll('tr').forEach(tr => {
-    const ok = termos.every(t => tr.textContent.toLowerCase().includes(t));
+    // usa o texto de busca já calculado no render (data-busca); cai pro
+    // textContent só se por algum motivo o atributo não existir.
+    const hay = tr.dataset.busca || tr.textContent.toLowerCase();
+    const ok = termos.every(t => hay.includes(t));
     tr.style.display = ok ? '' : 'none';
     if (ok) visiveis++;
   });
@@ -3772,7 +3794,7 @@ function renderProspeccaoResultado(empresas) {
   h += `<span style="font-size:12px;color:var(--accent)"><i class="fas fa-square-check"></i> <span id="prospSelCount"></span></span>`;
   h += `</div>`;
   h += `<div style="margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <input id="prosBuscaResultado" class="regional-input" style="flex:1;min-width:220px" placeholder="🔎 Buscar nos resultados (razão, fantasia, cidade, atividade, CNPJ)…" oninput="filtrarProspeccaoResultado()">
+      <input id="prosBuscaResultado" class="regional-input" style="flex:1;min-width:220px" placeholder="🔎 Buscar nos resultados (razão, fantasia, cidade, atividade, CNPJ)…" oninput="agendarFiltroProspeccao()">
       <span id="prosBuscaCount" style="font-size:11px;color:var(--muted)"></span>
     </div>`;
   h += `<table style="width:100%"><thead><tr><th style="width:28px"><input type="checkbox" id="chkSelTodosProspect" title="Selecionar todos" onclick="toggleSelecionarTodosProspect(this)"></th><th title="Provável loja física (0-100)">Potencial</th><th>CNPJ</th><th>Razão Social</th><th>Nome Fantasia</th><th>Cidade</th><th>Atividade</th><th>Filial nº</th><th>Abertura</th><th></th></tr></thead><tbody>`;
@@ -3781,7 +3803,12 @@ function renderProspeccaoResultado(empresas) {
     const fantasia = emp.nomeFantasia && emp.nomeFantasia.trim() ? emp.nomeFantasia : '—';
     const filialTxt = (emp.ordemFilial && emp.ordemFilial > 1) ? String(emp.ordemFilial) : (emp.ordemFilial === 1 ? 'matriz' : '—');
     const marcado = prospeccaoSelecionados.has(emp.cnpj) ? 'checked' : '';
-    h += `<tr><td><input type="checkbox" class="chk-prospect" ${marcado} onclick="toggleSelecionadoProspect('${emp.cnpj}',this)"></td><td>${badgePotencial(scoreCache.get(emp.cnpj))}</td><td>${fmt(emp.cnpj)}</td><td>${emp.razao}${badgeNova(emp.dataInicio)}<span data-precad-slot="${emp.cnpj}"></span></td><td style="font-weight:600">${fantasia}</td><td style="font-size:12px;color:var(--muted)">${emp.cidade}/${emp.uf}</td><td style="font-size:12px;color:var(--muted)">${emp.atividade}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${filialTxt}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${abertura}</td>
+    // Texto de busca pré-calculado (uma vez) pra o filtro não reler o textContent
+    // de cada linha a cada tecla digitada. Escapa aspas/&/< pra não quebrar o
+    // atributo caso a razão social tenha esses caracteres.
+    const busca = (fmt(emp.cnpj) + ' ' + emp.cnpj + ' ' + emp.razao + ' ' + fantasia + ' ' + emp.cidade + '/' + emp.uf + ' ' + emp.atividade)
+      .toLowerCase().replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    h += `<tr data-busca="${busca}"><td><input type="checkbox" class="chk-prospect" ${marcado} onclick="toggleSelecionadoProspect('${emp.cnpj}',this)"></td><td>${badgePotencial(scoreCache.get(emp.cnpj))}</td><td>${fmt(emp.cnpj)}</td><td>${emp.razao}${badgeNova(emp.dataInicio)}<span data-precad-slot="${emp.cnpj}"></span></td><td style="font-weight:600">${fantasia}</td><td style="font-size:12px;color:var(--muted)">${emp.cidade}/${emp.uf}</td><td style="font-size:12px;color:var(--muted)">${emp.atividade}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${filialTxt}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${abertura}</td>
       <td class="td-actions">${botoesAcaoProspect(emp)}</td></tr>`;
   });
   h += '</tbody></table>';
@@ -3789,7 +3816,9 @@ function renderProspeccaoResultado(empresas) {
   resultado.innerHTML = h;
   prospeccaoVisivelAtual = lista;
   atualizarSelecaoProspect();
-  atualizarBadgePreCadastro(lista.map(e => e.cnpj));
+  // Só as linhas realmente renderizadas têm slot no DOM — atualizar o selo
+  // sobre a lista inteira (milhares) faria milhares de varreduras à toa.
+  atualizarBadgePreCadastro(listaRender.map(e => e.cnpj));
 }
 
 // Alternativa leve a um mapa de calor geográfico (que exigiria geocodificação):
