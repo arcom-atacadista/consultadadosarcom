@@ -5076,23 +5076,20 @@ function verEmpresasDoSocio(identEncoded) {
 // ⚠️ Cole aqui suas chaves (ambas grátis, sem cartão):
 //   - Groq:   console.groq.com/keys
 //   - Tavily: app.tavily.com (1.000 buscas grátis/mês)
-// Atenção: como este é um site estático (GitHub Pages), as chaves ficam
-// visíveis no código-fonte para quem inspecionar a página. Para uso
-// pessoal/interno da equipe isso costuma ser aceitável; para publicar para
-// terceiros, o ideal é colocar essas chamadas atrás de um proxy simples
-// (ex.: Cloudflare Worker) para não expor as chaves.
-const GROQ_API_KEY = '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';
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+// As chaves da Groq e da Tavily NÃO ficam mais no código — elas moram no
+// proxy (Cloudflare Worker), que recebe a chamada do site e adiciona a chave
+// no lado do servidor. Assim a chave nunca aparece no código público (e para
+// de ser revogada) e a busca da Tavily funciona sem CORS.
+const PROXY_URL = 'https://consultarcom.jlrodrigues6900.workers.dev';
+const GROQ_API_URL = PROXY_URL + '/groq';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
-
-const TAVILY_API_KEY = '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'; // <- cole sua chave tvly-xxxxxxxx aqui
-const TAVILY_API_URL = 'https://api.tavily.com/search';
+const TAVILY_API_URL = PROXY_URL + '/tavily';
 
 // Faz a busca real na web sobre a empresa (site, telefone, Instagram, LinkedIn).
 // Retorna uma lista de resultados [{title, url, content}]. Se a Tavily não
 // estiver configurada, retorna [] e o insight segue só com os dados da Receita.
 async function buscarContatoWeb(dadosEmpresa) {
-  if (!TAVILY_API_KEY) return [];
+  if (!PROXY_URL) return [];
 
   const nome = dadosEmpresa.nomeFantasia && dadosEmpresa.nomeFantasia !== '—'
     ? dadosEmpresa.nomeFantasia : dadosEmpresa.razao;
@@ -5103,7 +5100,6 @@ async function buscarContatoWeb(dadosEmpresa) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        api_key: TAVILY_API_KEY,
         query,
         search_depth: 'advanced',
         include_answer: false,
@@ -5123,8 +5119,8 @@ async function buscarContatoWeb(dadosEmpresa) {
 }
 
 async function consultarInsightIA(cnpj, dadosEmpresa) {
-  if (!GROQ_API_KEY) {
-    throw new Error('Configure sua chave da Groq na constante GROQ_API_KEY.');
+  if (!PROXY_URL) {
+    throw new Error('Proxy da IA não configurado (PROXY_URL).');
   }
 
   const resultadosWeb = await buscarContatoWeb(dadosEmpresa);
@@ -5174,10 +5170,7 @@ Responda ESTRITAMENTE em JSON válido, sem nenhum texto antes ou depois, seguind
 
   const response = await fetch(GROQ_API_URL, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${GROQ_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: GROQ_MODEL,
       messages: [{ role: 'user', content: prompt }],
@@ -5244,7 +5237,7 @@ function renderEnrichBody(cnpj, dados) {
   html += `<div class="modal-section">
     <div class="modal-section-title purple"><i class="fas fa-address-book"></i> Contato Encontrado na Web</div>
     ${!dados.buscaWebRealizada
-      ? '<div class="enrich-empty">Busca na web não configurada (defina TAVILY_API_KEY no código) ou sem resultados.</div>'
+      ? '<div class="enrich-empty">Sem resultados de busca na web para esta empresa.</div>'
       : !temContato
       ? '<div class="enrich-empty">Nenhum contato encontrado nos resultados de busca.</div>'
       : `<ul style="padding-left:18px;font-size:13px;line-height:1.9">
@@ -5388,7 +5381,7 @@ function exportEnrichAtual() {
 async function gerarRankingLeads() {
   const cnpjs = Object.keys(allData);
   if (!cnpjs.length) { showToast('Nenhuma empresa consultada ainda.','error'); return; }
-  if (!GROQ_API_KEY) { showToast('Configure a GROQ_API_KEY para usar o ranking com IA.','error'); return; }
+  if (!PROXY_URL) { showToast('Proxy da IA não configurado.','error'); return; }
 
   document.getElementById('rankingBody').innerHTML = `
     <div class="enrich-loading">
@@ -5413,7 +5406,7 @@ Inclua no máximo os 15 melhores, ordenados do melhor para o pior.`;
   try {
     const response = await fetch(GROQ_API_URL, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: GROQ_MODEL,
         messages: [
@@ -5612,9 +5605,9 @@ function delay(ms){return new Promise(r=>setTimeout(r,ms));}
 
 <script>
 // ── CHAT COM IA (Groq) ────────────────────────────────────────────────────
-// Reaproveita a mesma chave/endpoint/modelo já configurados para o botão
-// "Insight IA" (constantes GROQ_API_KEY, GROQ_API_URL, GROQ_MODEL, definidas
-// mais acima no arquivo). O histórico da conversa fica salvo no navegador
+// Reaproveita o mesmo proxy/endpoint/modelo do botão "Insight IA"
+// (PROXY_URL, GROQ_API_URL, GROQ_MODEL, definidos mais acima no arquivo).
+// O histórico da conversa fica salvo no navegador
 // (localStorage), então sobrevive a um recarregamento de página.
 
 const CHAT_HISTORICO_MAX = 40; // limite de mensagens guardadas
@@ -5690,8 +5683,8 @@ function renderMensagensChat(){
 }
 
 async function consultarGroqChat(mensagemUsuario){
-  if (!GROQ_API_KEY) {
-    throw new Error('Configure sua chave da Groq na constante GROQ_API_KEY.');
+  if (!PROXY_URL) {
+    throw new Error('Proxy da IA não configurado.');
   }
   const messagesPayload = [
     { role: 'system', content: montarSystemPromptChat() },
@@ -5700,10 +5693,7 @@ async function consultarGroqChat(mensagemUsuario){
   ];
   const response = await fetch(GROQ_API_URL, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${GROQ_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: GROQ_MODEL,
       messages: messagesPayload,
