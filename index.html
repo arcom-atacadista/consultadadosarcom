@@ -5659,7 +5659,9 @@ function montarContextoEmpresas(){
 }
 
 function montarSystemPromptChat(){
-  return `Você é o assistente de IA do VERIFICADOR, uma ferramenta de consulta de CNPJ. Responda em português do Brasil, de forma clara, objetiva e útil. Você pode ajudar a interpretar dados de empresas já consultadas na ferramenta (situação cadastral, porte, atividade etc.), tirar dúvidas gerais sobre CNPJ/Receita Federal, ou apenas conversar. Nunca invente dados de empresas que não foram informados a você.${montarContextoEmpresas()}`;
+  return `Você é o assistente de IA do VERIFICADOR (CDA), uma ferramenta da Arcom para consulta de CNPJ e prospecção. Responda em português do Brasil, de forma clara, objetiva e útil. Você pode ajudar a interpretar dados de empresas já consultadas na ferramenta (situação cadastral, porte, atividade etc.), tirar dúvidas gerais sobre CNPJ/Receita Federal, ou apenas conversar.
+
+Você TEM acesso à internet através da ferramenta "buscar_web". Use-a sempre que a pergunta precisar de informação atual ou externa — por exemplo: telefone, site, Instagram, endereço, notícias, avaliações, se uma empresa ainda funciona, dados recentes, ou qualquer coisa que você não saiba com certeza. Depois de buscar, responda com base nos resultados e cite a fonte quando fizer sentido. Não invente: se não achar, diga que não encontrou. Para dúvidas simples ou sobre dados já consultados na ferramenta, responda direto, sem precisar buscar.${montarContextoEmpresas()}`;
 }
 
 function renderMensagensChat(){
@@ -5682,30 +5684,88 @@ function renderMensagensChat(){
   box.scrollTop = box.scrollHeight;
 }
 
-async function consultarGroqChat(mensagemUsuario){
-  if (!PROXY_URL) {
-    throw new Error('Proxy da IA não configurado.');
+// Busca na web (via proxy Tavily) — usada como "ferramenta" pela IA do chat.
+async function buscarWebChat(query){
+  try {
+    const r = await fetch(TAVILY_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, search_depth: 'basic', include_answer: true, max_results: 5 })
+    });
+    if (!r.ok) return 'A busca na web falhou (HTTP ' + r.status + ').';
+    const d = await r.json();
+    let out = '';
+    if (d.answer) out += 'Resumo da web: ' + d.answer + '\n\n';
+    (d.results || []).slice(0, 5).forEach((x, i) => {
+      out += `[${i + 1}] ${x.title || ''}\n${x.url || ''}\n${(x.content || '').slice(0, 300)}\n\n`;
+    });
+    return out.trim() || 'Nenhum resultado encontrado na web.';
+  } catch (e) {
+    return 'Erro na busca na web: ' + (e.message || e);
   }
-  const messagesPayload = [
-    { role: 'system', content: montarSystemPromptChat() },
-    ...chatHistorico.slice(-12).map(m => ({ role: m.role, content: m.texto })),
-    { role: 'user', content: mensagemUsuario }
-  ];
+}
+
+// Uma chamada ao Groq (pelo proxy), com as ferramentas disponíveis.
+async function chamarGroqChat(messages){
+  const TOOLS = [{
+    type: 'function',
+    function: {
+      name: 'buscar_web',
+      description: 'Busca informações ATUAIS na internet (telefone, site, Instagram, endereço, notícias, avaliações, se a empresa funciona, preços, dados recentes). Use quando a resposta depender de informação externa/atual.',
+      parameters: {
+        type: 'object',
+        properties: { query: { type: 'string', description: 'O termo de busca, o mais específico possível' } },
+        required: ['query']
+      }
+    }
+  }];
   const response = await fetch(GROQ_API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      messages: messagesPayload,
-      temperature: 0.5
-    })
+    body: JSON.stringify({ model: GROQ_MODEL, messages, temperature: 0.5, tools: TOOLS, tool_choice: 'auto' })
   });
   if (!response.ok) {
     const errText = await response.text().catch(() => '');
     throw new Error(`Groq HTTP ${response.status} — ${errText.slice(0,200)}`);
   }
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || 'Desculpe, não consegui gerar uma resposta.';
+  return response.json();
+}
+
+async function consultarGroqChat(mensagemUsuario){
+  if (!PROXY_URL) {
+    throw new Error('Proxy da IA não configurado.');
+  }
+  const messages = [
+    { role: 'system', content: montarSystemPromptChat() },
+    ...chatHistorico.slice(-12).map(m => ({ role: m.role, content: m.texto })),
+    { role: 'user', content: mensagemUsuario }
+  ];
+
+  // Loop de ferramentas: a IA pode pedir buscas na web até ter o que precisa.
+  let guard = 0;
+  while (guard < 3) {
+    guard++;
+    const data = await chamarGroqChat(messages);
+    const msg = data.choices && data.choices[0] && data.choices[0].message;
+    if (!msg) return 'Desculpe, não consegui gerar uma resposta.';
+    if (msg.tool_calls && msg.tool_calls.length) {
+      messages.push(msg); // registra o pedido de ferramenta
+      for (const tc of msg.tool_calls) {
+        let resultado;
+        try {
+          const args = JSON.parse((tc.function && tc.function.arguments) || '{}');
+          resultado = await buscarWebChat(args.query || mensagemUsuario);
+        } catch (e) { resultado = 'Erro ao executar a busca: ' + (e.message || e); }
+        messages.push({ role: 'tool', tool_call_id: tc.id, name: 'buscar_web', content: resultado });
+      }
+      continue; // volta pro modelo com os resultados
+    }
+    return msg.content || 'Desculpe, não consegui gerar uma resposta.';
+  }
+  // fallback: pede uma resposta final sem mais ferramentas
+  const data = await chamarGroqChat(messages);
+  return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content)
+    || 'Desculpe, não consegui gerar uma resposta.';
 }
 
 async function chatEnviar(){
