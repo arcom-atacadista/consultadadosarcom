@@ -1589,7 +1589,7 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
                   <th>CNPJ</th>
                   <th>Razão Social</th>
                   <th>Situação</th>
-                  <th id="thPorteCol">Cliente Arcom</th>
+                  <th id="thPorteCol" style="text-align:center">Cliente Arcom</th>
                   <th style="text-align:center" title="Nº da ocorrência de cadastro do cliente na Arcom">Ocorrência</th>
                   <th>UF</th>
                   <th></th>
@@ -1732,7 +1732,7 @@ Patos de Minas,MG"></textarea>
       <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">
         <div>
           <h2><i class="fas fa-wand-magic-sparkles" style="color:var(--accent);margin-right:8px"></i>Enriquecimento de dados</h2>
-          <p style="color:var(--muted);font-size:13px;margin-top:4px">Cole CNPJs e a Trace360 gera um <strong>dossiê</strong> de cada um (Google Maps, fotos, avaliações, Street View, análise por IA). O processamento leva alguns minutos — o status atualiza sozinho aqui e você baixa o PDF quando ficar pronto.</p>
+          <p style="color:var(--muted);font-size:13px;margin-top:4px">Cole CNPJs e a Trace360 gera um <strong>dossiê</strong> de cada um (Google Maps, fotos, avaliações, Street View, análise por IA). Ao enviar, o <strong>fluxo abre automaticamente</strong>. Aqui aparecem <strong>só os CNPJs que você enviou</strong> — o status atualiza sozinho e você baixa o PDF quando ficar pronto.</p>
         </div>
         <button class="btn btn-ghost" onclick="carregarEnriquecimentos()"><i class="fas fa-rotate"></i> Atualizar</button>
       </div>
@@ -1745,7 +1745,7 @@ Patos de Minas,MG"></textarea>
       </div>
       <div id="enriqStatus" style="margin-top:8px;font-size:13px;color:var(--muted)"></div>
       <div class="table-card" style="margin-top:16px">
-        <div class="table-card-header"><i class="fas fa-list-check"></i> Dossiês</div>
+        <div class="table-card-header"><i class="fas fa-list-check"></i> Seus dossiês</div>
         <div class="table-wrap" style="max-height:520px;overflow:auto">
           <table style="width:100%">
             <thead><tr><th>CNPJ</th><th>Empresa</th><th>Status</th><th>Quando</th><th></th></tr></thead>
@@ -1763,7 +1763,7 @@ Patos de Minas,MG"></textarea>
           <h2><i class="fas fa-shield-halved" style="color:var(--accent);margin-right:8px"></i>Painel do administrador</h2>
           <p style="color:var(--muted);font-size:13px;margin-top:4px">Tudo que acontece no site — contas, logins, consultas, prospecções e PDFs.</p>
         </div>
-        <button class="btn btn-ghost" onclick="renderAdminDashboard()"><i class="fas fa-rotate"></i> Atualizar</button>
+        <button class="btn btn-ghost" onclick="renderAdminDashboard(true)"><i class="fas fa-rotate"></i> Atualizar</button>
       </div>
 
       <div class="stats-row dash" style="margin-top:18px">
@@ -1844,6 +1844,7 @@ Patos de Minas,MG"></textarea>
               <option value="pdf_indicacao">PDF de indicação</option>
             </select>
             <button class="btn btn-ghost" style="font-size:12px;padding:6px 10px" onclick="abrirAdminPainel()"><i class="fas fa-user-clock"></i> Solicitações de acesso</button>
+            <button class="btn btn-ghost" style="font-size:12px;padding:6px 10px" onclick="limparLogsAntigos(90)" title="Apaga SÓ registros de login com mais de 90 dias. NÃO toca em nada com CNPJ (consultas, pré-cadastros, PDFs, prospecções, listas)."><i class="fas fa-broom"></i> Limpar logins antigos</button>
           </div>
         </div>
         <div id="adminAtividadesList" style="padding:14px 18px;max-height:520px;overflow-y:auto">
@@ -2048,6 +2049,24 @@ Patos de Minas,MG"></textarea>
       <button class="btn btn-primary" id="btnAbrirMapaExterno" onclick="abrirMapaExterno()">
         <i class="fas fa-up-right-from-square"></i> Abrir no Google Maps
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: FLUXO DE ETAPAS DO ENRIQUECIMENTO (Trace360) -->
+<div class="modal-overlay" id="progressoModal">
+  <div class="modal-box" style="max-width:1000px">
+    <div class="modal-head">
+      <div>
+        <p class="modal-head-razao">Fluxo do enriquecimento</p>
+        <p class="modal-head-cnpj" id="progModalTitulo" style="color:var(--muted)"></p>
+      </div>
+      <button class="modal-close" onclick="fecharProgressoTrace()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <div id="progModalBody" style="overflow-x:auto">
+        <p style="color:var(--muted);font-size:13px"><span class="spinner"></span> Carregando…</p>
+      </div>
     </div>
   </div>
 </div>
@@ -2442,6 +2461,24 @@ function normalizarListaClientes(d) {
   return (d && (d.clientes || d.data || d.items || d.resultados)) || [];
 }
 
+// Cada usuário vê SÓ os CNPJs que ele mesmo enviou. Como a chave da Trace360 é
+// uma só pro site inteiro (a API não separa por pessoa), a "posse" fica guardada
+// no navegador, por login (uid).
+function _enriqKey() {
+  const u = (typeof auth !== 'undefined' && auth.currentUser) ? auth.currentUser.uid : 'anon';
+  return 'enriqMeus_' + u;
+}
+function _enriqLista() {
+  try { return JSON.parse(localStorage.getItem(_enriqKey()) || '[]'); } catch (e) { return []; }
+}
+function _enriqAdd(cnpj, clienteId) {
+  if (clienteId == null) return;
+  let l = _enriqLista().filter(x => String(x.clienteId) !== String(clienteId));
+  l.unshift({ cnpj: (cnpj || '').replace(/\D/g, ''), clienteId: clienteId, ts: Date.now() });
+  if (l.length > 200) l = l.slice(0, 200);
+  try { localStorage.setItem(_enriqKey(), JSON.stringify(l)); } catch (e) {}
+}
+
 async function enriquecerCnpjs() {
   const cnpjs = parseCNPJs(document.getElementById('enriqInput').value || '').filter(validarCNPJ);
   const btn = document.getElementById('btnEnriquecer');
@@ -2457,10 +2494,16 @@ async function enriquecerCnpjs() {
     });
     if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error('HTTP ' + r.status + ' ' + t.slice(0, 150)); }
     const d = await r.json();
-    st.textContent = d.mensagem || `Enviados ${(d.resultados || []).length} CNPJ(s).`;
+    const results = d.resultados || [];
+    // guarda os CNPJs enviados por ESTE usuário (só ele vê depois)
+    results.forEach(it => { if (it && it.cliente_id != null) _enriqAdd(it.cnpj, it.cliente_id); });
+    st.textContent = d.mensagem || `Enviados ${results.length} CNPJ(s).`;
     showToast('CNPJs enviados para enriquecimento!', 'success');
     document.getElementById('enriqInput').value = '';
-    carregarEnriquecimentos();
+    await carregarEnriquecimentos();
+    // abre automaticamente o fluxo do (primeiro) CNPJ que ele enviou
+    const primeiro = results.find(it => it && it.cliente_id != null);
+    if (primeiro) verProgressoTrace(primeiro.cliente_id, (primeiro.cnpj || '').replace(/\D/g, ''));
   } catch (e) {
     st.textContent = '';
     showToast('Erro ao enviar: ' + (e.message || e), 'error');
@@ -2472,19 +2515,33 @@ async function enriquecerCnpjs() {
 async function carregarEnriquecimentos() {
   const body = document.getElementById('enriqBody');
   if (!body) return;
+  const meus = _enriqLista();
+  if (!meus.length) {
+    clearTimeout(enriqPollTimer);
+    body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);font-size:13px">Você ainda não enriqueceu nenhum CNPJ. Cole os CNPJs acima e clique em "Enriquecer" — o fluxo abre automaticamente e o resultado aparece aqui.</td></tr>`;
+    return;
+  }
   try {
-    const r = await trace360Fetch('/clientes?limit=200');
-    if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error('HTTP ' + r.status + ' ' + t.slice(0, 150)); }
-    const d = await r.json();
-    const lista = normalizarListaClientes(d);
-    renderEnriquecimentos(lista);
-    // Enquanto houver algo em andamento e a aba estiver aberta, atualiza sozinho.
-    const emAndamento = lista.some(x => ['pendente', 'enfileirado', 'processando', 'ja_ativo', 'ambiguo_pausado'].includes((x.status || '').toLowerCase()));
+    // Busca o status SÓ dos CNPJs que ESTE usuário enviou (um a um).
+    const itens = await Promise.all(meus.slice(0, 60).map(async (m) => {
+      try {
+        const r = await trace360Fetch('/clientes/' + m.clienteId);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const d = await r.json();
+        return { id: m.clienteId, cnpj: (d.cnpj || m.cnpj), status: d.status, razao_social: d.razao_social || d.nome || d.razao, criado_em: d.criado_em || d.created_at || m.ts, _ts: m.ts };
+      } catch (e) {
+        return { id: m.clienteId, cnpj: m.cnpj, status: '', razao_social: '—', criado_em: m.ts, _ts: m.ts, _erro: true };
+      }
+    }));
+    itens.sort((a, b) => (b._ts || 0) - (a._ts || 0));
+    renderEnriquecimentos(itens);
+    // Enquanto algum dos SEUS estiver em andamento e a aba estiver aberta, atualiza sozinho.
+    const emAndamento = itens.some(x => ['pendente', 'enfileirado', 'processando', 'ja_ativo', 'ambiguo_pausado'].includes((x.status || '').toLowerCase()));
     clearTimeout(enriqPollTimer);
     const abaAtiva = document.getElementById('tab-enriquecimento') && document.getElementById('tab-enriquecimento').classList.contains('active');
     if (emAndamento && abaAtiva) enriqPollTimer = setTimeout(carregarEnriquecimentos, 25000);
   } catch (e) {
-    body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);font-size:13px">Erro ao carregar: ${escapeHtml(e.message || String(e))}.<br>Se for erro de conexão/CORS: a API do Trace360 é interna — só funciona dentro da rede do Arcom, e o domínio do site precisa estar liberado (CORS) na API.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);font-size:13px">Erro ao carregar: ${escapeHtml(e.message || String(e))}.<br>Se for conexão/CORS: a API do Trace360 é interna (só dentro da rede do Arcom) e o domínio do site precisa estar liberado (CORS) na API.</td></tr>`;
   }
 }
 
@@ -2500,12 +2557,12 @@ function renderEnriquecimentos(lista) {
     const quando = x.criado_em || x.created_at || x.criadoEm || x.atualizado_em || '';
     const concluido = (status === 'concluido' || status === 'em_cache');
     const falhou = (status === 'erro' || status === 'nao_enriquecivel' || status === 'cancelado');
-    let acoes = '';
+    let acoes = `<button class="btn-eye" title="Ver o fluxo de etapas" onclick="verProgressoTrace('${id}','${cnpj}')"><i class="fas fa-diagram-project"></i> Fluxo</button>`;
     if (concluido) {
-      acoes = `<button class="btn-eye" title="Baixar dossiê (PDF)" onclick="baixarDossieTrace('${id}')"><i class="fas fa-file-pdf"></i> PDF</button>
+      acoes += `<button class="btn-eye" title="Baixar dossiê (PDF)" onclick="baixarDossieTrace('${id}')"><i class="fas fa-file-pdf"></i> PDF</button>
                <button class="btn-eye" title="Ver os dados (JSON)" onclick="verResultadoTrace('${id}')"><i class="fas fa-code"></i> Dados</button>`;
     } else if (falhou) {
-      acoes = `<button class="btn-eye" title="Tentar de novo" onclick="reprocessarTrace('${id}')"><i class="fas fa-rotate-right"></i> Tentar de novo</button>`;
+      acoes += `<button class="btn-eye" title="Tentar de novo" onclick="reprocessarTrace('${id}')"><i class="fas fa-rotate-right"></i> Tentar de novo</button>`;
     }
     return `<tr>
       <td class="td-cnpj" style="font-family:var(--mono)">${cnpj ? fmt(cnpj) : '—'}</td>
@@ -2547,6 +2604,99 @@ async function reprocessarTrace(id) {
     showToast('Reprocessando…', 'success');
     carregarEnriquecimentos();
   } catch (e) { showToast('Erro ao reprocessar: ' + (e.message || e), 'error'); }
+}
+
+// ── Fluxo de etapas (igual ao site da Trace360) ──────────────────────────────
+const TRACE360_ETAPAS_LABEL = {
+  busca: ['Busca no Maps', 'fa-magnifying-glass-location'],
+  desambiguacao: ['Desambiguação', 'fa-code-branch'],
+  foto_card: ['Foto do card', 'fa-image'],
+  street_view: ['Street View', 'fa-street-view'],
+  visao_geral: ['Visão geral', 'fa-eye'],
+  sobre: ['Sobre', 'fa-circle-info'],
+  avaliacoes: ['Avaliações', 'fa-star'],
+  fotos: ['Fotos', 'fa-images'],
+  fontes_externas: ['Fontes externas', 'fa-globe'],
+  analise_deterministica: ['Análise (regras)', 'fa-list-check'],
+  analise_ia: ['Análise (IA)', 'fa-robot'],
+  pdf: ['PDF do dossiê', 'fa-file-pdf']
+};
+let _progPollTimer = null, _progId = null;
+
+function _cardEtapaTrace(et, estado) {
+  const meta = TRACE360_ETAPAS_LABEL[et] || [et, 'fa-circle'];
+  const cfg = {
+    concluido: ['var(--accent)', 'rgba(21,128,61,.12)', '<i class="fas fa-circle-check"></i> Concluído'],
+    processando: ['var(--yellow)', 'rgba(180,83,9,.12)', '<span class="spinner"></span> Processando…'],
+    pulado: ['var(--muted)', 'transparent', 'Pulado'],
+    erro: ['var(--red)', 'rgba(220,38,38,.12)', '<i class="fas fa-triangle-exclamation"></i> Erro'],
+    aguardando: ['var(--border)', 'transparent', 'Aguardando']
+  }[estado] || ['var(--border)', 'transparent', '—'];
+  return `<div style="min-width:118px;border:1px solid ${cfg[0]};background:${cfg[1]};border-radius:10px;padding:9px 11px">
+    <div style="font-size:12px;font-weight:600;margin-bottom:4px"><i class="fas ${meta[1]}" style="color:${cfg[0]};margin-right:5px"></i>${meta[0]}</div>
+    <div style="font-size:11px;color:var(--muted)">${cfg[2]}</div>
+  </div>`;
+}
+
+function renderProgressoFluxo(d) {
+  const box = document.getElementById('progModalBody');
+  if (!box) return;
+  const eventos = Array.isArray(d.eventos) ? d.eventos : [];
+  const st = {};
+  eventos.forEach(ev => { if (ev && ev.etapa) st[String(ev.etapa).toLowerCase()] = String(ev.status || '').toLowerCase(); });
+  const atual = String(d.etapa_atual || '').toLowerCase();
+  const geral = String(d.status || '').toLowerCase();
+  const estado = (et) => {
+    const s = st[et];
+    if (s === 'ok' || s === 'concluido' || s === 'sucesso') return 'concluido';
+    if (s === 'pulado' || s === 'skip' || s === 'skipped' || s === 'ignorado') return 'pulado';
+    if (s === 'erro' || s === 'falha' || s === 'error') return 'erro';
+    if (et === atual || s === 'processando' || s === 'inicio' || s === 'start') return 'processando';
+    if (geral === 'concluido' && !s) return 'concluido';
+    return 'aguardando';
+  };
+  const conector = '<div style="align-self:center;color:var(--muted);font-size:16px">→</div>';
+  const antes = ['busca', 'desambiguacao', 'foto_card', 'street_view'];
+  const paralelo = ['visao_geral', 'sobre', 'avaliacoes', 'fotos'];
+  const depois = ['fontes_externas', 'analise_deterministica', 'analise_ia', 'pdf'];
+  let h = `<div style="display:flex;align-items:stretch;gap:8px;flex-wrap:wrap">`;
+  antes.forEach(et => { h += _cardEtapaTrace(et, estado(et)) + conector; });
+  h += `<div style="border:1px dashed var(--border);border-radius:12px;padding:8px 10px">
+      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px"><i class="fas fa-shuffle"></i> Leitura (ordem sorteada)</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${paralelo.map(et => _cardEtapaTrace(et, estado(et))).join('')}</div>
+    </div>` + conector;
+  depois.forEach((et, i) => { h += _cardEtapaTrace(et, estado(et)); if (i < depois.length - 1) h += conector; });
+  h += `</div>`;
+  h += `<p style="font-size:12px;color:var(--muted);margin-top:14px">Status geral: ${badgeStatusTrace(geral)}${d.cnpj ? ' · ' + fmt(String(d.cnpj).replace(/\D/g, '')) : ''}</p>`;
+  box.innerHTML = h;
+}
+
+function fecharProgressoTrace() { clearTimeout(_progPollTimer); _progId = null; closeModal('progressoModal'); }
+
+function verProgressoTrace(id, cnpj) {
+  _progId = String(id);
+  openModal('progressoModal');
+  const tit = document.getElementById('progModalTitulo');
+  if (tit) tit.textContent = cnpj ? fmt(cnpj) : ('#' + id);
+  document.getElementById('progModalBody').innerHTML = '<p style="color:var(--muted);font-size:13px"><span class="spinner"></span> Carregando o fluxo…</p>';
+  atualizarProgresso(id);
+}
+
+async function atualizarProgresso(id) {
+  if (String(_progId) !== String(id)) return;
+  try {
+    const r = await trace360Fetch('/clientes/' + id + '/progresso');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if (String(_progId) !== String(id)) return;
+    renderProgressoFluxo(d);
+    clearTimeout(_progPollTimer);
+    const terminal = ['concluido', 'nao_enriquecivel', 'erro', 'cancelado'].includes(String(d.status || '').toLowerCase());
+    const aberto = document.getElementById('progressoModal').classList.contains('open');
+    if (!terminal && aberto) _progPollTimer = setTimeout(() => atualizarProgresso(id), 6000);
+  } catch (e) {
+    document.getElementById('progModalBody').innerHTML = `<p style="color:var(--muted);font-size:13px">Não consegui carregar o fluxo: ${escapeHtml(e.message || String(e))}.<br>(Precisa da API interna acessível + CORS liberado, igual à lista de dossiês.)</p>`;
+  }
 }
 
 // ── MODALS ──────────────────────────────────────────────────────────────────
@@ -3368,10 +3518,16 @@ async function exportarConversao() {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(outros), 'Outro caminho');
   XLSX.writeFile(wb, 'Conversao_vendas_' + new Date().toISOString().split('T')[0] + '.xlsx');
 }
-async function renderAdminDashboard() {
+let _dashUltimaCarga = 0;
+async function renderAdminDashboard(force) {
+  // Economia de leituras do Firestore: se buscou há menos de 60s, não relê tudo
+  // de novo (a menos que o botão "Atualizar" force). Evita gastar milhares de
+  // leituras a cada vez que o painel é aberto.
+  if (!force && _dashUltimaCarga && (Date.now() - _dashUltimaCarga) < 60000) return;
+  _dashUltimaCarga = Date.now();
   // Métricas de atividade + agregação por usuário (qualquer logado pode ler atividades_log)
   try {
-    const snap = await atividadesCol.orderBy('criadoEm', 'desc').limit(2000).get();
+    const snap = await atividadesCol.orderBy('criadoEm', 'desc').limit(500).get();
     const c = { login:0, consulta:0, prospeccao:0, pdf_indicacao:0 };
     const porUsuario = {}; // chave: email -> { nome, email, login, consulta, prospeccao, precadastro, pdf_indicacao }
     const cnpjsPdfSet = new Set(); // todos os CNPJs já enviados em PDFs de indicação
@@ -3438,7 +3594,11 @@ async function renderAdminDashboard() {
 // prospecções por cidade) num texto — usada pelo CHAT pra responder perguntas
 // tipo "quantas pessoas online agora?". Cada fonte é tolerante a falha (um
 // usuário não-admin pode não ter permissão de ler tudo).
+let _statsCache = { ts: 0, texto: '' };
 async function coletarEstatisticasSite() {
+  // Cache de 60s: se o chat perguntar de novo logo em seguida, reaproveita
+  // (economiza milhares de leituras do Firestore).
+  if (_statsCache.texto && (Date.now() - _statsCache.ts) < 60000) return _statsCache.texto;
   const linhas = [];
   let hoje = ''; try { hoje = new Date().toLocaleString('pt-BR'); } catch (e) {}
   linhas.push(`Estatísticas do site (agora — ${hoje}):`);
@@ -3465,7 +3625,7 @@ async function coletarEstatisticasSite() {
 
   // Atividade + por usuário + consultas por UF
   try {
-    const snap = await atividadesCol.orderBy('criadoEm', 'desc').limit(2000).get();
+    const snap = await atividadesCol.orderBy('criadoEm', 'desc').limit(500).get();
     const c = { login: 0, consulta: 0, prospeccao: 0, pdf_indicacao: 0, precadastro: 0 };
     const porUsuario = {};
     snap.forEach(doc => {
@@ -3485,7 +3645,7 @@ async function coletarEstatisticasSite() {
 
   // Consultas por estado (UF)
   try {
-    const cSnap = await logsCol.orderBy('criadoEm', 'desc').limit(1000).get();
+    const cSnap = await logsCol.orderBy('criadoEm', 'desc').limit(400).get();
     const ufConsulta = {}; let semRegiao = 0;
     cSnap.forEach(doc => {
       const d = doc.data();
@@ -3499,7 +3659,7 @@ async function coletarEstatisticasSite() {
 
   // Prospecções por cidade (dedup por loteId)
   try {
-    const pSnap = await prospeccoesCol.orderBy('ts', 'desc').limit(600).get();
+    const pSnap = await prospeccoesCol.orderBy('ts', 'desc').limit(400).get();
     const cidade = {}; const lotes = new Set(); let totCnpjs = 0;
     pSnap.forEach(doc => {
       const d = doc.data(); const lote = d.loteId || doc.id;
@@ -3514,7 +3674,8 @@ async function coletarEstatisticasSite() {
     if (ord.length) linhas.push(`- Prospecções por cidade (total ${totCnpjs} CNPJs): ` + ord.map(([cid, v]) => `${cid} (${v.cnpjs} CNPJs em ${v.buscas} busca(s))`).join('; '));
   } catch (e) {}
 
-  return linhas.join('\n');
+  _statsCache = { ts: Date.now(), texto: linhas.join('\n') };
+  return _statsCache.texto;
 }
 
 // Lista de quem está online agora.
@@ -3574,6 +3735,39 @@ const ATIVIDADE_META = {
   precadastro:   { icon: 'fa-user-plus',        label: 'Pré-cadastro',     cor: '#4ADE80' },
   pdf_indicacao: { icon: 'fa-file-pdf',         label: 'PDF de indicação', cor: '#F87171' }
 };
+
+// Apaga SÓ registros de LOGIN antigos (ruído de acesso). NUNCA apaga nada com
+// CNPJ: consultas, pré-cadastros, PDFs, prospecções e listas ficam 100%
+// preservados — o relatório mensal de quem foi cadastrado continua intacto.
+// Também NÃO toca na coleção de consultas (consultas_log). Só admin.
+async function limparLogsAntigos(dias) {
+  dias = dias || 90;
+  if (!usuarioEhAdmin) { showToast('Só o admin pode limpar.', 'error'); return; }
+  if (!confirm(`Apagar SÓ os registros de LOGIN com mais de ${dias} dias?\n\nNenhum dado de CNPJ é tocado — consultas, pré-cadastros, PDFs, prospecções e listas ficam 100% preservados. Serve só pra enxugar o histórico de acessos.`)) return;
+  showToast('Limpando logins antigos…', 'info');
+  const corte = firebase.firestore.Timestamp.fromDate(new Date(Date.now() - dias * 86400000));
+  const APAGAVEIS = ['login', 'conta_criada']; // só acesso/ruído, sem CNPJ
+  let total = 0, last = null;
+  try {
+    for (let guard = 0; guard < 60; guard++) {
+      let q = atividadesCol.where('criadoEm', '<', corte).orderBy('criadoEm').limit(300);
+      if (last) q = q.startAfter(last);
+      const snap = await q.get();
+      if (snap.empty) break;
+      last = snap.docs[snap.docs.length - 1];
+      const batch = db.batch(); let n = 0;
+      snap.forEach(doc => { if (APAGAVEIS.includes(doc.data().tipo || '')) { batch.delete(doc.ref); n++; } });
+      if (n) { await batch.commit(); total += n; }
+      if (snap.size < 300) break;
+    }
+    showToast(`${total} registro(s) de login antigos apagados. Nenhum dado de CNPJ foi tocado.`, 'success');
+    _dashUltimaCarga = 0;           // recarrega o painel com os números novos
+    renderAdminDashboard(true);
+  } catch (e) {
+    showToast('Erro ao limpar: ' + (e.message || e), 'error');
+  }
+}
+
 async function renderHistoricoAtividades() {
   const box = document.getElementById('adminAtividadesList');
   if (!box) return;
@@ -5155,7 +5349,7 @@ async function startVerification() {
       <td class="td-cnpj">${fmt(cnpj)}</td>
       <td class="td-razao">${result.razao}${(result.nomeFantasia && result.nomeFantasia!=='—') ? `<span style="display:block;font-size:11px;color:var(--muted)"><i class="fas fa-store" style="margin-right:3px"></i>${result.nomeFantasia}</span>` : ''}<span data-precad-slot="${cnpj}">${precadHtml}</span></td>
       <td><span class="badge ${bc}">${result.situacao}</span></td>
-      <td style="color:var(--muted);font-size:12px">${simNaoBadgeHTML(result.clienteArcom)}</td>
+      <td style="color:var(--muted);font-size:12px;text-align:center">${simNaoBadgeHTML(result.clienteArcom)}</td>
       <td style="font-size:12px;font-family:var(--mono);text-align:center">${result.ocorrencia != null ? result.ocorrencia : '<span style="color:var(--muted)">—</span>'}</td>
       <td style="color:var(--muted);font-size:12px;font-family:var(--mono)">${result.uf}</td>
       <td class="td-actions">
@@ -5844,7 +6038,8 @@ function verEmpresasDoSocio(identEncoded) {
 // de ser revogada) e a busca da Tavily funciona sem CORS.
 const PROXY_URL = 'https://consultarcom.jlrodrigues6900.workers.dev';
 const GROQ_API_URL = PROXY_URL + '/groq';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+const GROQ_MODEL = 'llama-3.3-70b-versatile';        // 70B: mais inteligente (Insight/ranking)
+const GROQ_MODEL_RAPIDO = 'llama-3.1-8b-instant';   // 8B: mais leve/rápido e com limite diário bem maior (chat)
 const TAVILY_API_URL = PROXY_URL + '/tavily';
 
 // Faz a busca real na web sobre a empresa (site, telefone, Instagram, LinkedIn).
@@ -5890,6 +6085,9 @@ async function consultarInsightIA(cnpj, dadosEmpresa) {
     ? resultadosWeb.map((r, i) => `[${i + 1}] ${r.title}\nURL: ${r.url}\nTrecho: ${r.content}`).join('\n\n')
     : '(nenhum resultado de busca disponível — Tavily não configurada ou sem resultados)';
 
+  const telOficial = (dadosEmpresa.telefone && dadosEmpresa.telefone !== '—') ? dadosEmpresa.telefone : null;
+  const telOficial2 = (dadosEmpresa.telefone2 && dadosEmpresa.telefone2 !== '—') ? dadosEmpresa.telefone2 : null;
+
   const prompt = `Você é um analista comercial. Use os dados públicos da Receita Federal E os trechos de busca na internet abaixo para montar um insight comercial de abordagem B2B.
 
 Dados da empresa (Receita Federal):
@@ -5902,14 +6100,17 @@ Dados da empresa (Receita Federal):
 - Data de Abertura: ${dadosEmpresa.dataInicio}
 - Capital Social: ${dadosEmpresa.capitalSocial}
 - Município/UF: ${dadosEmpresa.municipio}/${dadosEmpresa.uf}
+- Telefone(s) OFICIAL(is) (Receita Federal): ${[telOficial, telOficial2].filter(Boolean).join(' / ') || 'não informado'}
 - Quadro Societário: ${(dadosEmpresa.socios||[]).map(s=>`${s.nome_socio||s.nome||''} (${s.qualificacao_socio||s.qualificacao||''})`).join('; ') || 'não informado'}
 
 Resultados de busca na internet sobre esta empresa:
 ${blocoWeb}
 
 REGRAS IMPORTANTES:
+- PRIORIDADE MÁXIMA: o telefone para contato tem que ser CERTEIRO. O telefone OFICIAL da Receita Federal (acima) é a fonte mais confiável — o sistema já vai usá-lo. Sua tarefa com telefone é APENAS confirmar/complementar pela web.
+- Em "contatos_encontrados.telefone": só coloque um telefone se ele aparecer LITERALMENTE nos trechos de busca acima E for claramente da MESMA empresa (confira nome/endereço/cidade). Se houver qualquer dúvida de que seja outra empresa, deixe null. NUNCA invente nem "complete" um número.
+- Para site, instagram, linkedin e email: mesma regra — só se aparecer literalmente nos trechos. Se não encontrar, null.
 - Para "pontos_fortes", "sinais_atencao", "abordagem_sugerida" e "perguntas_qualificacao": baseie-se nos dados da Receita Federal, sem inventar.
-- Para "contatos_encontrados": preencha telefone, site, instagram, linkedin e email SOMENTE se aparecerem literalmente nos trechos de busca acima. Se não encontrar algum, deixe null. NUNCA invente um contato.
 - Em "fontes", liste apenas os números [n] dos resultados de busca que você realmente usou para extrair algum contato.
 
 Responda ESTRITAMENTE em JSON válido, sem nenhum texto antes ou depois, seguindo este formato exato:
@@ -5968,7 +6169,10 @@ Responda ESTRITAMENTE em JSON válido, sem nenhum texto antes ou depois, seguind
     nivel_confianca: parsed.nivel_confianca || '—',
     buscaWebRealizada: resultadosWeb.length > 0,
     contatos: {
-      telefone: contatos.telefone || null,
+      telefoneOficial: telOficial,                 // Receita/Arcom — fonte confiável
+      telefoneOficial2: telOficial2,
+      telefoneWeb: contatos.telefone || null,       // achado na web (confirmar)
+      telefone: telOficial || contatos.telefone || null, // principal (oficial na frente)
       site: contatos.site || null,
       instagram: contatos.instagram || null,
       linkedin: contatos.linkedin || null,
@@ -5990,21 +6194,39 @@ function renderEnrichBody(cnpj, dados) {
   </div>`;
 
   const c = dados.contatos || {};
-  const temContato = c.telefone || c.site || c.instagram || c.linkedin || c.email;
+
+  // ── TELEFONE PARA CONTATO (destaque — tem que ser certeiro) ──
+  const telLink = (t) => {
+    const d = (t || '').replace(/\D/g, '');
+    if (!d) return escapeHtml(t || '');
+    let out = `<a href="tel:${d}" style="color:var(--accent);text-decoration:none">${escapeHtml(t)}</a>`;
+    if (typeof telMovel === 'function' && telMovel(d)) out += ` <a href="https://wa.me/55${d}" target="_blank" rel="noopener" title="WhatsApp"><i class="fab fa-whatsapp" style="color:#25D366"></i></a>`;
+    return out;
+  };
+  const telOf = c.telefoneOficial, telOf2 = c.telefoneOficial2, telWeb = c.telefoneWeb;
+  const webDif = telWeb && (telWeb || '').replace(/\D/g, '') !== (telOf || '').replace(/\D/g, '');
+  html += `<div class="modal-section" style="border:1px solid var(--accent);border-radius:10px;padding:12px 14px">
+    <div class="modal-section-title" style="color:var(--accent)"><i class="fas fa-phone"></i> Telefone para contato</div>
+    ${telOf ? `<div style="font-size:16px;font-weight:700;margin-top:2px">${telLink(telOf)} <span style="font-size:11px;font-weight:400;color:var(--muted)">· oficial (Receita Federal)</span></div>` : ''}
+    ${telOf2 ? `<div style="font-size:14px;margin-top:3px">${telLink(telOf2)} <span style="font-size:11px;color:var(--muted)">· oficial (2º número)</span></div>` : ''}
+    ${webDif ? `<div style="font-size:13px;margin-top:5px">${telLink(telWeb)} <span style="font-size:11px;color:var(--muted)">· encontrado na web — <strong>confirme</strong></span></div>` : ''}
+    ${(!telOf && !telWeb) ? '<div class="enrich-empty">Sem telefone oficial nem na web. Pra buscar no Google Maps, gere o dossiê na aba "Enriquecimento de dados".</div>' : ''}
+  </div>`;
+
+  const temContatoWeb = c.site || c.instagram || c.linkedin || c.email;
   html += `<div class="modal-section">
-    <div class="modal-section-title purple"><i class="fas fa-address-book"></i> Contato Encontrado na Web</div>
+    <div class="modal-section-title purple"><i class="fas fa-address-book"></i> Outros contatos (web)</div>
     ${!dados.buscaWebRealizada
       ? '<div class="enrich-empty">Sem resultados de busca na web para esta empresa.</div>'
-      : !temContato
-      ? '<div class="enrich-empty">Nenhum contato encontrado nos resultados de busca.</div>'
+      : !temContatoWeb
+      ? '<div class="enrich-empty">Nenhum site/rede social encontrado nos resultados de busca.</div>'
       : `<ul style="padding-left:18px;font-size:13px;line-height:1.9">
-          ${c.telefone ? `<li><i class="fas fa-phone"></i> ${c.telefone}</li>` : ''}
           ${c.site ? `<li><i class="fas fa-globe"></i> <a href="${c.site}" target="_blank" rel="noopener">${c.site}</a></li>` : ''}
-          ${c.instagram ? `<li><i class="fab fa-instagram"></i> ${c.instagram}</li>` : ''}
-          ${c.linkedin ? `<li><i class="fab fa-linkedin"></i> <a href="${c.linkedin}" target="_blank" rel="noopener">${c.linkedin}</a></li>` : ''}
-          ${c.email ? `<li><i class="fas fa-envelope"></i> ${c.email}</li>` : ''}
+          ${c.instagram ? `<li><i class="fab fa-instagram"></i> ${escapeHtml(c.instagram)}</li>` : ''}
+          ${c.linkedin ? `<li><i class="fab fa-linkedin"></i> <a href="${c.linkedin}" target="_blank" rel="noopener">${escapeHtml(c.linkedin)}</a></li>` : ''}
+          ${c.email ? `<li><i class="fas fa-envelope"></i> ${escapeHtml(c.email)}</li>` : ''}
         </ul>`}
-    ${(c.fontes && c.fontes.length) ? `<div style="margin-top:8px;font-size:11px;opacity:.75">Fontes: ${c.fontes.map(f=>`<a href="${f.url}" target="_blank" rel="noopener">${f.title || f.url}</a>`).join(' · ')}</div>` : ''}
+    ${(c.fontes && c.fontes.length) ? `<div style="margin-top:8px;font-size:11px;opacity:.75">Fontes: ${c.fontes.map(f=>`<a href="${f.url}" target="_blank" rel="noopener">${escapeHtml(f.title || f.url)}</a>`).join(' · ')}</div>` : ''}
   </div>`;
 
   html += `<div class="modal-section">
@@ -6504,7 +6726,7 @@ async function chamarGroqChat(messages){
   const response = await fetch(GROQ_API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: GROQ_MODEL, messages, temperature: 0.5, tools: TOOLS, tool_choice: 'auto' })
+    body: JSON.stringify({ model: GROQ_MODEL_RAPIDO, messages, temperature: 0.5, tools: TOOLS, tool_choice: 'auto' })
   });
   if (!response.ok) {
     const errText = await response.text().catch(() => '');
