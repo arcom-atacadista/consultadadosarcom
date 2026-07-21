@@ -2402,7 +2402,17 @@ function showTab(name, el) {
 // Manda CNPJs -> a Trace360 processa em background (minutos) -> gera dossiê PDF +
 // JSON. Aqui a gente enfileira, acompanha o status (com auto-atualização) e baixa.
 let enriqPollTimer = null;
-function _trace360Url() { return PROXY_URL + '/trace360'; }
+// A Trace360 é uma API INTERNA do Arcom (só acessível de dentro da rede), então
+// o navegador chama DIRETO — o proxy Cloudflare não alcança um host interno.
+// A chave fica aqui no código: risco baixo porque a API não é acessível de fora
+// da rede (quem está fora não consegue nem chegar no servidor).
+const TRACE360_BASE = 'https://trace360ai.arcom.com.br/api/v1';
+const TRACE360_API_KEY = 't360_cK1pAstQ_wdadeKE7FFernnZnyoC13tRSvPj74LQC9Y';
+function trace360Fetch(path, opts) {
+  opts = opts || {};
+  opts.headers = Object.assign({ 'x-api-key': TRACE360_API_KEY }, opts.headers || {});
+  return fetch(TRACE360_BASE + path, opts);
+}
 
 function formatarDataTrace(v) {
   if (!v) return '';
@@ -2438,11 +2448,10 @@ async function enriquecerCnpjs() {
   const st = document.getElementById('enriqStatus');
   if (!cnpjs.length) { showToast('Cole ao menos um CNPJ válido.', 'error'); return; }
   if (cnpjs.length > 500) { showToast('Máximo de 500 CNPJs por vez.', 'error'); return; }
-  if (!PROXY_URL) { showToast('Proxy da IA não configurado.', 'error'); return; }
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Enviando…';
   st.textContent = `Enviando ${cnpjs.length} CNPJ(s) para a Trace360…`;
   try {
-    const r = await fetch(_trace360Url() + '/clientes', {
+    const r = await trace360Fetch('/clientes', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(cnpjs.map(c => ({ cnpj: c })))
     });
@@ -2463,9 +2472,8 @@ async function enriquecerCnpjs() {
 async function carregarEnriquecimentos() {
   const body = document.getElementById('enriqBody');
   if (!body) return;
-  if (!PROXY_URL) { body.innerHTML = `<tr><td colspan="5" style="font-size:13px">Proxy não configurado.</td></tr>`; return; }
   try {
-    const r = await fetch(_trace360Url() + '/clientes?limit=200');
+    const r = await trace360Fetch('/clientes?limit=200');
     if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error('HTTP ' + r.status + ' ' + t.slice(0, 150)); }
     const d = await r.json();
     const lista = normalizarListaClientes(d);
@@ -2476,7 +2484,7 @@ async function carregarEnriquecimentos() {
     const abaAtiva = document.getElementById('tab-enriquecimento') && document.getElementById('tab-enriquecimento').classList.contains('active');
     if (emAndamento && abaAtiva) enriqPollTimer = setTimeout(carregarEnriquecimentos, 25000);
   } catch (e) {
-    body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);font-size:13px">Erro ao carregar: ${escapeHtml(e.message || String(e))}.<br>Confira se o proxy foi atualizado (rota <b>/trace360</b>) e o secret <b>TRACE360_API_KEY</b> no Cloudflare.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);font-size:13px">Erro ao carregar: ${escapeHtml(e.message || String(e))}.<br>Se for erro de conexão/CORS: a API do Trace360 é interna — só funciona dentro da rede do Arcom, e o domínio do site precisa estar liberado (CORS) na API.</td></tr>`;
   }
 }
 
@@ -2512,7 +2520,7 @@ function renderEnriquecimentos(lista) {
 async function baixarDossieTrace(id) {
   showToast('Baixando o dossiê…', 'info');
   try {
-    const r = await fetch(_trace360Url() + '/clientes/' + id + '/dossie');
+    const r = await trace360Fetch('/clientes/' + id + '/dossie');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);
@@ -2523,7 +2531,7 @@ async function baixarDossieTrace(id) {
 
 async function verResultadoTrace(id) {
   try {
-    const r = await fetch(_trace360Url() + '/clientes/' + id + '/resultado');
+    const r = await trace360Fetch('/clientes/' + id + '/resultado');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);
@@ -2534,7 +2542,7 @@ async function verResultadoTrace(id) {
 
 async function reprocessarTrace(id) {
   try {
-    const r = await fetch(_trace360Url() + '/clientes/' + id + '/reprocessar', { method: 'POST' });
+    const r = await trace360Fetch('/clientes/' + id + '/reprocessar', { method: 'POST' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     showToast('Reprocessando…', 'success');
     carregarEnriquecimentos();
