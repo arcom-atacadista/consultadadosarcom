@@ -1764,6 +1764,19 @@ Patos de Minas,MG"></textarea>
       </div>
 
       <div class="table-card" style="margin-top:20px">
+        <div class="table-card-header" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <i class="fas fa-handshake" style="color:var(--accent)"></i> Conversão / Vendas
+          <label class="btn btn-primary" style="margin-left:auto;font-size:12px;padding:6px 10px;cursor:pointer">
+            <i class="fas fa-file-arrow-up"></i> Subir planilha de vendidos
+            <input type="file" id="vendasFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="processarPlanilhaVendas(this)">
+          </label>
+        </div>
+        <div id="vendasResultado" style="padding:14px 18px">
+          <p style="color:var(--muted);font-size:13px">Suba a planilha de CNPJs vendidos/cadastrados (Excel ou CSV). O site acha a coluna de CNPJ sozinho e cruza com <strong>tudo que já foi prospectado</strong> — mostrando quantas vendas vieram da prospecção, a taxa de conversão e o ranking por assessor.</p>
+        </div>
+      </div>
+
+      <div class="table-card" style="margin-top:20px">
         <div class="table-card-header" onclick="toggleDashUsuarios()" style="cursor:pointer;display:flex;align-items:center;gap:8px">
           <i class="fas fa-users"></i> Atividade por usuário
           <i class="fas fa-chevron-down" id="dashUsuariosChevron" style="margin-left:auto;font-size:12px;color:var(--muted);transition:transform .2s"></i>
@@ -2937,6 +2950,41 @@ let cnpjsProspectadosCache = []; // [{cnpj, cidade, ramo, quem, ts}]
 const CNPJS_PROS_RENDER_MAX = 1500; // teto de linhas na tabela (o resto entra na cópia/exportação)
 const CNPJS_PROS_DOCS_MAX = 600;    // teto de documentos lidos por vez
 
+// Valida CNPJ pelos dígitos verificadores — evita que números de 14 dígitos
+// aleatórios (telefone, código interno) da planilha virem "match" à toa.
+function validarCNPJ(c) {
+  c = (c || '').replace(/\D/g, '');
+  if (c.length !== 14 || /^(\d)\1{13}$/.test(c)) return false;
+  const dv = (len) => {
+    let soma = 0, peso = len - 7;
+    for (let i = 0; i < len; i++) { soma += Number(c[i]) * peso; peso = (peso === 2) ? 9 : peso - 1; }
+    const r = soma % 11;
+    return r < 2 ? 0 : 11 - r;
+  };
+  return dv(12) === Number(c[12]) && dv(13) === Number(c[13]);
+}
+
+// Lê a coleção "prospeccoes" e monta um mapa cnpj -> {cidade, ramo, quem, ts},
+// sem repetir (mantém a prospecção mais recente de cada CNPJ). Compartilhado
+// pelo card "CNPJs prospectados" e pela Conversão/Vendas.
+async function carregarMapaProspeccoes() {
+  const snap = await prospeccoesCol.orderBy('ts', 'desc').limit(CNPJS_PROS_DOCS_MAX).get();
+  const map = new Map();
+  snap.forEach(doc => {
+    const d = doc.data();
+    const cidade = (d.cidades || []).join(', ');
+    const ramo = (d.ramos || []).join(', ');
+    const quem = d.nomeUsuario || d.email || '—';
+    const ts = d.ts || 0;
+    (d.cnpjs || []).forEach(cn => {
+      const limpo = (cn || '').replace(/\D/g, '');
+      if (!limpo || map.has(limpo)) return;
+      map.set(limpo, { cnpj: limpo, cidade, ramo, quem, ts });
+    });
+  });
+  return { map, docsSize: snap.size };
+}
+
 async function abrirCnpjsProspectados() {
   openModal('cnpjsProsModal');
   const body = document.getElementById('cnpjsProsBody');
@@ -2947,22 +2995,9 @@ async function abrirCnpjsProspectados() {
   if (cont) cont.textContent = '';
   body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);font-size:13px"><span class="spinner"></span> Carregando…</td></tr>`;
   try {
-    const snap = await prospeccoesCol.orderBy('ts', 'desc').limit(CNPJS_PROS_DOCS_MAX).get();
-    const porCnpj = new Map();
-    snap.forEach(doc => {
-      const d = doc.data();
-      const cidade = (d.cidades || []).join(', ');
-      const ramo = (d.ramos || []).join(', ');
-      const quem = d.nomeUsuario || d.email || '—';
-      const ts = d.ts || 0;
-      (d.cnpjs || []).forEach(cn => {
-        const limpo = (cn || '').replace(/\D/g, '');
-        if (!limpo || porCnpj.has(limpo)) return;
-        porCnpj.set(limpo, { cnpj: limpo, cidade, ramo, quem, ts });
-      });
-    });
-    cnpjsProspectadosCache = [...porCnpj.values()].sort((a, b) => b.ts - a.ts);
-    const capNote = snap.size >= CNPJS_PROS_DOCS_MAX ? ` (mostrando as ${CNPJS_PROS_DOCS_MAX} prospecções mais recentes)` : '';
+    const prosp = await carregarMapaProspeccoes();
+    cnpjsProspectadosCache = [...prosp.map.values()].sort((a, b) => b.ts - a.ts);
+    const capNote = prosp.docsSize >= CNPJS_PROS_DOCS_MAX ? ` (mostrando as ${CNPJS_PROS_DOCS_MAX} prospecções mais recentes)` : '';
     if (cont) cont.textContent = `${cnpjsProspectadosCache.length} CNPJ(s) único(s) já prospectado(s)${capNote}`;
     renderCnpjsPros(cnpjsProspectadosCache);
   } catch (e) {
@@ -3026,6 +3061,124 @@ function consultarCnpjsPros() {
   const navConsulta = document.querySelector('.nav-item[onclick*="\'consulta\'"]');
   showTab('consulta', navConsulta);
   startVerification();
+}
+
+// ── Conversão / Vendas (admin) ───────────────────────────────────────────────
+// Sobe uma planilha de vendidos/cadastrados, acha os CNPJs sozinho e cruza com
+// tudo que já foi prospectado, mostrando taxa de conversão e ranking por assessor.
+let conversaoUltimo = null; // { matched:[{cnpj,cidade,ramo,quem,ts}], naoProsp:[cnpj], V, P, M }
+const CONVERSAO_RENDER_MAX = 800;
+
+// Varre TODAS as células de TODAS as abas e junta os CNPJs válidos (formatados
+// ou não). Não precisa que a planilha esteja num formato específico.
+function extrairCnpjsDePlanilha(wb) {
+  const set = new Set();
+  (wb.SheetNames || []).forEach(nome => {
+    const ws = wb.Sheets[nome];
+    if (!ws) return;
+    const linhas = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+    linhas.forEach(linha => {
+      (linha || []).forEach(cel => {
+        const s = String(cel == null ? '' : cel);
+        const cand = [];
+        const fmtMatches = s.match(/\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}/g) || [];
+        fmtMatches.forEach(m => cand.push(m.replace(/\D/g, '')));
+        const puro = s.replace(/\D/g, '');
+        if (puro.length === 14) cand.push(puro);
+        else if (puro.length === 13) cand.push('0' + puro);
+        cand.forEach(d => { if (d.length === 14 && validarCNPJ(d)) set.add(d); });
+      });
+    });
+  });
+  return set;
+}
+
+async function processarPlanilhaVendas(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const box = document.getElementById('vendasResultado');
+  box.innerHTML = `<p style="color:var(--muted);font-size:13px"><span class="spinner"></span> Lendo a planilha…</p>`;
+  try { await carregarLib('xlsx'); }
+  catch (e) { box.innerHTML = `<p style="font-size:13px">Não consegui carregar o leitor de planilha. Verifique a internet.</p>`; input.value = ''; return; }
+  let vendidos;
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    vendidos = extrairCnpjsDePlanilha(wb);
+  } catch (e) {
+    box.innerHTML = `<p style="font-size:13px">Erro ao ler a planilha: ${escapeHtml(e.message || String(e))}</p>`; input.value = ''; return;
+  }
+  if (!vendidos.size) {
+    box.innerHTML = `<p style="font-size:13px">Não encontrei nenhum CNPJ válido na planilha. Confira se há uma coluna com os CNPJs.</p>`; input.value = ''; return;
+  }
+  box.innerHTML = `<p style="color:var(--muted);font-size:13px"><span class="spinner"></span> Cruzando ${vendidos.size} CNPJ(s) vendido(s) com as prospecções…</p>`;
+  let prosp;
+  try { prosp = await carregarMapaProspeccoes(); }
+  catch (e) { box.innerHTML = `<p style="font-size:13px">Erro ao ler as prospecções: ${escapeHtml(e.message || String(e))} — confira as regras do Firestore para a coleção "prospeccoes".</p>`; input.value = ''; return; }
+  renderConversao(vendidos, prosp);
+  input.value = '';
+}
+
+function renderConversao(vendidos, prosp) {
+  const prospMap = prosp.map;
+  const box = document.getElementById('vendasResultado');
+  const V = vendidos.size, P = prospMap.size;
+  const matched = [], naoProsp = [];
+  vendidos.forEach(c => { if (prospMap.has(c)) matched.push(prospMap.get(c)); else naoProsp.push(c); });
+  const M = matched.length;
+  const convDeProsp = P ? (M / P * 100) : 0;
+  const convDeVendas = V ? (M / V * 100) : 0;
+  const porAssessor = {};
+  matched.forEach(x => { const k = x.quem || '—'; porAssessor[k] = (porAssessor[k] || 0) + 1; });
+  const ranking = Object.entries(porAssessor).sort((a, b) => b[1] - a[1]);
+  conversaoUltimo = { matched, naoProsp, V, P, M };
+
+  const capNote = prosp.docsSize >= CNPJS_PROS_DOCS_MAX
+    ? `<p style="font-size:11px;color:var(--yellow);margin-top:6px"><i class="fas fa-triangle-exclamation"></i> Cruzando com as ${CNPJS_PROS_DOCS_MAX} prospecções mais recentes. Vendas anteriores a isso podem não bater.</p>` : '';
+
+  let h = `<div class="stats-row" style="margin-bottom:14px">
+      <div class="stat-card c-cyan"><div class="stat-val">${V}</div><div class="stat-lbl">CNPJs vendidos (na planilha)</div></div>
+      <div class="stat-card c-green"><div class="stat-val">${M}</div><div class="stat-lbl">Vieram de prospecção</div></div>
+      <div class="stat-card c-yellow"><div class="stat-val">${convDeProsp.toFixed(1)}%</div><div class="stat-lbl">Conversão (dos ${P} prospectados)</div></div>
+      <div class="stat-card c-red"><div class="stat-val">${V - M}</div><div class="stat-lbl">Vendas por outro caminho</div></div>
+    </div>`;
+  h += `<p style="font-size:12px;color:var(--muted);margin-bottom:12px"><strong>${M}</strong> das <strong>${V}</strong> vendas (${convDeVendas.toFixed(1)}%) saíram de uma prospecção do site.</p>`;
+  h += capNote;
+
+  h += `<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      <button class="btn btn-ghost" style="font-size:12px;padding:6px 10px" onclick="exportarConversao()"><i class="fas fa-file-excel"></i> Exportar resultado (Excel)</button>
+      <label class="btn btn-primary" style="font-size:12px;padding:6px 10px;cursor:pointer"><i class="fas fa-file-arrow-up"></i> Trocar planilha<input type="file" id="vendasFile2" accept=".xlsx,.xls,.csv" style="display:none" onchange="processarPlanilhaVendas(this)"></label>
+    </div>`;
+
+  if (ranking.length) {
+    h += `<div class="table-card" style="margin-bottom:16px"><div class="table-card-header"><i class="fas fa-trophy"></i> Ranking por assessor (quem prospectou o que virou venda)</div>
+      <div class="table-wrap"><table style="width:100%"><thead><tr><th>Assessor</th><th style="text-align:center">Vendas convertidas</th></tr></thead><tbody>`;
+    ranking.forEach(([nome, qtd]) => { h += `<tr><td>${escapeHtml(nome)}</td><td style="text-align:center;font-weight:600">${qtd}</td></tr>`; });
+    h += `</tbody></table></div></div>`;
+  }
+
+  h += `<div class="table-card"><div class="table-card-header"><i class="fas fa-circle-check" style="color:var(--accent)"></i> Vendas que vieram de prospecção (${M})</div><div class="table-wrap" style="max-height:360px;overflow:auto"><table style="width:100%"><thead><tr><th>CNPJ</th><th>Cidade</th><th>Ramo</th><th>Prospectado por</th><th>Quando</th></tr></thead><tbody>`;
+  if (!matched.length) h += `<tr><td colspan="5" style="color:var(--muted);font-size:13px">Nenhuma venda casou com prospecção.</td></tr>`;
+  matched.slice(0, CONVERSAO_RENDER_MAX).forEach(x => {
+    h += `<tr><td class="td-cnpj" style="font-family:var(--mono)">${fmt(x.cnpj)}</td><td style="font-size:12px">${escapeHtml(x.cidade || '—')}</td><td style="font-size:12px;color:var(--muted)">${escapeHtml(x.ramo || '—')}</td><td style="font-size:12px;color:var(--muted)">${escapeHtml(x.quem || '—')}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${fmtDataProsp(x.ts)}</td></tr>`;
+  });
+  if (matched.length > CONVERSAO_RENDER_MAX) h += `<tr><td colspan="5" style="color:var(--accent);font-size:12px;text-align:center">Mostrando ${CONVERSAO_RENDER_MAX} de ${matched.length}. Exporte pra ver todos.</td></tr>`;
+  h += `</tbody></table></div></div>`;
+
+  box.innerHTML = h;
+}
+
+async function exportarConversao() {
+  if (!conversaoUltimo) { showToast('Suba uma planilha primeiro.', 'error'); return; }
+  try { await carregarLib('xlsx'); } catch (e) { showToast('Não consegui carregar o exportador. Verifique a internet.', 'error'); return; }
+  const wb = XLSX.utils.book_new();
+  const conv = [['CNPJ', 'Cidade', 'Ramo', 'Prospectado por', 'Quando']];
+  conversaoUltimo.matched.forEach(x => conv.push([fmt(x.cnpj), x.cidade || '', x.ramo || '', x.quem || '', fmtDataProsp(x.ts)]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(conv), 'Vieram de prospeccao');
+  const outros = [['CNPJ']];
+  conversaoUltimo.naoProsp.forEach(c => outros.push([fmt(c)]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(outros), 'Outro caminho');
+  XLSX.writeFile(wb, 'Conversao_vendas_' + new Date().toISOString().split('T')[0] + '.xlsx');
 }
 async function renderAdminDashboard() {
   // Métricas de atividade + agregação por usuário (qualquer logado pode ler atividades_log)
