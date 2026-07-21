@@ -6172,18 +6172,20 @@ function renderMensagensChat(){
 }
 
 // Busca na web (via proxy Tavily) — usada como "ferramenta" pela IA do chat.
-async function buscarWebChat(query){
+async function buscarWebChat(query, opts){
+  opts = opts || {};
+  const max = opts.max || 5;
   try {
     const r = await fetch(TAVILY_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, search_depth: 'basic', include_answer: true, max_results: 5 })
+      body: JSON.stringify({ query, search_depth: opts.depth || 'basic', include_answer: true, max_results: max })
     });
     if (!r.ok) return 'A busca na web falhou (HTTP ' + r.status + ').';
     const d = await r.json();
     let out = '';
     if (d.answer) out += 'Resumo da web: ' + d.answer + '\n\n';
-    (d.results || []).slice(0, 5).forEach((x, i) => {
+    (d.results || []).slice(0, max).forEach((x, i) => {
       out += `[${i + 1}] ${x.title || ''}\n${x.url || ''}\n${(x.content || '').slice(0, 300)}\n\n`;
     });
     return out.trim() || 'Nenhum resultado encontrado na web.';
@@ -6268,25 +6270,24 @@ async function consultarViaCEP(cep8) {
   } catch (e) { return null; }
 }
 
-async function rodarVerificacaoComercio(endereco, viacep) {
+async function rodarVerificacaoComercio(endereco, viacep, semLocal) {
   const enderecoPadrao = viacep
     ? `${viacep.logradouro || ''}${viacep.bairro ? ' - ' + viacep.bairro : ''}, ${viacep.localidade || ''}/${viacep.uf || ''}${viacep.cep ? ' (CEP ' + viacep.cep + ')' : ''}`
     : '';
-  const sys = `Você é um verificador de comércio em endereços, focado em respostas rápidas, claras e confiáveis, em português do Brasil.
-OBJETIVO: dado um endereço, dizer se HÁ ou NÃO um comércio (estabelecimento que vende produtos/serviços ao público) naquele local e, se houver, o tipo em categoria simples (restaurante, padaria, mercado, farmácia, loja de roupas, pet shop, salão, academia, clínica, escritório/serviços, outros).
-FERRAMENTA: use "buscar_web" quantas vezes precisar, com buscas específicas — priorize Google Maps, Instagram, sites de avaliação e sites oficiais. Prefira sinais de estabelecimento ATIVO (horário de funcionamento, avaliações/fotos recentes, telefone comercial). Faça buscas separadas (ex.: o endereço no Google Maps; o endereço/nome no Instagram).
-REGRAS:
-- Se houver um endereço padronizado do ViaCEP, use-o como referência principal do logradouro/bairro/cidade e cite-o resumido na resposta.
-- Distinga comércio de local residencial, órgão público ou ponto sem atividade. Se parecer fechado/antigo, reduza a confiança.
-- Se houver vários comércios no mesmo endereço, cite os 2–3 principais (nome + tipo).
-- Seja honesto sobre incerteza. NÃO invente. Se não achar, diga que não encontrou.
-RESPOSTA: 1 a 3 frases curtas, e comece deixando explícito o grau de confiança com uma destas palavras: "Confirmado", "Provável" ou "Inconclusivo". Inclua nome do lugar (se houver) e o tipo, e o endereço padronizado quando existir.`;
+  const sys = `Você verifica se existe COMÉRCIO em um endereço e responde em português do Brasil, de forma curta e útil.
+Você TEM a ferramenta "buscar_web" — USE-A para pesquisar o endereço na internet (Google Maps, Instagram, sites, listas de empresas). Faça de 2 a 4 buscas com variações antes de responder: o endereço completo; o endereço + "loja"/"comércio"; o endereço no Instagram (lojas pequenas às vezes só têm Instagram).
+Depois de pesquisar, RESPONDA COM BASE NO QUE ENCONTROU:
+- Se as buscas mostrarem um ou mais comércios no endereço, comece com "Confirmado" (evidência forte: Google Maps, avaliações, perfil ativo) ou "Provável" (há indícios, mas sem confirmação forte). Diga o(s) NOME(S) e o TIPO (loja de roupas, salão, padaria, farmácia, mercado, etc.). Se houver vários, liste os principais (nome + tipo).
+- Responda "Inconclusivo" APENAS se, depois de buscar, você realmente não encontrar nada indicando comércio no endereço.
+Não invente nomes — use só o que apareceu nas buscas. Anúncio de imóvel "à venda/aluguel" não prova que o local é residencial. ${semLocal ? 'O usuário não informou a cidade/UF — se atrapalhar, diga de forma breve que sem a cidade a busca fica menos precisa, mas ainda assim reporte o que encontrar.' : ''} Se houver endereço padronizado do ViaCEP, cite-o resumido.
+RESPOSTA: 1 a 4 frases, começando com "Confirmado", "Provável" ou "Inconclusivo".`;
   const userMsg = `Endereço para verificar: ${endereco}` +
-    (enderecoPadrao ? `\nEndereço padronizado (ViaCEP): ${enderecoPadrao}` : `\n(O ViaCEP não validou este endereço — trate como estimativa de baixa confiança.)`);
+    (enderecoPadrao ? `\nEndereço padronizado (ViaCEP): ${enderecoPadrao}` : `\n(O ViaCEP não validou este endereço.)`) +
+    (semLocal ? `\nOBS: a cidade/UF não foi informada.` : '');
   const messages = [{ role: 'system', content: sys }, { role: 'user', content: userMsg }];
 
   let guard = 0;
-  while (guard < 4) {
+  while (guard < 6) {
     guard++;
     const data = await chamarGroqChat(messages);
     const msg = data.choices && data.choices[0] && data.choices[0].message;
@@ -6297,6 +6298,7 @@ RESPOSTA: 1 a 3 frases curtas, e comece deixando explícito o grau de confiança
         let resultado;
         try {
           const args = JSON.parse((tc.function && tc.function.arguments) || '{}');
+          // busca "basic" (a mesma do chat, que funciona) — sem "advanced"
           resultado = await buscarWebChat(args.query || endereco);
         } catch (e) { resultado = 'Erro na busca: ' + (e.message || e); }
         messages.push({ role: 'tool', tool_call_id: tc.id, name: 'buscar_web', content: resultado });
@@ -6310,7 +6312,7 @@ RESPOSTA: 1 a 3 frases curtas, e comece deixando explícito o grau de confiança
     || 'Não consegui concluir a verificação.';
 }
 
-function renderVerificacaoComercio(texto, viacep) {
+function renderVerificacaoComercio(texto, viacep, semLocal) {
   const low = (texto || '').toLowerCase();
   let nivel = 'Inconclusivo', cor = 'badge-baixada';
   if (/confirmad/.test(low)) { nivel = 'Confirmado'; cor = 'badge-ativa'; }
@@ -6318,8 +6320,11 @@ function renderVerificacaoComercio(texto, viacep) {
   const endLinha = viacep
     ? `<p style="font-size:12px;color:var(--muted);margin-bottom:8px"><i class="fas fa-location-dot"></i> ${escapeHtml((viacep.logradouro || '') + (viacep.bairro ? ' - ' + viacep.bairro : '') + ', ' + (viacep.localidade || '') + '/' + (viacep.uf || ''))}</p>`
     : '';
+  const hint = semLocal
+    ? `<p style="font-size:12px;color:var(--yellow);background:rgba(180,83,9,.10);border:1px solid rgba(180,83,9,.25);border-radius:8px;padding:8px 10px;margin-bottom:10px"><i class="fas fa-triangle-exclamation"></i> Você não informou a <strong>cidade/UF</strong>. A mesma rua existe em várias cidades, então o resultado fica impreciso. Inclua a cidade (ex.: <em>Rua Jorge Martins Pinto, 333 - Uberlândia/MG</em>) e busque de novo.</p>`
+    : '';
   return `<div class="table-card"><div class="table-card-header"><i class="fas fa-store"></i> Resultado <span class="badge ${cor}" style="margin-left:8px">${nivel}</span></div>
-    <div style="padding:14px 18px">${endLinha}<p style="font-size:14px;line-height:1.55">${escapeHtml(texto).replace(/\n/g, '<br>')}</p></div></div>`;
+    <div style="padding:14px 18px">${hint}${endLinha}<p style="font-size:14px;line-height:1.55">${escapeHtml(texto).replace(/\n/g, '<br>')}</p></div></div>`;
 }
 
 async function verificarComercioEndereco() {
@@ -6334,8 +6339,11 @@ async function verificarComercioEndereco() {
     let viacep = null;
     const cepMatch = endereco.match(/\b(\d{5})-?(\d{3})\b/);
     if (cepMatch) viacep = await consultarViaCEP(cepMatch[1] + cepMatch[2]);
-    const texto = await rodarVerificacaoComercio(endereco, viacep);
-    box.innerHTML = renderVerificacaoComercio(texto, viacep);
+    // Faltou cidade/UF? (sem CEP e sem sigla de estado) → busca fica imprecisa
+    const temUF = /\b(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)\b/i.test(endereco);
+    const semLocal = !cepMatch && !temUF && !viacep;
+    const texto = await rodarVerificacaoComercio(endereco, viacep, semLocal);
+    box.innerHTML = renderVerificacaoComercio(texto, viacep, semLocal);
   } catch (e) {
     box.innerHTML = `<div class="table-card"><div style="padding:14px 18px;font-size:13px;color:var(--red)">Erro ao verificar: ${escapeHtml(e.message || String(e))}</div></div>`;
   } finally {
