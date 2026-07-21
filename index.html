@@ -1451,6 +1451,9 @@
     <div class="nav-item" onclick="showTab('prospeccao', this)" title="Prospecção">
       <i class="fas fa-bullseye"></i> Prospecção
     </div>
+    <div class="nav-item" onclick="showTab('verificar', this)" title="Verificar comércio no endereço">
+      <i class="fas fa-store"></i> Verificar endereço
+    </div>
     <div class="nav-item" id="navAdmin" onclick="showTab('admin', this)" title="Painel do administrador" style="display:none">
       <i class="fas fa-shield-halved"></i> Painel (admin)
     </div>
@@ -1819,6 +1822,21 @@ Patos de Minas,MG"></textarea>
           <p style="color:var(--muted);font-size:13px">Carregando...</p>
         </div>
       </div>
+    </div>
+
+    <div class="tab-panel" id="tab-verificar">
+      <div>
+        <h2><i class="fas fa-store" style="color:var(--accent);margin-right:8px"></i>Verificar comércio no endereço</h2>
+        <p style="color:var(--muted);font-size:13px;margin-top:4px">Cole um endereço (ou CEP) e a IA pesquisa na web (Google Maps, redes sociais, sites) pra dizer se existe um comércio ali, qual o tipo e com que grau de confiança.</p>
+      </div>
+      <div class="input-section" style="margin-top:16px">
+        <textarea id="endInput" class="cnpj-textarea" style="min-height:90px" placeholder="Ex: Av. Rondon Pacheco, 4600 - Tibery, Uberlândia/MG&#10;ou um CEP: 38405-142"></textarea>
+        <div class="action-stack">
+          <button class="btn btn-primary" id="btnVerificarEnd" onclick="verificarComercioEndereco()"><i class="fas fa-store"></i> Verificar comércio</button>
+          <button class="btn btn-ghost" onclick="document.getElementById('endInput').value='';document.getElementById('endResultado').innerHTML='';"><i class="fas fa-eraser"></i> Limpar</button>
+        </div>
+      </div>
+      <div id="endResultado" style="margin-top:16px"></div>
     </div>
 
     <div class="footer">
@@ -6235,6 +6253,94 @@ async function consultarGroqChat(mensagemUsuario){
   const data = await chamarGroqChat(messages);
   return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content)
     || 'Desculpe, não consegui gerar uma resposta.';
+}
+
+// ── Verificar comércio no endereço ───────────────────────────────────────────
+// Cola um endereço/CEP -> valida no ViaCEP (se houver CEP) -> IA (Groq) pesquisa
+// na web (Tavily) e diz se existe comércio no local, o tipo e a confiança.
+async function consultarViaCEP(cep8) {
+  try {
+    const r = await fetch('https://viacep.com.br/ws/' + cep8 + '/json/');
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (!d || d.erro) return null;
+    return d; // { logradouro, bairro, localidade, uf, cep, ... }
+  } catch (e) { return null; }
+}
+
+async function rodarVerificacaoComercio(endereco, viacep) {
+  const enderecoPadrao = viacep
+    ? `${viacep.logradouro || ''}${viacep.bairro ? ' - ' + viacep.bairro : ''}, ${viacep.localidade || ''}/${viacep.uf || ''}${viacep.cep ? ' (CEP ' + viacep.cep + ')' : ''}`
+    : '';
+  const sys = `Você é um verificador de comércio em endereços, focado em respostas rápidas, claras e confiáveis, em português do Brasil.
+OBJETIVO: dado um endereço, dizer se HÁ ou NÃO um comércio (estabelecimento que vende produtos/serviços ao público) naquele local e, se houver, o tipo em categoria simples (restaurante, padaria, mercado, farmácia, loja de roupas, pet shop, salão, academia, clínica, escritório/serviços, outros).
+FERRAMENTA: use "buscar_web" quantas vezes precisar, com buscas específicas — priorize Google Maps, Instagram, sites de avaliação e sites oficiais. Prefira sinais de estabelecimento ATIVO (horário de funcionamento, avaliações/fotos recentes, telefone comercial). Faça buscas separadas (ex.: o endereço no Google Maps; o endereço/nome no Instagram).
+REGRAS:
+- Se houver um endereço padronizado do ViaCEP, use-o como referência principal do logradouro/bairro/cidade e cite-o resumido na resposta.
+- Distinga comércio de local residencial, órgão público ou ponto sem atividade. Se parecer fechado/antigo, reduza a confiança.
+- Se houver vários comércios no mesmo endereço, cite os 2–3 principais (nome + tipo).
+- Seja honesto sobre incerteza. NÃO invente. Se não achar, diga que não encontrou.
+RESPOSTA: 1 a 3 frases curtas, e comece deixando explícito o grau de confiança com uma destas palavras: "Confirmado", "Provável" ou "Inconclusivo". Inclua nome do lugar (se houver) e o tipo, e o endereço padronizado quando existir.`;
+  const userMsg = `Endereço para verificar: ${endereco}` +
+    (enderecoPadrao ? `\nEndereço padronizado (ViaCEP): ${enderecoPadrao}` : `\n(O ViaCEP não validou este endereço — trate como estimativa de baixa confiança.)`);
+  const messages = [{ role: 'system', content: sys }, { role: 'user', content: userMsg }];
+
+  let guard = 0;
+  while (guard < 4) {
+    guard++;
+    const data = await chamarGroqChat(messages);
+    const msg = data.choices && data.choices[0] && data.choices[0].message;
+    if (!msg) return 'Não consegui gerar uma resposta.';
+    if (msg.tool_calls && msg.tool_calls.length) {
+      messages.push(msg);
+      for (const tc of msg.tool_calls) {
+        let resultado;
+        try {
+          const args = JSON.parse((tc.function && tc.function.arguments) || '{}');
+          resultado = await buscarWebChat(args.query || endereco);
+        } catch (e) { resultado = 'Erro na busca: ' + (e.message || e); }
+        messages.push({ role: 'tool', tool_call_id: tc.id, name: 'buscar_web', content: resultado });
+      }
+      continue;
+    }
+    return msg.content || 'Não consegui gerar uma resposta.';
+  }
+  const data = await chamarGroqChat(messages);
+  return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content)
+    || 'Não consegui concluir a verificação.';
+}
+
+function renderVerificacaoComercio(texto, viacep) {
+  const low = (texto || '').toLowerCase();
+  let nivel = 'Inconclusivo', cor = 'badge-baixada';
+  if (/confirmad/.test(low)) { nivel = 'Confirmado'; cor = 'badge-ativa'; }
+  else if (/prov[aá]ve/.test(low)) { nivel = 'Provável'; cor = 'badge-inapta'; }
+  const endLinha = viacep
+    ? `<p style="font-size:12px;color:var(--muted);margin-bottom:8px"><i class="fas fa-location-dot"></i> ${escapeHtml((viacep.logradouro || '') + (viacep.bairro ? ' - ' + viacep.bairro : '') + ', ' + (viacep.localidade || '') + '/' + (viacep.uf || ''))}</p>`
+    : '';
+  return `<div class="table-card"><div class="table-card-header"><i class="fas fa-store"></i> Resultado <span class="badge ${cor}" style="margin-left:8px">${nivel}</span></div>
+    <div style="padding:14px 18px">${endLinha}<p style="font-size:14px;line-height:1.55">${escapeHtml(texto).replace(/\n/g, '<br>')}</p></div></div>`;
+}
+
+async function verificarComercioEndereco() {
+  const endereco = (document.getElementById('endInput').value || '').trim();
+  const box = document.getElementById('endResultado');
+  const btn = document.getElementById('btnVerificarEnd');
+  if (!endereco) { showToast('Cole um endereço ou CEP.', 'error'); return; }
+  if (!PROXY_URL) { box.innerHTML = `<div class="table-card"><div style="padding:14px 18px;font-size:13px">A IA não está configurada (proxy ausente).</div></div>`; return; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Verificando…'; }
+  box.innerHTML = `<p style="color:var(--muted);font-size:13px"><span class="spinner"></span> Validando o endereço e pesquisando na web…</p>`;
+  try {
+    let viacep = null;
+    const cepMatch = endereco.match(/\b(\d{5})-?(\d{3})\b/);
+    if (cepMatch) viacep = await consultarViaCEP(cepMatch[1] + cepMatch[2]);
+    const texto = await rodarVerificacaoComercio(endereco, viacep);
+    box.innerHTML = renderVerificacaoComercio(texto, viacep);
+  } catch (e) {
+    box.innerHTML = `<div class="table-card"><div style="padding:14px 18px;font-size:13px;color:var(--red)">Erro ao verificar: ${escapeHtml(e.message || String(e))}</div></div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-store"></i> Verificar comércio'; }
+  }
 }
 
 async function chatEnviar(){
