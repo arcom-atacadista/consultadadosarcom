@@ -1451,9 +1451,6 @@
     <div class="nav-item" onclick="showTab('prospeccao', this)" title="Prospecção">
       <i class="fas fa-bullseye"></i> Prospecção
     </div>
-    <div class="nav-item" onclick="showTab('verificar', this)" title="Verificar comércio no endereço">
-      <i class="fas fa-store"></i> Verificar endereço
-    </div>
     <div class="nav-item" id="navAdmin" onclick="showTab('admin', this)" title="Painel do administrador" style="display:none">
       <i class="fas fa-shield-halved"></i> Painel (admin)
     </div>
@@ -1822,21 +1819,6 @@ Patos de Minas,MG"></textarea>
           <p style="color:var(--muted);font-size:13px">Carregando...</p>
         </div>
       </div>
-    </div>
-
-    <div class="tab-panel" id="tab-verificar">
-      <div>
-        <h2><i class="fas fa-store" style="color:var(--accent);margin-right:8px"></i>Verificar comércio no endereço</h2>
-        <p style="color:var(--muted);font-size:13px;margin-top:4px">Cole um endereço (ou CEP) e a IA pesquisa na web (Google Maps, redes sociais, sites) pra dizer se existe um comércio ali, qual o tipo e com que grau de confiança.</p>
-      </div>
-      <div class="input-section" style="margin-top:16px">
-        <textarea id="endInput" class="cnpj-textarea" style="min-height:90px" placeholder="Ex: Av. Rondon Pacheco, 4600 - Tibery, Uberlândia/MG&#10;ou um CEP: 38405-142"></textarea>
-        <div class="action-stack">
-          <button class="btn btn-primary" id="btnVerificarEnd" onclick="verificarComercioEndereco()"><i class="fas fa-store"></i> Verificar comércio</button>
-          <button class="btn btn-ghost" onclick="document.getElementById('endInput').value='';document.getElementById('endResultado').innerHTML='';"><i class="fas fa-eraser"></i> Limpar</button>
-        </div>
-      </div>
-      <div id="endResultado" style="margin-top:16px"></div>
     </div>
 
     <div class="footer">
@@ -6146,9 +6128,16 @@ function montarContextoEmpresas(){
 }
 
 function montarSystemPromptChat(){
-  return `Você é o assistente de IA do VERIFICADOR (CDA), uma ferramenta da Arcom para consulta de CNPJ e prospecção. Responda em português do Brasil, de forma clara, objetiva e útil. Você pode ajudar a interpretar dados de empresas já consultadas na ferramenta (situação cadastral, porte, atividade etc.), tirar dúvidas gerais sobre CNPJ/Receita Federal, ou apenas conversar.
+  let hoje = '';
+  try { hoje = new Date().toLocaleDateString('pt-BR'); } catch (e) {}
+  return `Você é o assistente de IA do VERIFICADOR (CDA), ferramenta da Arcom para consulta de CNPJ e prospecção. Responda em português do Brasil, de forma clara, objetiva e útil.${hoje ? ' Hoje é ' + hoje + '.' : ''}
 
-Você TEM acesso à internet através da ferramenta "buscar_web". Use-a sempre que a pergunta precisar de informação atual ou externa — por exemplo: telefone, site, Instagram, endereço, notícias, avaliações, se uma empresa ainda funciona, dados recentes, ou qualquer coisa que você não saiba com certeza. Depois de buscar, responda com base nos resultados e cite a fonte quando fizer sentido. Não invente: se não achar, diga que não encontrou. Para dúvidas simples ou sobre dados já consultados na ferramenta, responda direto, sem precisar buscar.${montarContextoEmpresas()}`;
+VOCÊ TEM ACESSO À INTERNET pela ferramenta "buscar_web" — e deve USÁ-LA de verdade:
+- Sempre que a pergunta envolver QUALQUER informação externa, atual ou que você não tenha 100% de certeza — telefone, endereço, site, Instagram/redes sociais, horário de funcionamento, se uma loja/empresa existe ou ainda funciona, notícias, preços, nomes de pessoas/empresas, eventos — FAÇA a busca ANTES de responder. Na dúvida, busque.
+- Você pode buscar VÁRIAS vezes e refinar: se o 1º resultado não bastar, tente outra query (ex.: nome + cidade; depois "instagram"; depois o site oficial; depois o Google Maps).
+- Responda com base nos resultados e SEMPRE cite as fontes: liste os links (URLs) que embasaram a resposta no final.
+- NUNCA diga que "não tem acesso à internet" ou que "não pode navegar" — você PODE. Se realmente não achar, diga que buscou e não encontrou.
+- Só responda direto (sem buscar) dúvidas simples ou sobre os dados de empresas já consultados na ferramenta (listados abaixo).${montarContextoEmpresas()}`;
 }
 
 function renderMensagensChat(){
@@ -6161,7 +6150,7 @@ function renderMensagensChat(){
     const own = m.role === 'user';
     return `<div class="chat-msg ${own?'own':''}">
       <div class="chat-msg-meta"><span>${own?'Você':'IA'}</span></div>
-      <div class="chat-msg-bubble">${escapeHtml(m.texto)}</div>
+      <div class="chat-msg-bubble">${formatarBolhaChat(m.texto)}</div>
     </div>`;
   }).join('');
   if(chatCarregando){
@@ -6169,6 +6158,13 @@ function renderMensagensChat(){
   }
   box.innerHTML = html;
   box.scrollTop = box.scrollHeight;
+}
+
+// Formata a bolha do chat: escapa HTML, quebra linhas e deixa os links clicáveis.
+function formatarBolhaChat(texto){
+  let s = escapeHtml(texto == null ? '' : String(texto)).replace(/\n/g, '<br>');
+  s = s.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:underline;word-break:break-all">$1</a>');
+  return s;
 }
 
 // Busca na web (via proxy Tavily) — usada como "ferramenta" pela IA do chat.
@@ -6230,9 +6226,9 @@ async function consultarGroqChat(mensagemUsuario){
     { role: 'user', content: mensagemUsuario }
   ];
 
-  // Loop de ferramentas: a IA pode pedir buscas na web até ter o que precisa.
+  // Loop de ferramentas: a IA pode pedir várias buscas na web e refinar até ter o que precisa.
   let guard = 0;
-  while (guard < 3) {
+  while (guard < 5) {
     guard++;
     const data = await chamarGroqChat(messages);
     const msg = data.choices && data.choices[0] && data.choices[0].message;
@@ -6243,7 +6239,7 @@ async function consultarGroqChat(mensagemUsuario){
         let resultado;
         try {
           const args = JSON.parse((tc.function && tc.function.arguments) || '{}');
-          resultado = await buscarWebChat(args.query || mensagemUsuario);
+          resultado = await buscarWebChat(args.query || mensagemUsuario, { max: 6 });
         } catch (e) { resultado = 'Erro ao executar a busca: ' + (e.message || e); }
         messages.push({ role: 'tool', tool_call_id: tc.id, name: 'buscar_web', content: resultado });
       }
@@ -6255,100 +6251,6 @@ async function consultarGroqChat(mensagemUsuario){
   const data = await chamarGroqChat(messages);
   return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content)
     || 'Desculpe, não consegui gerar uma resposta.';
-}
-
-// ── Verificar comércio no endereço ───────────────────────────────────────────
-// Cola um endereço/CEP -> valida no ViaCEP (se houver CEP) -> IA (Groq) pesquisa
-// na web (Tavily) e diz se existe comércio no local, o tipo e a confiança.
-async function consultarViaCEP(cep8) {
-  try {
-    const r = await fetch('https://viacep.com.br/ws/' + cep8 + '/json/');
-    if (!r.ok) return null;
-    const d = await r.json();
-    if (!d || d.erro) return null;
-    return d; // { logradouro, bairro, localidade, uf, cep, ... }
-  } catch (e) { return null; }
-}
-
-async function rodarVerificacaoComercio(endereco, viacep, semLocal) {
-  const enderecoPadrao = viacep
-    ? `${viacep.logradouro || ''}${viacep.bairro ? ' - ' + viacep.bairro : ''}, ${viacep.localidade || ''}/${viacep.uf || ''}${viacep.cep ? ' (CEP ' + viacep.cep + ')' : ''}`
-    : '';
-  const sys = `Você verifica se existe COMÉRCIO em um endereço e responde em português do Brasil, de forma curta e útil.
-Você TEM a ferramenta "buscar_web" — USE-A para pesquisar o endereço na internet (Google Maps, Instagram, sites, listas de empresas). Faça de 2 a 4 buscas com variações antes de responder: o endereço completo; o endereço + "loja"/"comércio"; o endereço no Instagram (lojas pequenas às vezes só têm Instagram).
-Depois de pesquisar, RESPONDA COM BASE NO QUE ENCONTROU:
-- Se as buscas mostrarem um ou mais comércios no endereço, comece com "Confirmado" (evidência forte: Google Maps, avaliações, perfil ativo) ou "Provável" (há indícios, mas sem confirmação forte). Diga o(s) NOME(S) e o TIPO (loja de roupas, salão, padaria, farmácia, mercado, etc.). Se houver vários, liste os principais (nome + tipo).
-- Responda "Inconclusivo" APENAS se, depois de buscar, você realmente não encontrar nada indicando comércio no endereço.
-Não invente nomes — use só o que apareceu nas buscas. Anúncio de imóvel "à venda/aluguel" não prova que o local é residencial. ${semLocal ? 'O usuário não informou a cidade/UF — se atrapalhar, diga de forma breve que sem a cidade a busca fica menos precisa, mas ainda assim reporte o que encontrar.' : ''} Se houver endereço padronizado do ViaCEP, cite-o resumido.
-RESPOSTA: 1 a 4 frases, começando com "Confirmado", "Provável" ou "Inconclusivo".`;
-  const userMsg = `Endereço para verificar: ${endereco}` +
-    (enderecoPadrao ? `\nEndereço padronizado (ViaCEP): ${enderecoPadrao}` : `\n(O ViaCEP não validou este endereço.)`) +
-    (semLocal ? `\nOBS: a cidade/UF não foi informada.` : '');
-  const messages = [{ role: 'system', content: sys }, { role: 'user', content: userMsg }];
-
-  let guard = 0;
-  while (guard < 6) {
-    guard++;
-    const data = await chamarGroqChat(messages);
-    const msg = data.choices && data.choices[0] && data.choices[0].message;
-    if (!msg) return 'Não consegui gerar uma resposta.';
-    if (msg.tool_calls && msg.tool_calls.length) {
-      messages.push(msg);
-      for (const tc of msg.tool_calls) {
-        let resultado;
-        try {
-          const args = JSON.parse((tc.function && tc.function.arguments) || '{}');
-          // busca "basic" (a mesma do chat, que funciona) — sem "advanced"
-          resultado = await buscarWebChat(args.query || endereco);
-        } catch (e) { resultado = 'Erro na busca: ' + (e.message || e); }
-        messages.push({ role: 'tool', tool_call_id: tc.id, name: 'buscar_web', content: resultado });
-      }
-      continue;
-    }
-    return msg.content || 'Não consegui gerar uma resposta.';
-  }
-  const data = await chamarGroqChat(messages);
-  return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content)
-    || 'Não consegui concluir a verificação.';
-}
-
-function renderVerificacaoComercio(texto, viacep, semLocal) {
-  const low = (texto || '').toLowerCase();
-  let nivel = 'Inconclusivo', cor = 'badge-baixada';
-  if (/confirmad/.test(low)) { nivel = 'Confirmado'; cor = 'badge-ativa'; }
-  else if (/prov[aá]ve/.test(low)) { nivel = 'Provável'; cor = 'badge-inapta'; }
-  const endLinha = viacep
-    ? `<p style="font-size:12px;color:var(--muted);margin-bottom:8px"><i class="fas fa-location-dot"></i> ${escapeHtml((viacep.logradouro || '') + (viacep.bairro ? ' - ' + viacep.bairro : '') + ', ' + (viacep.localidade || '') + '/' + (viacep.uf || ''))}</p>`
-    : '';
-  const hint = semLocal
-    ? `<p style="font-size:12px;color:var(--yellow);background:rgba(180,83,9,.10);border:1px solid rgba(180,83,9,.25);border-radius:8px;padding:8px 10px;margin-bottom:10px"><i class="fas fa-triangle-exclamation"></i> Você não informou a <strong>cidade/UF</strong>. A mesma rua existe em várias cidades, então o resultado fica impreciso. Inclua a cidade (ex.: <em>Rua Jorge Martins Pinto, 333 - Uberlândia/MG</em>) e busque de novo.</p>`
-    : '';
-  return `<div class="table-card"><div class="table-card-header"><i class="fas fa-store"></i> Resultado <span class="badge ${cor}" style="margin-left:8px">${nivel}</span></div>
-    <div style="padding:14px 18px">${hint}${endLinha}<p style="font-size:14px;line-height:1.55">${escapeHtml(texto).replace(/\n/g, '<br>')}</p></div></div>`;
-}
-
-async function verificarComercioEndereco() {
-  const endereco = (document.getElementById('endInput').value || '').trim();
-  const box = document.getElementById('endResultado');
-  const btn = document.getElementById('btnVerificarEnd');
-  if (!endereco) { showToast('Cole um endereço ou CEP.', 'error'); return; }
-  if (!PROXY_URL) { box.innerHTML = `<div class="table-card"><div style="padding:14px 18px;font-size:13px">A IA não está configurada (proxy ausente).</div></div>`; return; }
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Verificando…'; }
-  box.innerHTML = `<p style="color:var(--muted);font-size:13px"><span class="spinner"></span> Validando o endereço e pesquisando na web…</p>`;
-  try {
-    let viacep = null;
-    const cepMatch = endereco.match(/\b(\d{5})-?(\d{3})\b/);
-    if (cepMatch) viacep = await consultarViaCEP(cepMatch[1] + cepMatch[2]);
-    // Faltou cidade/UF? (sem CEP e sem sigla de estado) → busca fica imprecisa
-    const temUF = /\b(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)\b/i.test(endereco);
-    const semLocal = !cepMatch && !temUF && !viacep;
-    const texto = await rodarVerificacaoComercio(endereco, viacep, semLocal);
-    box.innerHTML = renderVerificacaoComercio(texto, viacep, semLocal);
-  } catch (e) {
-    box.innerHTML = `<div class="table-card"><div style="padding:14px 18px;font-size:13px;color:var(--red)">Erro ao verificar: ${escapeHtml(e.message || String(e))}</div></div>`;
-  } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-store"></i> Verificar comércio'; }
-  }
 }
 
 async function chatEnviar(){
