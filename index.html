@@ -1763,7 +1763,7 @@ Patos de Minas,MG"></textarea>
           <h2><i class="fas fa-shield-halved" style="color:var(--accent);margin-right:8px"></i>Painel do administrador</h2>
           <p style="color:var(--muted);font-size:13px;margin-top:4px">Tudo que acontece no site — contas, logins, consultas, prospecções e PDFs.</p>
         </div>
-        <button class="btn btn-ghost" onclick="renderAdminDashboard()"><i class="fas fa-rotate"></i> Atualizar</button>
+        <button class="btn btn-ghost" onclick="renderAdminDashboard(true)"><i class="fas fa-rotate"></i> Atualizar</button>
       </div>
 
       <div class="stats-row dash" style="margin-top:18px">
@@ -3368,10 +3368,16 @@ async function exportarConversao() {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(outros), 'Outro caminho');
   XLSX.writeFile(wb, 'Conversao_vendas_' + new Date().toISOString().split('T')[0] + '.xlsx');
 }
-async function renderAdminDashboard() {
+let _dashUltimaCarga = 0;
+async function renderAdminDashboard(force) {
+  // Economia de leituras do Firestore: se buscou há menos de 60s, não relê tudo
+  // de novo (a menos que o botão "Atualizar" force). Evita gastar milhares de
+  // leituras a cada vez que o painel é aberto.
+  if (!force && _dashUltimaCarga && (Date.now() - _dashUltimaCarga) < 60000) return;
+  _dashUltimaCarga = Date.now();
   // Métricas de atividade + agregação por usuário (qualquer logado pode ler atividades_log)
   try {
-    const snap = await atividadesCol.orderBy('criadoEm', 'desc').limit(2000).get();
+    const snap = await atividadesCol.orderBy('criadoEm', 'desc').limit(500).get();
     const c = { login:0, consulta:0, prospeccao:0, pdf_indicacao:0 };
     const porUsuario = {}; // chave: email -> { nome, email, login, consulta, prospeccao, precadastro, pdf_indicacao }
     const cnpjsPdfSet = new Set(); // todos os CNPJs já enviados em PDFs de indicação
@@ -3438,7 +3444,11 @@ async function renderAdminDashboard() {
 // prospecções por cidade) num texto — usada pelo CHAT pra responder perguntas
 // tipo "quantas pessoas online agora?". Cada fonte é tolerante a falha (um
 // usuário não-admin pode não ter permissão de ler tudo).
+let _statsCache = { ts: 0, texto: '' };
 async function coletarEstatisticasSite() {
+  // Cache de 60s: se o chat perguntar de novo logo em seguida, reaproveita
+  // (economiza milhares de leituras do Firestore).
+  if (_statsCache.texto && (Date.now() - _statsCache.ts) < 60000) return _statsCache.texto;
   const linhas = [];
   let hoje = ''; try { hoje = new Date().toLocaleString('pt-BR'); } catch (e) {}
   linhas.push(`Estatísticas do site (agora — ${hoje}):`);
@@ -3465,7 +3475,7 @@ async function coletarEstatisticasSite() {
 
   // Atividade + por usuário + consultas por UF
   try {
-    const snap = await atividadesCol.orderBy('criadoEm', 'desc').limit(2000).get();
+    const snap = await atividadesCol.orderBy('criadoEm', 'desc').limit(500).get();
     const c = { login: 0, consulta: 0, prospeccao: 0, pdf_indicacao: 0, precadastro: 0 };
     const porUsuario = {};
     snap.forEach(doc => {
@@ -3485,7 +3495,7 @@ async function coletarEstatisticasSite() {
 
   // Consultas por estado (UF)
   try {
-    const cSnap = await logsCol.orderBy('criadoEm', 'desc').limit(1000).get();
+    const cSnap = await logsCol.orderBy('criadoEm', 'desc').limit(400).get();
     const ufConsulta = {}; let semRegiao = 0;
     cSnap.forEach(doc => {
       const d = doc.data();
@@ -3499,7 +3509,7 @@ async function coletarEstatisticasSite() {
 
   // Prospecções por cidade (dedup por loteId)
   try {
-    const pSnap = await prospeccoesCol.orderBy('ts', 'desc').limit(600).get();
+    const pSnap = await prospeccoesCol.orderBy('ts', 'desc').limit(400).get();
     const cidade = {}; const lotes = new Set(); let totCnpjs = 0;
     pSnap.forEach(doc => {
       const d = doc.data(); const lote = d.loteId || doc.id;
@@ -3514,7 +3524,8 @@ async function coletarEstatisticasSite() {
     if (ord.length) linhas.push(`- Prospecções por cidade (total ${totCnpjs} CNPJs): ` + ord.map(([cid, v]) => `${cid} (${v.cnpjs} CNPJs em ${v.buscas} busca(s))`).join('; '));
   } catch (e) {}
 
-  return linhas.join('\n');
+  _statsCache = { ts: Date.now(), texto: linhas.join('\n') };
+  return _statsCache.texto;
 }
 
 // Lista de quem está online agora.
