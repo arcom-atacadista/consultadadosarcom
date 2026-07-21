@@ -1777,6 +1777,21 @@ Patos de Minas,MG"></textarea>
       </div>
 
       <div class="table-card" style="margin-top:20px">
+        <div class="table-card-header" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <i class="fas fa-map-location-dot" style="color:var(--accent)"></i> Análise por região
+          <select id="regiaoPeriodo" onchange="renderAnaliseRegiao()" class="regional-input" style="margin-left:auto;width:auto;padding:5px 8px;font-size:12px">
+            <option value="1">Hoje</option>
+            <option value="7" selected>Últimos 7 dias</option>
+            <option value="30">Últimos 30 dias</option>
+            <option value="0">Tudo</option>
+          </select>
+        </div>
+        <div id="analiseRegiaoBox" style="padding:14px 18px">
+          <p style="color:var(--muted);font-size:13px">Carregando…</p>
+        </div>
+      </div>
+
+      <div class="table-card" style="margin-top:20px">
         <div class="table-card-header" onclick="toggleDashUsuarios()" style="cursor:pointer;display:flex;align-items:center;gap:8px">
           <i class="fas fa-users"></i> Atividade por usuário
           <i class="fas fa-chevron-down" id="dashUsuariosChevron" style="margin-left:auto;font-size:12px;color:var(--muted);transition:transform .2s"></i>
@@ -3244,6 +3259,99 @@ async function renderAdminDashboard() {
   }
 
   renderHistoricoAtividades();
+  renderAnaliseRegiao();
+}
+
+// ── Análise por região (admin) ───────────────────────────────────────────────
+// Cruza consultas (por UF) e prospecções (por cidade) num período escolhido.
+async function renderAnaliseRegiao() {
+  const box = document.getElementById('analiseRegiaoBox');
+  if (!box) return;
+  const dias = parseInt((document.getElementById('regiaoPeriodo') || {}).value || '7', 10);
+  const cutoff = dias ? Date.now() - dias * 86400000 : 0;
+  const noPeriodo = (ts) => !cutoff || (ts && ts >= cutoff);
+  box.innerHTML = `<p style="color:var(--muted);font-size:13px"><span class="spinner"></span> Carregando…</p>`;
+  try {
+    // Consultas por UF
+    const ufConsulta = {}; let totConsultas = 0, totCnpjsConsult = 0, consultasSemRegiao = 0;
+    try {
+      const cSnap = await logsCol.orderBy('criadoEm', 'desc').limit(1000).get();
+      cSnap.forEach(doc => {
+        const d = doc.data();
+        const t = d.ts || (d.criadoEm && d.criadoEm.toMillis ? d.criadoEm.toMillis() : 0);
+        if (!noPeriodo(t)) return;
+        totConsultas++; totCnpjsConsult += (d.quantidade || 0);
+        if (d.porUF && Object.keys(d.porUF).length) {
+          Object.entries(d.porUF).forEach(([uf, n]) => { ufConsulta[uf] = (ufConsulta[uf] || 0) + n; });
+        } else { consultasSemRegiao += (d.quantidade || 0); }
+      });
+    } catch (e) { /* sem permissão/erro → segue */ }
+
+    // Prospecções por cidade (dedup por loteId — buscas grandes viram vários docs)
+    const cidadePros = {}; let totPros = 0, totCnpjsPros = 0; const lotes = new Set();
+    try {
+      const pSnap = await prospeccoesCol.orderBy('ts', 'desc').limit(600).get();
+      pSnap.forEach(doc => {
+        const d = doc.data();
+        if (!noPeriodo(d.ts || 0)) return;
+        const lote = d.loteId || doc.id;
+        if (lotes.has(lote)) return; // outra parte da mesma busca
+        lotes.add(lote);
+        totPros++; totCnpjsPros += (d.quantidade || 0);
+        (d.cidades || []).forEach(cid => {
+          if (!cidadePros[cid]) cidadePros[cid] = { buscas: 0, cnpjs: 0 };
+          cidadePros[cid].buscas++; cidadePros[cid].cnpjs += (d.quantidade || 0);
+        });
+      });
+    } catch (e) { /* segue */ }
+
+    const ufsOrd = Object.entries(ufConsulta).sort((a, b) => b[1] - a[1]);
+    const cidadesOrd = Object.entries(cidadePros).sort((a, b) => b[1].cnpjs - a[1].cnpjs);
+    const periodoTxt = dias === 1 ? 'hoje' : dias ? `nos últimos ${dias} dias` : 'no total';
+
+    let h = `<div class="stats-row" style="margin-bottom:14px">
+        <div class="stat-card c-green"><div class="stat-val">${totConsultas}</div><div class="stat-lbl">Consultas ${periodoTxt}</div></div>
+        <div class="stat-card c-green"><div class="stat-val">${totCnpjsConsult}</div><div class="stat-lbl">CNPJs consultados</div></div>
+        <div class="stat-card c-yellow"><div class="stat-val">${totPros}</div><div class="stat-lbl">Prospecções</div></div>
+        <div class="stat-card c-yellow"><div class="stat-val">${totCnpjsPros}</div><div class="stat-lbl">CNPJs prospectados</div></div>
+      </div>`;
+
+    h += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">`;
+
+    // Consultas por UF
+    h += `<div><div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="fas fa-magnifying-glass" style="color:var(--accent)"></i> CNPJs consultados por estado (UF)</div>`;
+    if (ufsOrd.length) {
+      const maxUf = ufsOrd[0][1] || 1;
+      h += ufsOrd.map(([uf, n]) => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+          <span style="width:26px;font-family:var(--mono);font-size:12px">${uf}</span>
+          <div style="flex:1;background:var(--surface2);border-radius:6px;overflow:hidden;height:16px"><div style="width:${Math.max(6,(n/maxUf)*100)}%;background:var(--accent);height:100%"></div></div>
+          <span style="font-size:12px;min-width:32px;text-align:right">${n}</span>
+        </div>`).join('');
+    } else {
+      h += `<p style="color:var(--muted);font-size:12px">Sem consultas com região ${periodoTxt}. (As consultas passam a registrar a região a partir desta versão.)</p>`;
+    }
+    if (consultasSemRegiao) h += `<p style="color:var(--muted);font-size:11px;margin-top:6px">+${consultasSemRegiao} CNPJ(s) de consultas antigas (sem região registrada).</p>`;
+    h += `</div>`;
+
+    // Prospecções por cidade
+    h += `<div><div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="fas fa-bullseye" style="color:var(--accent)"></i> Prospecções por cidade</div>`;
+    if (cidadesOrd.length) {
+      const maxC = cidadesOrd[0][1].cnpjs || 1;
+      h += cidadesOrd.slice(0, 15).map(([cid, v]) => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+          <span style="flex:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(cid)}">${escapeHtml(cid)}</span>
+          <div style="width:90px;background:var(--surface2);border-radius:6px;overflow:hidden;height:16px"><div style="width:${Math.max(6,(v.cnpjs/maxC)*100)}%;background:var(--accent);height:100%"></div></div>
+          <span style="font-size:11px;color:var(--muted);min-width:96px;text-align:right">${v.cnpjs} CNPJs · ${v.buscas} busca(s)</span>
+        </div>`).join('');
+    } else {
+      h += `<p style="color:var(--muted);font-size:12px">Nenhuma prospecção ${periodoTxt}.</p>`;
+    }
+    h += `</div>`;
+
+    h += `</div>`;
+    box.innerHTML = h;
+  } catch (e) {
+    box.innerHTML = `<p style="color:var(--muted);font-size:13px">Erro ao carregar a análise: ${escapeHtml(e.message || String(e))}</p>`;
+  }
 }
 
 // Lista de quem está online agora.
@@ -3388,11 +3496,19 @@ async function definirAdmin(uid, valor) {
 async function registrarLogConsulta(cnpjs) {
   try {
     if (!auth.currentUser || !cnpjs || !cnpjs.length) return;
+    // Conta os CNPJs por UF a partir dos resultados na tela (pra análise por região no admin).
+    const porUF = {};
+    cnpjs.forEach(c => {
+      const uf = (typeof allData !== 'undefined' && allData[c] && allData[c].uf) ? allData[c].uf : '';
+      if (uf && uf !== '—') porUF[uf] = (porUF[uf] || 0) + 1;
+    });
     await logsCol.add({
       uid: auth.currentUser.uid,
       email: auth.currentUser.email,
       cnpjs: cnpjs,
       quantidade: cnpjs.length,
+      porUF: porUF,
+      ts: Date.now(),
       criadoEm: firebase.firestore.FieldValue.serverTimestamp()
     });
     registrarAtividade('consulta', `${cnpjs.length} CNPJ(s) consultado(s)`);
@@ -3665,7 +3781,26 @@ async function consultarLoteArcom(cnpjs, callbackProgresso) {
 
 // ── PROSPECÇÃO (GET /v1/estabelecimentos) ───────────────────────────────────
 // Resolve nome de cidade digitado em código de município da RF.
-async function resolverMunicipioRF(nomeCidade) {
+// Código IBGE do estado = 2 primeiros dígitos do código do município.
+const IBGE_UF = { RO:'11', AC:'12', AM:'13', RR:'14', PA:'15', AP:'16', TO:'17', MA:'21', PI:'22', CE:'23', RN:'24', PB:'25', PE:'26', AL:'27', SE:'28', BA:'29', MG:'31', ES:'32', RJ:'33', SP:'35', PR:'41', SC:'42', RS:'43', MS:'50', MT:'51', GO:'52', DF:'53' };
+
+// Um item de município da RF bate com a UF pedida? Checa campo de UF, a descrição
+// (ex.: "SÃO SIMÃO - GO") e o prefixo do código IBGE.
+function municipioBateUF(m, uf) {
+  if (!uf) return true;
+  const alvo = uf.toUpperCase();
+  const campos = [m.uf, m.sigla_uf, m.uf_sigla, m.estado, m.sigla_estado, m.uf_nome].filter(Boolean).map(x => String(x).toUpperCase());
+  if (campos.includes(alvo)) return true;
+  const desc = String(m.descricao || '').toUpperCase();
+  if (new RegExp('[\\s/\\-(]' + alvo + '\\b').test(desc)) return true;
+  const cod = String(m.codigo || m.codigo_ibge || '');
+  if (IBGE_UF[alvo] && cod.startsWith(IBGE_UF[alvo])) return true;
+  return false;
+}
+
+// Resolve o nome da cidade no código de município da RF, respeitando a UF
+// (há cidades homônimas em estados diferentes, ex.: São Simão em GO e em SP).
+async function resolverMunicipioRF(nomeCidade, uf) {
   let token = await obterArcomToken(false);
   const url = ARCOM_API_BASE_URL + '/v1/municipios?q=' + encodeURIComponent(nomeCidade);
   let r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
@@ -3675,9 +3810,23 @@ async function resolverMunicipioRF(nomeCidade) {
   }
   if (!r.ok) throw new Error('Erro ao resolver município (HTTP ' + r.status + ')');
   const data = await r.json();
-  const item = (data.data || [])[0];
-  if (!item) throw new Error('Município "' + nomeCidade + '" não encontrado na Receita Federal');
+  const lista = data.data || [];
+  if (!lista.length) throw new Error('Município "' + nomeCidade + '" não encontrado na Receita Federal');
+  // 1) filtra pela UF pedida (cidades homônimas em estados diferentes). Se a API
+  //    não trouxer a UF de forma reconhecível, não regride (mantém a lista toda).
+  const naUF = uf ? lista.filter(m => municipioBateUF(m, uf)) : lista;
+  const candidatos = naUF.length ? naUF : lista;
+  // 2) dentro da UF, prefere o nome EXATO (ex.: "Bonito" e não "Bonito de Minas").
+  const alvo = semAcento(nomeCidade);
+  let item = candidatos.find(m => nomeMunicipioLimpo(m.descricao) === alvo);
+  if (!item) item = candidatos[0];
   return item; // { codigo, descricao }
+}
+
+// Nome do município sem acento e sem o sufixo de UF (" - GO", "/GO", " (GO)").
+function nomeMunicipioLimpo(desc) {
+  let s = String(desc || '').replace(/[\s/(\-]+[A-Za-z]{2}\)?\s*$/, '');
+  return semAcento(s.trim());
 }
 
 // Busca UMA página de estabelecimentos ativos e que ainda NÃO são clientes Arcom
@@ -3811,7 +3960,7 @@ async function buscarProspeccao() {
 
   try {
     for (const { cidade, uf } of cidades) {
-      const municipio = await resolverMunicipioRF(cidade);
+      const municipio = await resolverMunicipioRF(cidade, uf);
       for (const cnae of cnaesBusca) {
         const pagina = await buscarTodosEstabelecimentosArcom(
           { uf, municipioCodigo: municipio.codigo, cnae },
