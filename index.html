@@ -1844,6 +1844,7 @@ Patos de Minas,MG"></textarea>
               <option value="pdf_indicacao">PDF de indicação</option>
             </select>
             <button class="btn btn-ghost" style="font-size:12px;padding:6px 10px" onclick="abrirAdminPainel()"><i class="fas fa-user-clock"></i> Solicitações de acesso</button>
+            <button class="btn btn-ghost" style="font-size:12px;padding:6px 10px" onclick="limparLogsAntigos(90)" title="Apaga registros de atividade/consulta com mais de 90 dias (não mexe em prospecções salvas nem pré-cadastros)"><i class="fas fa-broom"></i> Limpar &gt; 90 dias</button>
           </div>
         </div>
         <div id="adminAtividadesList" style="padding:14px 18px;max-height:520px;overflow-y:auto">
@@ -3734,6 +3735,37 @@ const ATIVIDADE_META = {
   precadastro:   { icon: 'fa-user-plus',        label: 'Pré-cadastro',     cor: '#4ADE80' },
   pdf_indicacao: { icon: 'fa-file-pdf',         label: 'PDF de indicação', cor: '#F87171' }
 };
+
+// Apaga registros ANTIGOS de atividade e de consulta (o Firebase não cresce pra
+// sempre → menos leitura e menos custo). NÃO mexe em prospecções salvas, listas
+// nem pré-cadastros. Só admin.
+async function limparLogsAntigos(dias) {
+  dias = dias || 90;
+  if (!usuarioEhAdmin) { showToast('Só o admin pode limpar.', 'error'); return; }
+  if (!confirm(`Apagar registros de atividade e de consulta com mais de ${dias} dias?\n\nNÃO afeta prospecções salvas, listas nem pré-cadastros. Não dá pra desfazer.`)) return;
+  showToast('Limpando registros antigos…', 'info');
+  const corte = firebase.firestore.Timestamp.fromDate(new Date(Date.now() - dias * 86400000));
+  let total = 0;
+  try {
+    for (const col of [atividadesCol, logsCol]) {
+      for (let guard = 0; guard < 50; guard++) {
+        const snap = await col.where('criadoEm', '<', corte).limit(300).get();
+        if (snap.empty) break;
+        const batch = db.batch();
+        snap.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+        total += snap.size;
+        if (snap.size < 300) break;
+      }
+    }
+    showToast(`${total} registro(s) antigos apagados.`, 'success');
+    _dashUltimaCarga = 0;           // força o painel a recarregar com os números novos
+    renderAdminDashboard(true);
+  } catch (e) {
+    showToast('Erro ao limpar: ' + (e.message || e), 'error');
+  }
+}
+
 async function renderHistoricoAtividades() {
   const box = document.getElementById('adminAtividadesList');
   if (!box) return;
@@ -6004,7 +6036,8 @@ function verEmpresasDoSocio(identEncoded) {
 // de ser revogada) e a busca da Tavily funciona sem CORS.
 const PROXY_URL = 'https://consultarcom.jlrodrigues6900.workers.dev';
 const GROQ_API_URL = PROXY_URL + '/groq';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+const GROQ_MODEL = 'llama-3.3-70b-versatile';        // 70B: mais inteligente (Insight/ranking)
+const GROQ_MODEL_RAPIDO = 'llama-3.1-8b-instant';   // 8B: mais leve/rápido e com limite diário bem maior (chat)
 const TAVILY_API_URL = PROXY_URL + '/tavily';
 
 // Faz a busca real na web sobre a empresa (site, telefone, Instagram, LinkedIn).
@@ -6664,7 +6697,7 @@ async function chamarGroqChat(messages){
   const response = await fetch(GROQ_API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: GROQ_MODEL, messages, temperature: 0.5, tools: TOOLS, tool_choice: 'auto' })
+    body: JSON.stringify({ model: GROQ_MODEL_RAPIDO, messages, temperature: 0.5, tools: TOOLS, tool_choice: 'auto' })
   });
   if (!response.ok) {
     const errText = await response.text().catch(() => '');
