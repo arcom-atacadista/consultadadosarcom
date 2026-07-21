@@ -1451,6 +1451,9 @@
     <div class="nav-item" onclick="showTab('prospeccao', this)" title="Prospecção">
       <i class="fas fa-bullseye"></i> Prospecção
     </div>
+    <div class="nav-item" onclick="showTab('enriquecimento', this)" title="Enriquecimento de dados (Trace360)">
+      <i class="fas fa-wand-magic-sparkles"></i> Enriquecimento de dados
+    </div>
     <div class="nav-item" id="navAdmin" onclick="showTab('admin', this)" title="Painel do administrador" style="display:none">
       <i class="fas fa-shield-halved"></i> Painel (admin)
     </div>
@@ -1706,7 +1709,6 @@ Patos de Minas,MG"></textarea>
           </button>
         </div>
         <div id="prosRotaLinks" style="margin-top:12px"></div>
-        <div id="prosConcentracao" style="margin-top:16px"></div>
         <div id="prosResultado" style="margin-top:20px"></div>
       </div>
     </div>
@@ -1720,6 +1722,35 @@ Patos de Minas,MG"></textarea>
         </div>
         <div class="modal-body">
           <div id="listasSalvasBox"><p style="color:var(--muted);font-size:13px">Nenhuma lista salva ainda.</p></div>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- TAB: ENRIQUECIMENTO DE DADOS (Trace360) -->
+    <div class="tab-panel" id="tab-enriquecimento">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div>
+          <h2><i class="fas fa-wand-magic-sparkles" style="color:var(--accent);margin-right:8px"></i>Enriquecimento de dados</h2>
+          <p style="color:var(--muted);font-size:13px;margin-top:4px">Cole CNPJs e a Trace360 gera um <strong>dossiê</strong> de cada um (Google Maps, fotos, avaliações, Street View, análise por IA). O processamento leva alguns minutos — o status atualiza sozinho aqui e você baixa o PDF quando ficar pronto.</p>
+        </div>
+        <button class="btn btn-ghost" onclick="carregarEnriquecimentos()"><i class="fas fa-rotate"></i> Atualizar</button>
+      </div>
+      <div class="input-section" style="margin-top:16px">
+        <textarea id="enriqInput" class="cnpj-textarea" style="min-height:100px" placeholder="Cole os CNPJs, um por linha (até 500 por vez)"></textarea>
+        <div class="action-stack">
+          <button class="btn btn-primary" id="btnEnriquecer" onclick="enriquecerCnpjs()"><i class="fas fa-paper-plane"></i> Enriquecer CNPJs</button>
+          <button class="btn btn-ghost" onclick="document.getElementById('enriqInput').value=''"><i class="fas fa-eraser"></i> Limpar</button>
+        </div>
+      </div>
+      <div id="enriqStatus" style="margin-top:8px;font-size:13px;color:var(--muted)"></div>
+      <div class="table-card" style="margin-top:16px">
+        <div class="table-card-header"><i class="fas fa-list-check"></i> Dossiês</div>
+        <div class="table-wrap" style="max-height:520px;overflow:auto">
+          <table style="width:100%">
+            <thead><tr><th>CNPJ</th><th>Empresa</th><th>Status</th><th>Quando</th><th></th></tr></thead>
+            <tbody id="enriqBody"><tr><td colspan="5" style="color:var(--muted);font-size:13px">Abra esta aba para carregar os dossiês…</td></tr></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -1773,21 +1804,6 @@ Patos de Minas,MG"></textarea>
         </div>
         <div id="vendasResultado" style="padding:14px 18px">
           <p style="color:var(--muted);font-size:13px">Suba a planilha de CNPJs vendidos/cadastrados (Excel ou CSV). O site acha a coluna de CNPJ sozinho e cruza com <strong>tudo que já foi prospectado</strong> — mostrando quantas vendas vieram da prospecção, a taxa de conversão e o ranking por assessor.</p>
-        </div>
-      </div>
-
-      <div class="table-card" style="margin-top:20px">
-        <div class="table-card-header" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <i class="fas fa-map-location-dot" style="color:var(--accent)"></i> Análise por região
-          <select id="regiaoPeriodo" onchange="renderAnaliseRegiao()" class="regional-input" style="margin-left:auto;width:auto;padding:5px 8px;font-size:12px">
-            <option value="1">Hoje</option>
-            <option value="7" selected>Últimos 7 dias</option>
-            <option value="30">Últimos 30 dias</option>
-            <option value="0">Tudo</option>
-          </select>
-        </div>
-        <div id="analiseRegiaoBox" style="padding:14px 18px">
-          <p style="color:var(--muted);font-size:13px">Carregando…</p>
         </div>
       </div>
 
@@ -2014,6 +2030,11 @@ Patos de Minas,MG"></textarea>
         </div>
         <div id="mapSvNota" style="display:none;font-size:11.5px;color:var(--yellow);background:rgba(180,83,9,.10);border:1px solid rgba(180,83,9,.25);border-radius:8px;padding:7px 10px;margin-bottom:10px">
           <i class="fas fa-triangle-exclamation"></i> Posição <strong>aproximada</strong> na rua — o número exato pode variar. Confira o ponto certo na aba <strong>Mapa</strong>.
+        </div>
+        <div id="mapSvHelp" style="display:none;font-size:11.5px;color:var(--muted);margin-bottom:10px">
+          <i class="fas fa-circle-info"></i> Apareceu "Street View não disponível"? O Google não tem foto dessa rua (comum em cidades pequenas). Tente
+          <a href="#" onclick="mapSetView('mapa');return false" style="color:var(--accent);text-decoration:underline">ver no mapa</a> ou
+          <a href="#" onclick="abrirMapaExterno();return false" style="color:var(--accent);text-decoration:underline">abrir no Google Maps</a> (que acha a foto mais próxima).
         </div>
       </div>
       <iframe id="mapFrame"
@@ -2374,6 +2395,150 @@ function showTab(name, el) {
   document.getElementById('tab-'+name).classList.add('active');
   el.classList.add('active');
   if (name === 'admin') renderAdminDashboard();
+  if (name === 'enriquecimento') carregarEnriquecimentos();
+}
+
+// ── ENRIQUECIMENTO DE DADOS (Trace360 AI, via proxy) ─────────────────────────
+// Manda CNPJs -> a Trace360 processa em background (minutos) -> gera dossiê PDF +
+// JSON. Aqui a gente enfileira, acompanha o status (com auto-atualização) e baixa.
+let enriqPollTimer = null;
+function _trace360Url() { return PROXY_URL + '/trace360'; }
+
+function formatarDataTrace(v) {
+  if (!v) return '';
+  try { const d = new Date(v); return isNaN(d.getTime()) ? '' : d.toLocaleString('pt-BR'); } catch (e) { return ''; }
+}
+
+function badgeStatusTrace(s) {
+  s = (s || '').toLowerCase();
+  const map = {
+    pendente: ['badge-inapta', 'Na fila'],
+    enfileirado: ['badge-inapta', 'Na fila'],
+    processando: ['badge-inapta', 'Processando…'],
+    ja_ativo: ['badge-inapta', 'Processando…'],
+    ambiguo_pausado: ['badge-inapta', 'Aguardando escolha do local'],
+    concluido: ['badge-ativa', 'Concluído'],
+    em_cache: ['badge-ativa', 'Concluído'],
+    nao_enriquecivel: ['badge-baixada', 'Sem dados'],
+    erro: ['badge-error', 'Erro'],
+    cancelado: ['badge-baixada', 'Cancelado']
+  };
+  const par = map[s] || ['', s || '—'];
+  return `<span class="badge ${par[0]}">${par[1]}</span>`;
+}
+
+function normalizarListaClientes(d) {
+  if (Array.isArray(d)) return d;
+  return (d && (d.clientes || d.data || d.items || d.resultados)) || [];
+}
+
+async function enriquecerCnpjs() {
+  const cnpjs = parseCNPJs(document.getElementById('enriqInput').value || '').filter(validarCNPJ);
+  const btn = document.getElementById('btnEnriquecer');
+  const st = document.getElementById('enriqStatus');
+  if (!cnpjs.length) { showToast('Cole ao menos um CNPJ válido.', 'error'); return; }
+  if (cnpjs.length > 500) { showToast('Máximo de 500 CNPJs por vez.', 'error'); return; }
+  if (!PROXY_URL) { showToast('Proxy da IA não configurado.', 'error'); return; }
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Enviando…';
+  st.textContent = `Enviando ${cnpjs.length} CNPJ(s) para a Trace360…`;
+  try {
+    const r = await fetch(_trace360Url() + '/clientes', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cnpjs.map(c => ({ cnpj: c })))
+    });
+    if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error('HTTP ' + r.status + ' ' + t.slice(0, 150)); }
+    const d = await r.json();
+    st.textContent = d.mensagem || `Enviados ${(d.resultados || []).length} CNPJ(s).`;
+    showToast('CNPJs enviados para enriquecimento!', 'success');
+    document.getElementById('enriqInput').value = '';
+    carregarEnriquecimentos();
+  } catch (e) {
+    st.textContent = '';
+    showToast('Erro ao enviar: ' + (e.message || e), 'error');
+  } finally {
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Enriquecer CNPJs';
+  }
+}
+
+async function carregarEnriquecimentos() {
+  const body = document.getElementById('enriqBody');
+  if (!body) return;
+  if (!PROXY_URL) { body.innerHTML = `<tr><td colspan="5" style="font-size:13px">Proxy não configurado.</td></tr>`; return; }
+  try {
+    const r = await fetch(_trace360Url() + '/clientes?limit=200');
+    if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error('HTTP ' + r.status + ' ' + t.slice(0, 150)); }
+    const d = await r.json();
+    const lista = normalizarListaClientes(d);
+    renderEnriquecimentos(lista);
+    // Enquanto houver algo em andamento e a aba estiver aberta, atualiza sozinho.
+    const emAndamento = lista.some(x => ['pendente', 'enfileirado', 'processando', 'ja_ativo', 'ambiguo_pausado'].includes((x.status || '').toLowerCase()));
+    clearTimeout(enriqPollTimer);
+    const abaAtiva = document.getElementById('tab-enriquecimento') && document.getElementById('tab-enriquecimento').classList.contains('active');
+    if (emAndamento && abaAtiva) enriqPollTimer = setTimeout(carregarEnriquecimentos, 25000);
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);font-size:13px">Erro ao carregar: ${escapeHtml(e.message || String(e))}.<br>Confira se o proxy foi atualizado (rota <b>/trace360</b>) e o secret <b>TRACE360_API_KEY</b> no Cloudflare.</td></tr>`;
+  }
+}
+
+function renderEnriquecimentos(lista) {
+  const body = document.getElementById('enriqBody');
+  if (!body) return;
+  if (!lista.length) { body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);font-size:13px">Nenhum enriquecimento ainda. Cole CNPJs acima e clique em "Enriquecer".</td></tr>`; return; }
+  body.innerHTML = lista.map(x => {
+    const id = (x.cliente_id != null ? x.cliente_id : x.id);
+    const cnpj = (x.cnpj || '').replace(/\D/g, '');
+    const status = (x.status || '').toLowerCase();
+    const nome = x.razao_social || x.nome || x.razao || '—';
+    const quando = x.criado_em || x.created_at || x.criadoEm || x.atualizado_em || '';
+    const concluido = (status === 'concluido' || status === 'em_cache');
+    const falhou = (status === 'erro' || status === 'nao_enriquecivel' || status === 'cancelado');
+    let acoes = '';
+    if (concluido) {
+      acoes = `<button class="btn-eye" title="Baixar dossiê (PDF)" onclick="baixarDossieTrace('${id}')"><i class="fas fa-file-pdf"></i> PDF</button>
+               <button class="btn-eye" title="Ver os dados (JSON)" onclick="verResultadoTrace('${id}')"><i class="fas fa-code"></i> Dados</button>`;
+    } else if (falhou) {
+      acoes = `<button class="btn-eye" title="Tentar de novo" onclick="reprocessarTrace('${id}')"><i class="fas fa-rotate-right"></i> Tentar de novo</button>`;
+    }
+    return `<tr>
+      <td class="td-cnpj" style="font-family:var(--mono)">${cnpj ? fmt(cnpj) : '—'}</td>
+      <td style="font-size:12px">${escapeHtml(nome)}</td>
+      <td>${badgeStatusTrace(status)}</td>
+      <td style="font-size:12px;color:var(--muted)">${escapeHtml(formatarDataTrace(quando))}</td>
+      <td class="td-actions">${acoes}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function baixarDossieTrace(id) {
+  showToast('Baixando o dossiê…', 'info');
+  try {
+    const r = await fetch(_trace360Url() + '/clientes/' + id + '/dossie');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'dossie-' + id + '.pdf'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
+  } catch (e) { showToast('Erro ao baixar o PDF: ' + (e.message || e), 'error'); }
+}
+
+async function verResultadoTrace(id) {
+  try {
+    const r = await fetch(_trace360Url() + '/clientes/' + id + '/resultado');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  } catch (e) { showToast('Erro ao abrir os dados: ' + (e.message || e), 'error'); }
+}
+
+async function reprocessarTrace(id) {
+  try {
+    const r = await fetch(_trace360Url() + '/clientes/' + id + '/reprocessar', { method: 'POST' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    showToast('Reprocessando…', 'success');
+    carregarEnriquecimentos();
+  } catch (e) { showToast('Erro ao reprocessar: ' + (e.message || e), 'error'); }
 }
 
 // ── MODALS ──────────────────────────────────────────────────────────────────
@@ -3259,99 +3424,89 @@ async function renderAdminDashboard() {
   }
 
   renderHistoricoAtividades();
-  renderAnaliseRegiao();
 }
 
-// ── Análise por região (admin) ───────────────────────────────────────────────
-// Cruza consultas (por UF) e prospecções (por cidade) num período escolhido.
-async function renderAnaliseRegiao() {
-  const box = document.getElementById('analiseRegiaoBox');
-  if (!box) return;
-  const dias = parseInt((document.getElementById('regiaoPeriodo') || {}).value || '7', 10);
-  const cutoff = dias ? Date.now() - dias * 86400000 : 0;
-  const noPeriodo = (ts) => !cutoff || (ts && ts >= cutoff);
-  box.innerHTML = `<p style="color:var(--muted);font-size:13px"><span class="spinner"></span> Carregando…</p>`;
+// Coleta as estatísticas do site (online, contas, atividade, consultas por UF,
+// prospecções por cidade) num texto — usada pelo CHAT pra responder perguntas
+// tipo "quantas pessoas online agora?". Cada fonte é tolerante a falha (um
+// usuário não-admin pode não ter permissão de ler tudo).
+async function coletarEstatisticasSite() {
+  const linhas = [];
+  let hoje = ''; try { hoje = new Date().toLocaleString('pt-BR'); } catch (e) {}
+  linhas.push(`Estatísticas do site (agora — ${hoje}):`);
+
+  // Online agora
   try {
-    // Consultas por UF
-    const ufConsulta = {}; let totConsultas = 0, totCnpjsConsult = 0, consultasSemRegiao = 0;
-    try {
-      const cSnap = await logsCol.orderBy('criadoEm', 'desc').limit(1000).get();
-      cSnap.forEach(doc => {
-        const d = doc.data();
-        const t = d.ts || (d.criadoEm && d.criadoEm.toMillis ? d.criadoEm.toMillis() : 0);
-        if (!noPeriodo(t)) return;
-        totConsultas++; totCnpjsConsult += (d.quantidade || 0);
-        if (d.porUF && Object.keys(d.porUF).length) {
-          Object.entries(d.porUF).forEach(([uf, n]) => { ufConsulta[uf] = (ufConsulta[uf] || 0) + n; });
-        } else { consultasSemRegiao += (d.quantidade || 0); }
-      });
-    } catch (e) { /* sem permissão/erro → segue */ }
+    const ps = await presencaCol.get();
+    const agora = Date.now(); const online = [];
+    ps.forEach(doc => {
+      const x = doc.data();
+      const ls = (x.lastSeen && x.lastSeen.toMillis) ? x.lastSeen.toMillis() : 0;
+      if (ls && (agora - ls) <= PRESENCA_ONLINE_MS) online.push(x.nome || x.email || '—');
+    });
+    linhas.push(`- Pessoas online agora: ${online.length}${online.length ? ' (' + online.join(', ') + ')' : ''}`);
+  } catch (e) { linhas.push('- Pessoas online agora: (sem permissão para ver)'); }
 
-    // Prospecções por cidade (dedup por loteId — buscas grandes viram vários docs)
-    const cidadePros = {}; let totPros = 0, totCnpjsPros = 0; const lotes = new Set();
-    try {
-      const pSnap = await prospeccoesCol.orderBy('ts', 'desc').limit(600).get();
-      pSnap.forEach(doc => {
-        const d = doc.data();
-        if (!noPeriodo(d.ts || 0)) return;
-        const lote = d.loteId || doc.id;
-        if (lotes.has(lote)) return; // outra parte da mesma busca
-        lotes.add(lote);
-        totPros++; totCnpjsPros += (d.quantidade || 0);
-        (d.cidades || []).forEach(cid => {
-          if (!cidadePros[cid]) cidadePros[cid] = { buscas: 0, cnpjs: 0 };
-          cidadePros[cid].buscas++; cidadePros[cid].cnpjs += (d.quantidade || 0);
-        });
-      });
-    } catch (e) { /* segue */ }
+  // Contas
+  try {
+    const us = await usersCol.get();
+    let total = 0, pend = 0;
+    us.forEach(doc => { total++; if (doc.data().status === 'pendente') pend++; });
+    linhas.push(`- Contas: ${total} no total, ${pend} pendente(s) de aprovação`);
+  } catch (e) {}
 
-    const ufsOrd = Object.entries(ufConsulta).sort((a, b) => b[1] - a[1]);
-    const cidadesOrd = Object.entries(cidadePros).sort((a, b) => b[1].cnpjs - a[1].cnpjs);
-    const periodoTxt = dias === 1 ? 'hoje' : dias ? `nos últimos ${dias} dias` : 'no total';
-
-    let h = `<div class="stats-row" style="margin-bottom:14px">
-        <div class="stat-card c-green"><div class="stat-val">${totConsultas}</div><div class="stat-lbl">Consultas ${periodoTxt}</div></div>
-        <div class="stat-card c-green"><div class="stat-val">${totCnpjsConsult}</div><div class="stat-lbl">CNPJs consultados</div></div>
-        <div class="stat-card c-yellow"><div class="stat-val">${totPros}</div><div class="stat-lbl">Prospecções</div></div>
-        <div class="stat-card c-yellow"><div class="stat-val">${totCnpjsPros}</div><div class="stat-lbl">CNPJs prospectados</div></div>
-      </div>`;
-
-    h += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">`;
-
-    // Consultas por UF
-    h += `<div><div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="fas fa-magnifying-glass" style="color:var(--accent)"></i> CNPJs consultados por estado (UF)</div>`;
-    if (ufsOrd.length) {
-      const maxUf = ufsOrd[0][1] || 1;
-      h += ufsOrd.map(([uf, n]) => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
-          <span style="width:26px;font-family:var(--mono);font-size:12px">${uf}</span>
-          <div style="flex:1;background:var(--surface2);border-radius:6px;overflow:hidden;height:16px"><div style="width:${Math.max(6,(n/maxUf)*100)}%;background:var(--accent);height:100%"></div></div>
-          <span style="font-size:12px;min-width:32px;text-align:right">${n}</span>
-        </div>`).join('');
-    } else {
-      h += `<p style="color:var(--muted);font-size:12px">Sem consultas com região ${periodoTxt}. (As consultas passam a registrar a região a partir desta versão.)</p>`;
+  // Atividade + por usuário + consultas por UF
+  try {
+    const snap = await atividadesCol.orderBy('criadoEm', 'desc').limit(2000).get();
+    const c = { login: 0, consulta: 0, prospeccao: 0, pdf_indicacao: 0, precadastro: 0 };
+    const porUsuario = {};
+    snap.forEach(doc => {
+      const d = doc.data();
+      if (c[d.tipo] !== undefined) c[d.tipo]++;
+      const quem = d.nome || d.email || '—';
+      if (!porUsuario[quem]) porUsuario[quem] = { consulta: 0, prospeccao: 0, pdf_indicacao: 0 };
+      if (porUsuario[quem][d.tipo] !== undefined) porUsuario[quem][d.tipo]++;
+    });
+    linhas.push(`- Atividade (registros recentes): ${c.login} login(s), ${c.consulta} consulta(s), ${c.prospeccao} prospecção(ões), ${c.pdf_indicacao} PDF(s), ${c.precadastro} pré-cadastro(s)`);
+    const topUsuarios = Object.entries(porUsuario)
+      .sort((a, b) => (b[1].consulta + b[1].prospeccao) - (a[1].consulta + a[1].prospeccao)).slice(0, 8);
+    if (topUsuarios.length) {
+      linhas.push('- Por usuário: ' + topUsuarios.map(([n, v]) => `${n} (${v.consulta} consultas, ${v.prospeccao} prospecções, ${v.pdf_indicacao} PDFs)`).join('; '));
     }
-    if (consultasSemRegiao) h += `<p style="color:var(--muted);font-size:11px;margin-top:6px">+${consultasSemRegiao} CNPJ(s) de consultas antigas (sem região registrada).</p>`;
-    h += `</div>`;
+  } catch (e) {}
 
-    // Prospecções por cidade
-    h += `<div><div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="fas fa-bullseye" style="color:var(--accent)"></i> Prospecções por cidade</div>`;
-    if (cidadesOrd.length) {
-      const maxC = cidadesOrd[0][1].cnpjs || 1;
-      h += cidadesOrd.slice(0, 15).map(([cid, v]) => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
-          <span style="flex:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(cid)}">${escapeHtml(cid)}</span>
-          <div style="width:90px;background:var(--surface2);border-radius:6px;overflow:hidden;height:16px"><div style="width:${Math.max(6,(v.cnpjs/maxC)*100)}%;background:var(--accent);height:100%"></div></div>
-          <span style="font-size:11px;color:var(--muted);min-width:96px;text-align:right">${v.cnpjs} CNPJs · ${v.buscas} busca(s)</span>
-        </div>`).join('');
-    } else {
-      h += `<p style="color:var(--muted);font-size:12px">Nenhuma prospecção ${periodoTxt}.</p>`;
-    }
-    h += `</div>`;
+  // Consultas por estado (UF)
+  try {
+    const cSnap = await logsCol.orderBy('criadoEm', 'desc').limit(1000).get();
+    const ufConsulta = {}; let semRegiao = 0;
+    cSnap.forEach(doc => {
+      const d = doc.data();
+      if (d.porUF && Object.keys(d.porUF).length) {
+        Object.entries(d.porUF).forEach(([uf, n]) => { ufConsulta[uf] = (ufConsulta[uf] || 0) + n; });
+      } else { semRegiao += (d.quantidade || 0); }
+    });
+    const ord = Object.entries(ufConsulta).sort((a, b) => b[1] - a[1]);
+    if (ord.length) linhas.push('- CNPJs consultados por estado: ' + ord.map(([uf, n]) => `${uf}: ${n}`).join(', ') + (semRegiao ? ` (+${semRegiao} de consultas antigas sem região)` : ''));
+  } catch (e) {}
 
-    h += `</div>`;
-    box.innerHTML = h;
-  } catch (e) {
-    box.innerHTML = `<p style="color:var(--muted);font-size:13px">Erro ao carregar a análise: ${escapeHtml(e.message || String(e))}</p>`;
-  }
+  // Prospecções por cidade (dedup por loteId)
+  try {
+    const pSnap = await prospeccoesCol.orderBy('ts', 'desc').limit(600).get();
+    const cidade = {}; const lotes = new Set(); let totCnpjs = 0;
+    pSnap.forEach(doc => {
+      const d = doc.data(); const lote = d.loteId || doc.id;
+      if (lotes.has(lote)) return; lotes.add(lote);
+      totCnpjs += (d.quantidade || 0);
+      (d.cidades || []).forEach(cid => {
+        if (!cidade[cid]) cidade[cid] = { buscas: 0, cnpjs: 0 };
+        cidade[cid].buscas++; cidade[cid].cnpjs += (d.quantidade || 0);
+      });
+    });
+    const ord = Object.entries(cidade).sort((a, b) => b[1].cnpjs - a[1].cnpjs).slice(0, 15);
+    if (ord.length) linhas.push(`- Prospecções por cidade (total ${totCnpjs} CNPJs): ` + ord.map(([cid, v]) => `${cid} (${v.cnpjs} CNPJs em ${v.buscas} busca(s))`).join('; '));
+  } catch (e) {}
+
+  return linhas.join('\n');
 }
 
 // Lista de quem está online agora.
@@ -3929,9 +4084,7 @@ async function buscarProspeccao() {
   const cnaesSelecionados = Array.from(cnaeSelect.selectedOptions).map(o => o.value);
   const ramosLabels = Array.from(cnaeSelect.selectedOptions).map(o => o.textContent.trim());
   const resultado = document.getElementById('prosResultado');
-  const concentracao = document.getElementById('prosConcentracao');
 
-  concentracao.innerHTML = '';
   prospeccaoSelecionados = new Set();
   document.getElementById('btnSalvarListaProspeccao').classList.add('hidden');
   document.getElementById('btnIndicacaoPDF').classList.add('hidden');
@@ -4020,7 +4173,6 @@ async function buscarProspeccao() {
   prospeccaoUltimoResultado = empresasEncontradas;
   prospeccaoCNPJs = empresasEncontradas.map(e => e.cnpj);
   renderProspeccaoResultado(empresasEncontradas);
-  renderConcentracaoBairro(empresasEncontradas);
   document.getElementById('btnSalvarListaProspeccao').classList.remove('hidden');
   document.getElementById('btnIndicacaoPDF').classList.remove('hidden');
   showToast(`${empresasEncontradas.length} prospect(s) encontrado(s)`, 'success');
@@ -4297,29 +4449,6 @@ function renderProspeccaoResultado(empresas) {
 
 // Alternativa leve a um mapa de calor geográfico (que exigiria geocodificação):
 // ranking de concentração por bairro/cidade a partir do próprio retorno da API.
-function renderConcentracaoBairro(empresas) {
-  const box = document.getElementById('prosConcentracao');
-  if (!box) return;
-  const porBairro = {};
-  empresas.forEach(e => {
-    const chave = (e.bairro && e.bairro !== '—') ? `${e.bairro} — ${e.cidade}/${e.uf}` : `${e.cidade}/${e.uf}`;
-    porBairro[chave] = (porBairro[chave] || 0) + 1;
-  });
-  const top = Object.entries(porBairro).sort((a,b)=>b[1]-a[1]).slice(0, 8);
-  const max = top.length ? top[0][1] : 1;
-  box.innerHTML = `
-    <div class="chart-panel-title"><i class="fas fa-fire" style="color:var(--accent);margin-right:6px"></i>Concentração por bairro/cidade</div>
-    <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
-      ${top.map(([nome,qtd]) => `
-        <div style="display:flex;align-items:center;gap:8px">
-          <div style="flex:1;background:var(--surface2);border-radius:6px;overflow:hidden;height:18px">
-            <div style="width:${Math.max(6,(qtd/max)*100)}%;background:var(--accent);height:100%"></div>
-          </div>
-          <div style="font-size:11px;color:var(--muted);white-space:nowrap;min-width:160px">${nome} · ${qtd}</div>
-        </div>`).join('')}
-    </div>`;
-}
-
 // Lista de prospects após aplicar os filtros ativos (corte de grandes redes,
 // radar de novas) — pra "Copiar CNPJs" bater com o que está na tela.
 function listaProspeccaoVisivel() {
@@ -4723,7 +4852,6 @@ function carregarListaSalva(id) {
   prospeccaoCNPJs = empresas.map(e => e.cnpj);
   prospeccaoSelecionados = new Set();
   renderProspeccaoResultado(empresas);
-  renderConcentracaoBairro(empresas);
   document.getElementById('btnSalvarListaProspeccao').classList.remove('hidden');
   document.getElementById('btnIndicacaoPDF').classList.remove('hidden');
   closeModal('listasSalvasModal');
@@ -5446,6 +5574,9 @@ function mapSetView(view) {
   document.getElementById('mapTabRua').classList.toggle('active', view === 'rua');
   document.getElementById('mapTabMapa').classList.toggle('active', view === 'mapa');
   const endQ = encodeURIComponent(mapaQueryAtual || d.endereco || '');
+
+  const help = document.getElementById('mapSvHelp');
+  if (help) help.style.display = (view === 'rua') ? 'block' : 'none';
 
   const nota = document.getElementById('mapSvNota');
   const svUrl = (lat, lng) => `https://maps.google.com/maps?q=&layer=c&cbll=${lat},${lng}&cbp=12,0,0,0,0&output=svembed`;
@@ -6286,7 +6417,9 @@ VOCÊ TEM ACESSO À INTERNET pela ferramenta "buscar_web" — e deve USÁ-LA de 
 - Você pode buscar VÁRIAS vezes e refinar: se o 1º resultado não bastar, tente outra query (ex.: nome + cidade; depois "instagram"; depois o site oficial; depois o Google Maps).
 - Responda com base nos resultados e SEMPRE cite as fontes: liste os links (URLs) que embasaram a resposta no final.
 - NUNCA diga que "não tem acesso à internet" ou que "não pode navegar" — você PODE. Se realmente não achar, diga que buscou e não encontrou.
-- Só responda direto (sem buscar) dúvidas simples ou sobre os dados de empresas já consultados na ferramenta (listados abaixo).${montarContextoEmpresas()}`;
+- Só responda direto (sem buscar) dúvidas simples ou sobre os dados de empresas já consultados na ferramenta (listados abaixo).
+
+VOCÊ TAMBÉM CONHECE OS RELATÓRIOS DO PRÓPRIO SITE pela ferramenta "estatisticas_do_site": quem está online agora, contas, quantidade de consultas/prospecções/PDFs, atividade por usuário, CNPJs por estado, prospecções por cidade. Sempre que perguntarem sobre o uso do site (ex.: "quantas pessoas online agora?", "quantas prospecções foram feitas?", "quem consultou mais?", "quantos CNPJs em MG?"), CHAME "estatisticas_do_site" e responda com os números reais. Não invente números.${montarContextoEmpresas()}`;
 }
 
 function renderMensagensChat(){
@@ -6352,6 +6485,13 @@ async function chamarGroqChat(messages){
         required: ['query']
       }
     }
+  }, {
+    type: 'function',
+    function: {
+      name: 'estatisticas_do_site',
+      description: 'Retorna os NÚMEROS/RELATÓRIOS do próprio site CDA em tempo real: quantas pessoas estão online agora (e quem), contas criadas/pendentes, quantidade de logins/consultas/prospecções/PDFs, atividade por usuário, CNPJs consultados por estado e prospecções por cidade. Use SEMPRE que o usuário perguntar sobre o uso do site, quem está online, quantas consultas/prospecções, ranking de usuários, números por região/cidade etc.',
+      parameters: { type: 'object', properties: {}, required: [] }
+    }
   }];
   const response = await fetch(GROQ_API_URL, {
     method: 'POST',
@@ -6385,12 +6525,17 @@ async function consultarGroqChat(mensagemUsuario){
     if (msg.tool_calls && msg.tool_calls.length) {
       messages.push(msg); // registra o pedido de ferramenta
       for (const tc of msg.tool_calls) {
+        const nomeFerramenta = (tc.function && tc.function.name) || 'buscar_web';
         let resultado;
         try {
           const args = JSON.parse((tc.function && tc.function.arguments) || '{}');
-          resultado = await buscarWebChat(args.query || mensagemUsuario, { max: 6 });
-        } catch (e) { resultado = 'Erro ao executar a busca: ' + (e.message || e); }
-        messages.push({ role: 'tool', tool_call_id: tc.id, name: 'buscar_web', content: resultado });
+          if (nomeFerramenta === 'estatisticas_do_site') {
+            resultado = await coletarEstatisticasSite();
+          } else {
+            resultado = await buscarWebChat(args.query || mensagemUsuario, { max: 6 });
+          }
+        } catch (e) { resultado = 'Erro ao executar a ferramenta: ' + (e.message || e); }
+        messages.push({ role: 'tool', tool_call_id: tc.id, name: nomeFerramenta, content: resultado });
       }
       continue; // volta pro modelo com os resultados
     }
