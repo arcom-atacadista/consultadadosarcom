@@ -1732,7 +1732,7 @@ Patos de Minas,MG"></textarea>
       <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">
         <div>
           <h2><i class="fas fa-wand-magic-sparkles" style="color:var(--accent);margin-right:8px"></i>Enriquecimento de dados</h2>
-          <p style="color:var(--muted);font-size:13px;margin-top:4px">Cole CNPJs e a Trace360 gera um <strong>dossiê</strong> de cada um (Google Maps, fotos, avaliações, Street View, análise por IA). O processamento leva alguns minutos — o status atualiza sozinho aqui e você baixa o PDF quando ficar pronto.</p>
+          <p style="color:var(--muted);font-size:13px;margin-top:4px">Cole CNPJs e a Trace360 gera um <strong>dossiê</strong> de cada um (Google Maps, fotos, avaliações, Street View, análise por IA). Ao enviar, o <strong>fluxo abre automaticamente</strong>. Aqui aparecem <strong>só os CNPJs que você enviou</strong> — o status atualiza sozinho e você baixa o PDF quando ficar pronto.</p>
         </div>
         <button class="btn btn-ghost" onclick="carregarEnriquecimentos()"><i class="fas fa-rotate"></i> Atualizar</button>
       </div>
@@ -1745,7 +1745,7 @@ Patos de Minas,MG"></textarea>
       </div>
       <div id="enriqStatus" style="margin-top:8px;font-size:13px;color:var(--muted)"></div>
       <div class="table-card" style="margin-top:16px">
-        <div class="table-card-header"><i class="fas fa-list-check"></i> Dossiês</div>
+        <div class="table-card-header"><i class="fas fa-list-check"></i> Seus dossiês</div>
         <div class="table-wrap" style="max-height:520px;overflow:auto">
           <table style="width:100%">
             <thead><tr><th>CNPJ</th><th>Empresa</th><th>Status</th><th>Quando</th><th></th></tr></thead>
@@ -2460,6 +2460,24 @@ function normalizarListaClientes(d) {
   return (d && (d.clientes || d.data || d.items || d.resultados)) || [];
 }
 
+// Cada usuário vê SÓ os CNPJs que ele mesmo enviou. Como a chave da Trace360 é
+// uma só pro site inteiro (a API não separa por pessoa), a "posse" fica guardada
+// no navegador, por login (uid).
+function _enriqKey() {
+  const u = (typeof auth !== 'undefined' && auth.currentUser) ? auth.currentUser.uid : 'anon';
+  return 'enriqMeus_' + u;
+}
+function _enriqLista() {
+  try { return JSON.parse(localStorage.getItem(_enriqKey()) || '[]'); } catch (e) { return []; }
+}
+function _enriqAdd(cnpj, clienteId) {
+  if (clienteId == null) return;
+  let l = _enriqLista().filter(x => String(x.clienteId) !== String(clienteId));
+  l.unshift({ cnpj: (cnpj || '').replace(/\D/g, ''), clienteId: clienteId, ts: Date.now() });
+  if (l.length > 200) l = l.slice(0, 200);
+  try { localStorage.setItem(_enriqKey(), JSON.stringify(l)); } catch (e) {}
+}
+
 async function enriquecerCnpjs() {
   const cnpjs = parseCNPJs(document.getElementById('enriqInput').value || '').filter(validarCNPJ);
   const btn = document.getElementById('btnEnriquecer');
@@ -2475,10 +2493,16 @@ async function enriquecerCnpjs() {
     });
     if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error('HTTP ' + r.status + ' ' + t.slice(0, 150)); }
     const d = await r.json();
-    st.textContent = d.mensagem || `Enviados ${(d.resultados || []).length} CNPJ(s).`;
+    const results = d.resultados || [];
+    // guarda os CNPJs enviados por ESTE usuário (só ele vê depois)
+    results.forEach(it => { if (it && it.cliente_id != null) _enriqAdd(it.cnpj, it.cliente_id); });
+    st.textContent = d.mensagem || `Enviados ${results.length} CNPJ(s).`;
     showToast('CNPJs enviados para enriquecimento!', 'success');
     document.getElementById('enriqInput').value = '';
-    carregarEnriquecimentos();
+    await carregarEnriquecimentos();
+    // abre automaticamente o fluxo do (primeiro) CNPJ que ele enviou
+    const primeiro = results.find(it => it && it.cliente_id != null);
+    if (primeiro) verProgressoTrace(primeiro.cliente_id, (primeiro.cnpj || '').replace(/\D/g, ''));
   } catch (e) {
     st.textContent = '';
     showToast('Erro ao enviar: ' + (e.message || e), 'error');
@@ -2490,19 +2514,33 @@ async function enriquecerCnpjs() {
 async function carregarEnriquecimentos() {
   const body = document.getElementById('enriqBody');
   if (!body) return;
+  const meus = _enriqLista();
+  if (!meus.length) {
+    clearTimeout(enriqPollTimer);
+    body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);font-size:13px">Você ainda não enriqueceu nenhum CNPJ. Cole os CNPJs acima e clique em "Enriquecer" — o fluxo abre automaticamente e o resultado aparece aqui.</td></tr>`;
+    return;
+  }
   try {
-    const r = await trace360Fetch('/clientes?limit=200');
-    if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error('HTTP ' + r.status + ' ' + t.slice(0, 150)); }
-    const d = await r.json();
-    const lista = normalizarListaClientes(d);
-    renderEnriquecimentos(lista);
-    // Enquanto houver algo em andamento e a aba estiver aberta, atualiza sozinho.
-    const emAndamento = lista.some(x => ['pendente', 'enfileirado', 'processando', 'ja_ativo', 'ambiguo_pausado'].includes((x.status || '').toLowerCase()));
+    // Busca o status SÓ dos CNPJs que ESTE usuário enviou (um a um).
+    const itens = await Promise.all(meus.slice(0, 60).map(async (m) => {
+      try {
+        const r = await trace360Fetch('/clientes/' + m.clienteId);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const d = await r.json();
+        return { id: m.clienteId, cnpj: (d.cnpj || m.cnpj), status: d.status, razao_social: d.razao_social || d.nome || d.razao, criado_em: d.criado_em || d.created_at || m.ts, _ts: m.ts };
+      } catch (e) {
+        return { id: m.clienteId, cnpj: m.cnpj, status: '', razao_social: '—', criado_em: m.ts, _ts: m.ts, _erro: true };
+      }
+    }));
+    itens.sort((a, b) => (b._ts || 0) - (a._ts || 0));
+    renderEnriquecimentos(itens);
+    // Enquanto algum dos SEUS estiver em andamento e a aba estiver aberta, atualiza sozinho.
+    const emAndamento = itens.some(x => ['pendente', 'enfileirado', 'processando', 'ja_ativo', 'ambiguo_pausado'].includes((x.status || '').toLowerCase()));
     clearTimeout(enriqPollTimer);
     const abaAtiva = document.getElementById('tab-enriquecimento') && document.getElementById('tab-enriquecimento').classList.contains('active');
     if (emAndamento && abaAtiva) enriqPollTimer = setTimeout(carregarEnriquecimentos, 25000);
   } catch (e) {
-    body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);font-size:13px">Erro ao carregar: ${escapeHtml(e.message || String(e))}.<br>Se for erro de conexão/CORS: a API do Trace360 é interna — só funciona dentro da rede do Arcom, e o domínio do site precisa estar liberado (CORS) na API.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);font-size:13px">Erro ao carregar: ${escapeHtml(e.message || String(e))}.<br>Se for conexão/CORS: a API do Trace360 é interna (só dentro da rede do Arcom) e o domínio do site precisa estar liberado (CORS) na API.</td></tr>`;
   }
 }
 
