@@ -2052,6 +2052,24 @@ Patos de Minas,MG"></textarea>
   </div>
 </div>
 
+<!-- MODAL: FLUXO DE ETAPAS DO ENRIQUECIMENTO (Trace360) -->
+<div class="modal-overlay" id="progressoModal">
+  <div class="modal-box" style="max-width:1000px">
+    <div class="modal-head">
+      <div>
+        <p class="modal-head-razao">Fluxo do enriquecimento</p>
+        <p class="modal-head-cnpj" id="progModalTitulo" style="color:var(--muted)"></p>
+      </div>
+      <button class="modal-close" onclick="fecharProgressoTrace()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <div id="progModalBody" style="overflow-x:auto">
+        <p style="color:var(--muted);font-size:13px"><span class="spinner"></span> Carregando…</p>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: ORIGEM DO ASSESSOR (pra ordenar o PDF por proximidade) -->
 <div class="modal-overlay" id="origemPdfModal">
   <div class="modal-box" style="max-width:480px">
@@ -2500,12 +2518,12 @@ function renderEnriquecimentos(lista) {
     const quando = x.criado_em || x.created_at || x.criadoEm || x.atualizado_em || '';
     const concluido = (status === 'concluido' || status === 'em_cache');
     const falhou = (status === 'erro' || status === 'nao_enriquecivel' || status === 'cancelado');
-    let acoes = '';
+    let acoes = `<button class="btn-eye" title="Ver o fluxo de etapas" onclick="verProgressoTrace('${id}','${cnpj}')"><i class="fas fa-diagram-project"></i> Fluxo</button>`;
     if (concluido) {
-      acoes = `<button class="btn-eye" title="Baixar dossiê (PDF)" onclick="baixarDossieTrace('${id}')"><i class="fas fa-file-pdf"></i> PDF</button>
+      acoes += `<button class="btn-eye" title="Baixar dossiê (PDF)" onclick="baixarDossieTrace('${id}')"><i class="fas fa-file-pdf"></i> PDF</button>
                <button class="btn-eye" title="Ver os dados (JSON)" onclick="verResultadoTrace('${id}')"><i class="fas fa-code"></i> Dados</button>`;
     } else if (falhou) {
-      acoes = `<button class="btn-eye" title="Tentar de novo" onclick="reprocessarTrace('${id}')"><i class="fas fa-rotate-right"></i> Tentar de novo</button>`;
+      acoes += `<button class="btn-eye" title="Tentar de novo" onclick="reprocessarTrace('${id}')"><i class="fas fa-rotate-right"></i> Tentar de novo</button>`;
     }
     return `<tr>
       <td class="td-cnpj" style="font-family:var(--mono)">${cnpj ? fmt(cnpj) : '—'}</td>
@@ -2547,6 +2565,99 @@ async function reprocessarTrace(id) {
     showToast('Reprocessando…', 'success');
     carregarEnriquecimentos();
   } catch (e) { showToast('Erro ao reprocessar: ' + (e.message || e), 'error'); }
+}
+
+// ── Fluxo de etapas (igual ao site da Trace360) ──────────────────────────────
+const TRACE360_ETAPAS_LABEL = {
+  busca: ['Busca no Maps', 'fa-magnifying-glass-location'],
+  desambiguacao: ['Desambiguação', 'fa-code-branch'],
+  foto_card: ['Foto do card', 'fa-image'],
+  street_view: ['Street View', 'fa-street-view'],
+  visao_geral: ['Visão geral', 'fa-eye'],
+  sobre: ['Sobre', 'fa-circle-info'],
+  avaliacoes: ['Avaliações', 'fa-star'],
+  fotos: ['Fotos', 'fa-images'],
+  fontes_externas: ['Fontes externas', 'fa-globe'],
+  analise_deterministica: ['Análise (regras)', 'fa-list-check'],
+  analise_ia: ['Análise (IA)', 'fa-robot'],
+  pdf: ['PDF do dossiê', 'fa-file-pdf']
+};
+let _progPollTimer = null, _progId = null;
+
+function _cardEtapaTrace(et, estado) {
+  const meta = TRACE360_ETAPAS_LABEL[et] || [et, 'fa-circle'];
+  const cfg = {
+    concluido: ['var(--accent)', 'rgba(21,128,61,.12)', '<i class="fas fa-circle-check"></i> Concluído'],
+    processando: ['var(--yellow)', 'rgba(180,83,9,.12)', '<span class="spinner"></span> Processando…'],
+    pulado: ['var(--muted)', 'transparent', 'Pulado'],
+    erro: ['var(--red)', 'rgba(220,38,38,.12)', '<i class="fas fa-triangle-exclamation"></i> Erro'],
+    aguardando: ['var(--border)', 'transparent', 'Aguardando']
+  }[estado] || ['var(--border)', 'transparent', '—'];
+  return `<div style="min-width:118px;border:1px solid ${cfg[0]};background:${cfg[1]};border-radius:10px;padding:9px 11px">
+    <div style="font-size:12px;font-weight:600;margin-bottom:4px"><i class="fas ${meta[1]}" style="color:${cfg[0]};margin-right:5px"></i>${meta[0]}</div>
+    <div style="font-size:11px;color:var(--muted)">${cfg[2]}</div>
+  </div>`;
+}
+
+function renderProgressoFluxo(d) {
+  const box = document.getElementById('progModalBody');
+  if (!box) return;
+  const eventos = Array.isArray(d.eventos) ? d.eventos : [];
+  const st = {};
+  eventos.forEach(ev => { if (ev && ev.etapa) st[String(ev.etapa).toLowerCase()] = String(ev.status || '').toLowerCase(); });
+  const atual = String(d.etapa_atual || '').toLowerCase();
+  const geral = String(d.status || '').toLowerCase();
+  const estado = (et) => {
+    const s = st[et];
+    if (s === 'ok' || s === 'concluido' || s === 'sucesso') return 'concluido';
+    if (s === 'pulado' || s === 'skip' || s === 'skipped' || s === 'ignorado') return 'pulado';
+    if (s === 'erro' || s === 'falha' || s === 'error') return 'erro';
+    if (et === atual || s === 'processando' || s === 'inicio' || s === 'start') return 'processando';
+    if (geral === 'concluido' && !s) return 'concluido';
+    return 'aguardando';
+  };
+  const conector = '<div style="align-self:center;color:var(--muted);font-size:16px">→</div>';
+  const antes = ['busca', 'desambiguacao', 'foto_card', 'street_view'];
+  const paralelo = ['visao_geral', 'sobre', 'avaliacoes', 'fotos'];
+  const depois = ['fontes_externas', 'analise_deterministica', 'analise_ia', 'pdf'];
+  let h = `<div style="display:flex;align-items:stretch;gap:8px;flex-wrap:wrap">`;
+  antes.forEach(et => { h += _cardEtapaTrace(et, estado(et)) + conector; });
+  h += `<div style="border:1px dashed var(--border);border-radius:12px;padding:8px 10px">
+      <div style="font-size:10.5px;color:var(--muted);margin-bottom:6px"><i class="fas fa-shuffle"></i> Leitura (ordem sorteada)</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${paralelo.map(et => _cardEtapaTrace(et, estado(et))).join('')}</div>
+    </div>` + conector;
+  depois.forEach((et, i) => { h += _cardEtapaTrace(et, estado(et)); if (i < depois.length - 1) h += conector; });
+  h += `</div>`;
+  h += `<p style="font-size:12px;color:var(--muted);margin-top:14px">Status geral: ${badgeStatusTrace(geral)}${d.cnpj ? ' · ' + fmt(String(d.cnpj).replace(/\D/g, '')) : ''}</p>`;
+  box.innerHTML = h;
+}
+
+function fecharProgressoTrace() { clearTimeout(_progPollTimer); _progId = null; closeModal('progressoModal'); }
+
+function verProgressoTrace(id, cnpj) {
+  _progId = String(id);
+  openModal('progressoModal');
+  const tit = document.getElementById('progModalTitulo');
+  if (tit) tit.textContent = cnpj ? fmt(cnpj) : ('#' + id);
+  document.getElementById('progModalBody').innerHTML = '<p style="color:var(--muted);font-size:13px"><span class="spinner"></span> Carregando o fluxo…</p>';
+  atualizarProgresso(id);
+}
+
+async function atualizarProgresso(id) {
+  if (String(_progId) !== String(id)) return;
+  try {
+    const r = await trace360Fetch('/clientes/' + id + '/progresso');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if (String(_progId) !== String(id)) return;
+    renderProgressoFluxo(d);
+    clearTimeout(_progPollTimer);
+    const terminal = ['concluido', 'nao_enriquecivel', 'erro', 'cancelado'].includes(String(d.status || '').toLowerCase());
+    const aberto = document.getElementById('progressoModal').classList.contains('open');
+    if (!terminal && aberto) _progPollTimer = setTimeout(() => atualizarProgresso(id), 6000);
+  } catch (e) {
+    document.getElementById('progModalBody').innerHTML = `<p style="color:var(--muted);font-size:13px">Não consegui carregar o fluxo: ${escapeHtml(e.message || String(e))}.<br>(Precisa da API interna acessível + CORS liberado, igual à lista de dossiês.)</p>`;
+  }
 }
 
 // ── MODALS ──────────────────────────────────────────────────────────────────
