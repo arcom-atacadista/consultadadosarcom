@@ -1747,6 +1747,11 @@ Patos de Minas,MG"></textarea>
           <div class="stat-lbl">PDFs gerados <i class="fas fa-arrow-up-right-from-square" style="font-size:9px;opacity:.7"></i></div>
           <div id="dashPdfsHint" style="font-size:10.5px;color:var(--accent);margin-top:4px">clique p/ ver</div>
         </div>
+        <div class="stat-card c-cyan" onclick="abrirCnpjsProspectados()" style="cursor:pointer" title="Ver TODOS os CNPJs já gerados em prospecções (mesmo os que ninguém salvou)">
+          <div class="stat-val" id="dashProsCnpjs">—</div>
+          <div class="stat-lbl">CNPJs prospectados <i class="fas fa-arrow-up-right-from-square" style="font-size:9px;opacity:.7"></i></div>
+          <div style="font-size:10.5px;color:var(--accent);margin-top:4px">clique p/ ver</div>
+        </div>
       </div>
 
       <div class="table-card" style="margin-top:6px">
@@ -1926,6 +1931,37 @@ Patos de Minas,MG"></textarea>
     <div class="modal-footer-row">
       <button class="btn btn-ghost" onclick="copiarCnpjsPdf()"><i class="fas fa-copy"></i> Copiar todos</button>
       <button class="btn btn-primary" onclick="consultarCnpjsPdf()"><i class="fas fa-magnifying-glass"></i> Consultar na aba CNPJ</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: TODOS OS CNPJs PROSPECTADOS (admin) -->
+<div class="modal-overlay" id="cnpjsProsModal">
+  <div class="modal-box" style="max-width:860px">
+    <div class="modal-head">
+      <div>
+        <p class="modal-head-razao">Todos os CNPJs prospectados</p>
+        <p class="modal-head-cnpj" id="cnpjsProsCount" style="color:var(--muted)"></p>
+      </div>
+      <button class="modal-close" onclick="closeModal('cnpjsProsModal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Cada CNPJ que já apareceu em qualquer prospecção (sem repetir), com a cidade, o ramo e quem prospectou. Use "Consultar" pra ver quais já viraram clientes Arcom.</p>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+        <input id="cnpjsProsBusca" class="regional-input" style="flex:1;min-width:220px" placeholder="🔎 Buscar (CNPJ, cidade, ramo, assessor)…" oninput="filtrarCnpjsPros()">
+        <span id="cnpjsProsFiltro" style="font-size:11px;color:var(--muted)"></span>
+      </div>
+      <div class="table-wrap" style="max-height:420px;overflow:auto">
+        <table style="width:100%">
+          <thead><tr><th>CNPJ</th><th>Cidade</th><th>Ramo</th><th>Prospectado por</th><th>Quando</th></tr></thead>
+          <tbody id="cnpjsProsBody"><tr><td colspan="5" style="color:var(--muted);font-size:13px">Carregando…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-footer-row">
+      <button class="btn btn-ghost" onclick="copiarCnpjsPros()"><i class="fas fa-copy"></i> Copiar CNPJs</button>
+      <button class="btn btn-ghost" onclick="exportarCnpjsPros()"><i class="fas fa-file-excel"></i> Exportar Excel</button>
+      <button class="btn btn-primary" onclick="consultarCnpjsPros()"><i class="fas fa-magnifying-glass"></i> Consultar na aba CNPJ</button>
     </div>
   </div>
 </div>
@@ -2614,6 +2650,7 @@ const db = firebase.firestore();
 const usersCol = db.collection('usuarios'); // uma doc por usuário, id = uid, campos: nome, email, motivo, status, criadoEm
 const logsCol = db.collection('consultas_log'); // uma doc por lote de verificação, campos: uid, email, cnpjs, quantidade, criadoEm
 const atividadesCol = db.collection('atividades_log'); // histórico geral: {uid, email, nome, tipo, detalhe, criadoEm}
+const prospeccoesCol = db.collection('prospeccoes'); // uma (ou mais) doc(s) por busca de prospecção: {uid, email, nomeUsuario, cidades, ramos, quantidade, cnpjs, parte, partesTotal, loteId, criadoEm, ts}
 
 // Usuário logado no momento (nome vem do Firestore) — usado no histórico de atividades.
 let usuarioAtual = null;
@@ -2635,6 +2672,40 @@ async function registrarAtividade(tipo, detalhe, extra) {
     }, extra || {}));
   } catch (e) {
     console.error('Erro ao registrar atividade:', e);
+  }
+}
+
+// Guarda TODA prospecção no Firestore (não só as listas que o usuário salva),
+// pra o admin ver tudo que já foi gerado e cruzar com vendas depois. Guarda só
+// os CNPJs (números) + o contexto da busca — leve. Buscas grandes são quebradas
+// em partes pra não estourar o limite de 1 MB por documento do Firestore.
+const PROSPECCAO_CHUNK = 5000; // CNPJs por documento (5000 números ~ 90 KB, bem abaixo de 1 MB)
+async function registrarProspeccaoCompleta(empresas, cidades, ramosLabels) {
+  try {
+    if (!auth.currentUser || !empresas || !empresas.length) return;
+    const cnpjs = [...new Set(empresas.map(e => (e.cnpj || '').replace(/\D/g, '')).filter(Boolean))];
+    if (!cnpjs.length) return;
+    const partesTotal = Math.ceil(cnpjs.length / PROSPECCAO_CHUNK) || 1;
+    const loteId = Date.now();
+    const base = {
+      uid: auth.currentUser.uid,
+      email: auth.currentUser.email,
+      nomeUsuario: (usuarioAtual && usuarioAtual.nome) || '',
+      cidades: cidades.map(c => `${c.cidade}/${c.uf}`),
+      ramos: ramosLabels || [],
+      quantidade: cnpjs.length,
+      loteId, partesTotal,
+      criadoEm: firebase.firestore.FieldValue.serverTimestamp(),
+      ts: loteId
+    };
+    const escritas = [];
+    for (let i = 0; i < partesTotal; i++) {
+      const parte = cnpjs.slice(i * PROSPECCAO_CHUNK, (i + 1) * PROSPECCAO_CHUNK);
+      escritas.push(prospeccoesCol.add(Object.assign({ parte: i, cnpjs: parte }, base)));
+    }
+    await Promise.all(escritas);
+  } catch (e) {
+    console.error('Erro ao guardar a prospecção completa:', e);
   }
 }
 
@@ -2854,6 +2925,104 @@ function consultarCnpjsPdf() {
   const inp = document.getElementById('input');
   if (inp) inp.value = cnpjsPdfIndicados.join('\n');
   closeModal('cnpjsPdfModal');
+  const navConsulta = document.querySelector('.nav-item[onclick*="\'consulta\'"]');
+  showTab('consulta', navConsulta);
+  startVerification();
+}
+
+// ── Todos os CNPJs prospectados (admin) ──────────────────────────────────────
+// Lê a coleção "prospeccoes" (toda busca fica guardada lá), junta e tira os
+// repetidos, e mostra num modal com busca/cópia/exportação/consulta.
+let cnpjsProspectadosCache = []; // [{cnpj, cidade, ramo, quem, ts}]
+const CNPJS_PROS_RENDER_MAX = 1500; // teto de linhas na tabela (o resto entra na cópia/exportação)
+const CNPJS_PROS_DOCS_MAX = 600;    // teto de documentos lidos por vez
+
+async function abrirCnpjsProspectados() {
+  openModal('cnpjsProsModal');
+  const body = document.getElementById('cnpjsProsBody');
+  const cont = document.getElementById('cnpjsProsCount');
+  const filtro = document.getElementById('cnpjsProsBusca');
+  if (filtro) filtro.value = '';
+  const info = document.getElementById('cnpjsProsFiltro'); if (info) info.textContent = '';
+  if (cont) cont.textContent = '';
+  body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);font-size:13px"><span class="spinner"></span> Carregando…</td></tr>`;
+  try {
+    const snap = await prospeccoesCol.orderBy('ts', 'desc').limit(CNPJS_PROS_DOCS_MAX).get();
+    const porCnpj = new Map();
+    snap.forEach(doc => {
+      const d = doc.data();
+      const cidade = (d.cidades || []).join(', ');
+      const ramo = (d.ramos || []).join(', ');
+      const quem = d.nomeUsuario || d.email || '—';
+      const ts = d.ts || 0;
+      (d.cnpjs || []).forEach(cn => {
+        const limpo = (cn || '').replace(/\D/g, '');
+        if (!limpo || porCnpj.has(limpo)) return;
+        porCnpj.set(limpo, { cnpj: limpo, cidade, ramo, quem, ts });
+      });
+    });
+    cnpjsProspectadosCache = [...porCnpj.values()].sort((a, b) => b.ts - a.ts);
+    const capNote = snap.size >= CNPJS_PROS_DOCS_MAX ? ` (mostrando as ${CNPJS_PROS_DOCS_MAX} prospecções mais recentes)` : '';
+    if (cont) cont.textContent = `${cnpjsProspectadosCache.length} CNPJ(s) único(s) já prospectado(s)${capNote}`;
+    renderCnpjsPros(cnpjsProspectadosCache);
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);font-size:13px">Erro ao carregar: ${escapeHtml(e.message || String(e))} — confira as regras do Firestore para a coleção "prospeccoes".</td></tr>`;
+  }
+}
+
+function fmtDataProsp(ts) {
+  if (!ts) return '—';
+  try { return new Date(ts).toLocaleDateString('pt-BR'); } catch (e) { return '—'; }
+}
+
+function renderCnpjsPros(lista) {
+  const body = document.getElementById('cnpjsProsBody');
+  if (!body) return;
+  if (!lista.length) { body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);font-size:13px">Nenhum CNPJ prospectado ainda.</td></tr>`; return; }
+  const render = lista.slice(0, CNPJS_PROS_RENDER_MAX);
+  let h = '';
+  render.forEach(x => {
+    h += `<tr><td class="td-cnpj" style="font-family:var(--mono)">${fmt(x.cnpj)}</td><td style="font-size:12px">${escapeHtml(x.cidade || '—')}</td><td style="font-size:12px;color:var(--muted)">${escapeHtml(x.ramo || '—')}</td><td style="font-size:12px;color:var(--muted)">${escapeHtml(x.quem || '—')}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${fmtDataProsp(x.ts)}</td></tr>`;
+  });
+  if (lista.length > CNPJS_PROS_RENDER_MAX) {
+    h += `<tr><td colspan="5" style="color:var(--accent);font-size:12px;text-align:center">Mostrando ${CNPJS_PROS_RENDER_MAX} de ${lista.length}. Use "Copiar" ou "Exportar" pra levar todos.</td></tr>`;
+  }
+  body.innerHTML = h;
+}
+
+function filtrarCnpjsPros() {
+  const termo = (document.getElementById('cnpjsProsBusca').value || '').trim().toLowerCase();
+  const info = document.getElementById('cnpjsProsFiltro');
+  if (!termo) { renderCnpjsPros(cnpjsProspectadosCache); if (info) info.textContent = ''; return; }
+  const filtrada = cnpjsProspectadosCache.filter(x =>
+    (x.cnpj + ' ' + x.cidade + ' ' + x.ramo + ' ' + x.quem).toLowerCase().includes(termo)
+  );
+  renderCnpjsPros(filtrada);
+  if (info) info.textContent = `${filtrada.length} de ${cnpjsProspectadosCache.length}`;
+}
+
+function copiarCnpjsPros() {
+  if (!cnpjsProspectadosCache.length) { showToast('Nenhum CNPJ pra copiar.', 'error'); return; }
+  navigator.clipboard.writeText(cnpjsProspectadosCache.map(x => x.cnpj).join('\n'))
+    .then(() => showToast(`${cnpjsProspectadosCache.length} CNPJ(s) copiados!`, 'success'))
+    .catch(() => showToast('Erro ao copiar.', 'error'));
+}
+
+async function exportarCnpjsPros() {
+  if (!cnpjsProspectadosCache.length) { showToast('Nada pra exportar.', 'error'); return; }
+  try { await carregarLib('xlsx'); } catch (e) { showToast('Não consegui carregar o exportador. Verifique a internet.', 'error'); return; }
+  const linhas = [['CNPJ', 'Cidade', 'Ramo', 'Prospectado por', 'Quando']];
+  cnpjsProspectadosCache.forEach(x => linhas.push([fmt(x.cnpj), x.cidade || '', x.ramo || '', x.quem || '', fmtDataProsp(x.ts)]));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(linhas), 'CNPJs prospectados');
+  XLSX.writeFile(wb, 'CNPJs_prospectados_' + new Date().toISOString().split('T')[0] + '.xlsx');
+}
+
+function consultarCnpjsPros() {
+  if (!cnpjsProspectadosCache.length) { showToast('Nenhum CNPJ pra consultar.', 'error'); return; }
+  const inp = document.getElementById('input');
+  if (inp) inp.value = cnpjsProspectadosCache.map(x => x.cnpj).join('\n');
+  closeModal('cnpjsProsModal');
   const navConsulta = document.querySelector('.nav-item[onclick*="\'consulta\'"]');
   showTab('consulta', navConsulta);
   startVerification();
@@ -3456,6 +3625,7 @@ async function buscarProspeccao() {
   const cidadesRaw = document.getElementById('prosCidades').value.trim();
   const cnaeSelect = document.getElementById('prosCNAE');
   const cnaesSelecionados = Array.from(cnaeSelect.selectedOptions).map(o => o.value);
+  const ramosLabels = Array.from(cnaeSelect.selectedOptions).map(o => o.textContent.trim());
   const resultado = document.getElementById('prosResultado');
   const concentracao = document.getElementById('prosConcentracao');
 
@@ -3554,6 +3724,8 @@ async function buscarProspeccao() {
   showToast(`${empresasEncontradas.length} prospect(s) encontrado(s)`, 'success');
   const cidadesTxt = cidades.map(c => `${c.cidade}/${c.uf}`).join(', ');
   registrarAtividade('prospeccao', `${empresasEncontradas.length} prospect(s) · ${cidadesTxt} · ${cnaesBusca.length} ramo(s)`);
+  // Guarda a prospecção inteira (todos os CNPJs) no Firestore — não bloqueia a tela.
+  registrarProspeccaoCompleta(empresasEncontradas, cidades, ramosLabels);
 }
 
 // Radar de empresas novas: quantos meses desde a abertura (null se sem data).
