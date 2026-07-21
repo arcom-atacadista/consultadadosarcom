@@ -3812,11 +3812,21 @@ async function resolverMunicipioRF(nomeCidade, uf) {
   const data = await r.json();
   const lista = data.data || [];
   if (!lista.length) throw new Error('Município "' + nomeCidade + '" não encontrado na Receita Federal');
-  // Prioriza o município da UF informada; se não achar match, usa o primeiro
-  // (evita regressão caso a API não traga a UF de forma reconhecível).
-  let item = uf ? lista.find(m => municipioBateUF(m, uf)) : null;
-  if (!item) item = lista[0];
+  // 1) filtra pela UF pedida (cidades homônimas em estados diferentes). Se a API
+  //    não trouxer a UF de forma reconhecível, não regride (mantém a lista toda).
+  const naUF = uf ? lista.filter(m => municipioBateUF(m, uf)) : lista;
+  const candidatos = naUF.length ? naUF : lista;
+  // 2) dentro da UF, prefere o nome EXATO (ex.: "Bonito" e não "Bonito de Minas").
+  const alvo = semAcento(nomeCidade);
+  let item = candidatos.find(m => nomeMunicipioLimpo(m.descricao) === alvo);
+  if (!item) item = candidatos[0];
   return item; // { codigo, descricao }
+}
+
+// Nome do município sem acento e sem o sufixo de UF (" - GO", "/GO", " (GO)").
+function nomeMunicipioLimpo(desc) {
+  let s = String(desc || '').replace(/[\s/(\-]+[A-Za-z]{2}\)?\s*$/, '');
+  return semAcento(s.trim());
 }
 
 // Busca UMA página de estabelecimentos ativos e que ainda NÃO são clientes Arcom
