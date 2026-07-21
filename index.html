@@ -1451,6 +1451,9 @@
     <div class="nav-item" onclick="showTab('prospeccao', this)" title="Prospecção">
       <i class="fas fa-bullseye"></i> Prospecção
     </div>
+    <div class="nav-item" onclick="showTab('enriquecimento', this)" title="Enriquecimento de dados (Trace360)">
+      <i class="fas fa-wand-magic-sparkles"></i> Enriquecimento de dados
+    </div>
     <div class="nav-item" id="navAdmin" onclick="showTab('admin', this)" title="Painel do administrador" style="display:none">
       <i class="fas fa-shield-halved"></i> Painel (admin)
     </div>
@@ -1719,6 +1722,35 @@ Patos de Minas,MG"></textarea>
         </div>
         <div class="modal-body">
           <div id="listasSalvasBox"><p style="color:var(--muted);font-size:13px">Nenhuma lista salva ainda.</p></div>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- TAB: ENRIQUECIMENTO DE DADOS (Trace360) -->
+    <div class="tab-panel" id="tab-enriquecimento">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div>
+          <h2><i class="fas fa-wand-magic-sparkles" style="color:var(--accent);margin-right:8px"></i>Enriquecimento de dados</h2>
+          <p style="color:var(--muted);font-size:13px;margin-top:4px">Cole CNPJs e a Trace360 gera um <strong>dossiê</strong> de cada um (Google Maps, fotos, avaliações, Street View, análise por IA). O processamento leva alguns minutos — o status atualiza sozinho aqui e você baixa o PDF quando ficar pronto.</p>
+        </div>
+        <button class="btn btn-ghost" onclick="carregarEnriquecimentos()"><i class="fas fa-rotate"></i> Atualizar</button>
+      </div>
+      <div class="input-section" style="margin-top:16px">
+        <textarea id="enriqInput" class="cnpj-textarea" style="min-height:100px" placeholder="Cole os CNPJs, um por linha (até 500 por vez)"></textarea>
+        <div class="action-stack">
+          <button class="btn btn-primary" id="btnEnriquecer" onclick="enriquecerCnpjs()"><i class="fas fa-paper-plane"></i> Enriquecer CNPJs</button>
+          <button class="btn btn-ghost" onclick="document.getElementById('enriqInput').value=''"><i class="fas fa-eraser"></i> Limpar</button>
+        </div>
+      </div>
+      <div id="enriqStatus" style="margin-top:8px;font-size:13px;color:var(--muted)"></div>
+      <div class="table-card" style="margin-top:16px">
+        <div class="table-card-header"><i class="fas fa-list-check"></i> Dossiês</div>
+        <div class="table-wrap" style="max-height:520px;overflow:auto">
+          <table style="width:100%">
+            <thead><tr><th>CNPJ</th><th>Empresa</th><th>Status</th><th>Quando</th><th></th></tr></thead>
+            <tbody id="enriqBody"><tr><td colspan="5" style="color:var(--muted);font-size:13px">Abra esta aba para carregar os dossiês…</td></tr></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -2358,6 +2390,150 @@ function showTab(name, el) {
   document.getElementById('tab-'+name).classList.add('active');
   el.classList.add('active');
   if (name === 'admin') renderAdminDashboard();
+  if (name === 'enriquecimento') carregarEnriquecimentos();
+}
+
+// ── ENRIQUECIMENTO DE DADOS (Trace360 AI, via proxy) ─────────────────────────
+// Manda CNPJs -> a Trace360 processa em background (minutos) -> gera dossiê PDF +
+// JSON. Aqui a gente enfileira, acompanha o status (com auto-atualização) e baixa.
+let enriqPollTimer = null;
+function _trace360Url() { return PROXY_URL + '/trace360'; }
+
+function formatarDataTrace(v) {
+  if (!v) return '';
+  try { const d = new Date(v); return isNaN(d.getTime()) ? '' : d.toLocaleString('pt-BR'); } catch (e) { return ''; }
+}
+
+function badgeStatusTrace(s) {
+  s = (s || '').toLowerCase();
+  const map = {
+    pendente: ['badge-inapta', 'Na fila'],
+    enfileirado: ['badge-inapta', 'Na fila'],
+    processando: ['badge-inapta', 'Processando…'],
+    ja_ativo: ['badge-inapta', 'Processando…'],
+    ambiguo_pausado: ['badge-inapta', 'Aguardando escolha do local'],
+    concluido: ['badge-ativa', 'Concluído'],
+    em_cache: ['badge-ativa', 'Concluído'],
+    nao_enriquecivel: ['badge-baixada', 'Sem dados'],
+    erro: ['badge-error', 'Erro'],
+    cancelado: ['badge-baixada', 'Cancelado']
+  };
+  const par = map[s] || ['', s || '—'];
+  return `<span class="badge ${par[0]}">${par[1]}</span>`;
+}
+
+function normalizarListaClientes(d) {
+  if (Array.isArray(d)) return d;
+  return (d && (d.clientes || d.data || d.items || d.resultados)) || [];
+}
+
+async function enriquecerCnpjs() {
+  const cnpjs = parseCNPJs(document.getElementById('enriqInput').value || '').filter(validarCNPJ);
+  const btn = document.getElementById('btnEnriquecer');
+  const st = document.getElementById('enriqStatus');
+  if (!cnpjs.length) { showToast('Cole ao menos um CNPJ válido.', 'error'); return; }
+  if (cnpjs.length > 500) { showToast('Máximo de 500 CNPJs por vez.', 'error'); return; }
+  if (!PROXY_URL) { showToast('Proxy da IA não configurado.', 'error'); return; }
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Enviando…';
+  st.textContent = `Enviando ${cnpjs.length} CNPJ(s) para a Trace360…`;
+  try {
+    const r = await fetch(_trace360Url() + '/clientes', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cnpjs.map(c => ({ cnpj: c })))
+    });
+    if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error('HTTP ' + r.status + ' ' + t.slice(0, 150)); }
+    const d = await r.json();
+    st.textContent = d.mensagem || `Enviados ${(d.resultados || []).length} CNPJ(s).`;
+    showToast('CNPJs enviados para enriquecimento!', 'success');
+    document.getElementById('enriqInput').value = '';
+    carregarEnriquecimentos();
+  } catch (e) {
+    st.textContent = '';
+    showToast('Erro ao enviar: ' + (e.message || e), 'error');
+  } finally {
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Enriquecer CNPJs';
+  }
+}
+
+async function carregarEnriquecimentos() {
+  const body = document.getElementById('enriqBody');
+  if (!body) return;
+  if (!PROXY_URL) { body.innerHTML = `<tr><td colspan="5" style="font-size:13px">Proxy não configurado.</td></tr>`; return; }
+  try {
+    const r = await fetch(_trace360Url() + '/clientes?limit=200');
+    if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error('HTTP ' + r.status + ' ' + t.slice(0, 150)); }
+    const d = await r.json();
+    const lista = normalizarListaClientes(d);
+    renderEnriquecimentos(lista);
+    // Enquanto houver algo em andamento e a aba estiver aberta, atualiza sozinho.
+    const emAndamento = lista.some(x => ['pendente', 'enfileirado', 'processando', 'ja_ativo', 'ambiguo_pausado'].includes((x.status || '').toLowerCase()));
+    clearTimeout(enriqPollTimer);
+    const abaAtiva = document.getElementById('tab-enriquecimento') && document.getElementById('tab-enriquecimento').classList.contains('active');
+    if (emAndamento && abaAtiva) enriqPollTimer = setTimeout(carregarEnriquecimentos, 25000);
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);font-size:13px">Erro ao carregar: ${escapeHtml(e.message || String(e))}.<br>Confira se o proxy foi atualizado (rota <b>/trace360</b>) e o secret <b>TRACE360_API_KEY</b> no Cloudflare.</td></tr>`;
+  }
+}
+
+function renderEnriquecimentos(lista) {
+  const body = document.getElementById('enriqBody');
+  if (!body) return;
+  if (!lista.length) { body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);font-size:13px">Nenhum enriquecimento ainda. Cole CNPJs acima e clique em "Enriquecer".</td></tr>`; return; }
+  body.innerHTML = lista.map(x => {
+    const id = (x.cliente_id != null ? x.cliente_id : x.id);
+    const cnpj = (x.cnpj || '').replace(/\D/g, '');
+    const status = (x.status || '').toLowerCase();
+    const nome = x.razao_social || x.nome || x.razao || '—';
+    const quando = x.criado_em || x.created_at || x.criadoEm || x.atualizado_em || '';
+    const concluido = (status === 'concluido' || status === 'em_cache');
+    const falhou = (status === 'erro' || status === 'nao_enriquecivel' || status === 'cancelado');
+    let acoes = '';
+    if (concluido) {
+      acoes = `<button class="btn-eye" title="Baixar dossiê (PDF)" onclick="baixarDossieTrace('${id}')"><i class="fas fa-file-pdf"></i> PDF</button>
+               <button class="btn-eye" title="Ver os dados (JSON)" onclick="verResultadoTrace('${id}')"><i class="fas fa-code"></i> Dados</button>`;
+    } else if (falhou) {
+      acoes = `<button class="btn-eye" title="Tentar de novo" onclick="reprocessarTrace('${id}')"><i class="fas fa-rotate-right"></i> Tentar de novo</button>`;
+    }
+    return `<tr>
+      <td class="td-cnpj" style="font-family:var(--mono)">${cnpj ? fmt(cnpj) : '—'}</td>
+      <td style="font-size:12px">${escapeHtml(nome)}</td>
+      <td>${badgeStatusTrace(status)}</td>
+      <td style="font-size:12px;color:var(--muted)">${escapeHtml(formatarDataTrace(quando))}</td>
+      <td class="td-actions">${acoes}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function baixarDossieTrace(id) {
+  showToast('Baixando o dossiê…', 'info');
+  try {
+    const r = await fetch(_trace360Url() + '/clientes/' + id + '/dossie');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'dossie-' + id + '.pdf'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
+  } catch (e) { showToast('Erro ao baixar o PDF: ' + (e.message || e), 'error'); }
+}
+
+async function verResultadoTrace(id) {
+  try {
+    const r = await fetch(_trace360Url() + '/clientes/' + id + '/resultado');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  } catch (e) { showToast('Erro ao abrir os dados: ' + (e.message || e), 'error'); }
+}
+
+async function reprocessarTrace(id) {
+  try {
+    const r = await fetch(_trace360Url() + '/clientes/' + id + '/reprocessar', { method: 'POST' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    showToast('Reprocessando…', 'success');
+    carregarEnriquecimentos();
+  } catch (e) { showToast('Erro ao reprocessar: ' + (e.message || e), 'error'); }
 }
 
 // ── MODALS ──────────────────────────────────────────────────────────────────
