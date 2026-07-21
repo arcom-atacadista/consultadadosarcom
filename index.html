@@ -3781,7 +3781,26 @@ async function consultarLoteArcom(cnpjs, callbackProgresso) {
 
 // ── PROSPECÇÃO (GET /v1/estabelecimentos) ───────────────────────────────────
 // Resolve nome de cidade digitado em código de município da RF.
-async function resolverMunicipioRF(nomeCidade) {
+// Código IBGE do estado = 2 primeiros dígitos do código do município.
+const IBGE_UF = { RO:'11', AC:'12', AM:'13', RR:'14', PA:'15', AP:'16', TO:'17', MA:'21', PI:'22', CE:'23', RN:'24', PB:'25', PE:'26', AL:'27', SE:'28', BA:'29', MG:'31', ES:'32', RJ:'33', SP:'35', PR:'41', SC:'42', RS:'43', MS:'50', MT:'51', GO:'52', DF:'53' };
+
+// Um item de município da RF bate com a UF pedida? Checa campo de UF, a descrição
+// (ex.: "SÃO SIMÃO - GO") e o prefixo do código IBGE.
+function municipioBateUF(m, uf) {
+  if (!uf) return true;
+  const alvo = uf.toUpperCase();
+  const campos = [m.uf, m.sigla_uf, m.uf_sigla, m.estado, m.sigla_estado, m.uf_nome].filter(Boolean).map(x => String(x).toUpperCase());
+  if (campos.includes(alvo)) return true;
+  const desc = String(m.descricao || '').toUpperCase();
+  if (new RegExp('[\\s/\\-(]' + alvo + '\\b').test(desc)) return true;
+  const cod = String(m.codigo || m.codigo_ibge || '');
+  if (IBGE_UF[alvo] && cod.startsWith(IBGE_UF[alvo])) return true;
+  return false;
+}
+
+// Resolve o nome da cidade no código de município da RF, respeitando a UF
+// (há cidades homônimas em estados diferentes, ex.: São Simão em GO e em SP).
+async function resolverMunicipioRF(nomeCidade, uf) {
   let token = await obterArcomToken(false);
   const url = ARCOM_API_BASE_URL + '/v1/municipios?q=' + encodeURIComponent(nomeCidade);
   let r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
@@ -3791,8 +3810,12 @@ async function resolverMunicipioRF(nomeCidade) {
   }
   if (!r.ok) throw new Error('Erro ao resolver município (HTTP ' + r.status + ')');
   const data = await r.json();
-  const item = (data.data || [])[0];
-  if (!item) throw new Error('Município "' + nomeCidade + '" não encontrado na Receita Federal');
+  const lista = data.data || [];
+  if (!lista.length) throw new Error('Município "' + nomeCidade + '" não encontrado na Receita Federal');
+  // Prioriza o município da UF informada; se não achar match, usa o primeiro
+  // (evita regressão caso a API não traga a UF de forma reconhecível).
+  let item = uf ? lista.find(m => municipioBateUF(m, uf)) : null;
+  if (!item) item = lista[0];
   return item; // { codigo, descricao }
 }
 
@@ -3927,7 +3950,7 @@ async function buscarProspeccao() {
 
   try {
     for (const { cidade, uf } of cidades) {
-      const municipio = await resolverMunicipioRF(cidade);
+      const municipio = await resolverMunicipioRF(cidade, uf);
       for (const cnae of cnaesBusca) {
         const pagina = await buscarTodosEstabelecimentosArcom(
           { uf, municipioCodigo: municipio.codigo, cnae },
