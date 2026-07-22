@@ -1573,9 +1573,9 @@ Formatos aceitos: 12345678000195 ou 12.345.678/0001-95"></textarea>
           <div class="stat-val" id="statSuspensa">0</div>
           <div class="stat-lbl">Suspensas</div>
         </div>
-        <div class="stat-card c-gray">
-          <div class="stat-val" id="statErro">0</div>
-          <div class="stat-lbl">Erros / Não consultados</div>
+        <div class="stat-card c-green">
+          <div class="stat-val" id="statCliente">0</div>
+          <div class="stat-lbl">Clientes Arcom</div>
         </div>
       </div>
 
@@ -5507,12 +5507,12 @@ async function exportarPreCadastros() {
 }
 
 // ── VERIFICATION ──────────────────────────────────────────────────────────────
-function updateStats(t,b,i,s,e) {
+function updateStats(t,b,i,s,cli) {
   document.getElementById('statTotal').textContent=t;
   document.getElementById('statBaixada').textContent=b;
   document.getElementById('statInapta').textContent=i;
   document.getElementById('statSuspensa').textContent=s;
-  document.getElementById('statErro').textContent=e||0;
+  document.getElementById('statCliente').textContent=cli||0;
 }
 
 async function startVerification() {
@@ -5522,7 +5522,7 @@ async function startVerification() {
   tbody.innerHTML = ''; rows = []; allData = {}; enrichData = {}; erroCNPJs = [];
   const list = parseCNPJs(document.getElementById('input').value);
   if (!list.length) { document.getElementById('status').textContent='⚠ Nenhum CNPJ encontrado'; return; }
-  let total=0,baix=0,inap=0,susp=0,erro=0;
+  let total=0,baix=0,inap=0,susp=0,erro=0,cliente=0;
 
   // Cache DESATIVADO: toda consulta bate na API (não reaproveita resultado anterior).
   // Acumuladores para atualizar histórico/selos UMA vez no fim (em vez de por linha).
@@ -5543,7 +5543,7 @@ async function startVerification() {
       validos.push(cnpj);
     }
   });
-  updateStats(total,baix,inap,susp,erro);
+  updateStats(total,baix,inap,susp,cliente);
 
   // Atualiza o estado (contadores, allData, histórico) e RETORNA o HTML da linha,
   // sem inserir no DOM. O selo de pré-cadastro já vai embutido (evita varrer o DOM depois).
@@ -5552,6 +5552,7 @@ async function startVerification() {
     if (result.situacao.includes('INAPTA')) inap++;
     else if (result.situacao.includes('BAIXADA')) baix++;
     else if (result.situacao.includes('SUSPENSA')) susp++;
+    if (result.clienteArcom === 'Sim') cliente++;
     rows.push([fmt(cnpj),result.razao,result.situacao]);
     renderedCnpjs.push(cnpj);
     histNovos.push({ cnpj, razao: result.razao });
@@ -5586,19 +5587,19 @@ async function startVerification() {
   // Wrappers para o caminho individual (insere imediatamente, uma linha por vez).
   function renderLinha(cnpj, result) {
     tbody.insertAdjacentHTML('beforeend', linhaHtml(cnpj, result));
-    updateStats(total,baix,inap,susp,erro);
+    updateStats(total,baix,inap,susp,cliente);
     renderFavTags(cnpj);
   }
   function renderErro(cnpj, mensagem) {
     tbody.insertAdjacentHTML('beforeend', erroHtml(cnpj, mensagem));
-    updateStats(total,baix,inap,susp,erro);
+    updateStats(total,baix,inap,susp,cliente);
   }
   // Insere muitas linhas em blocos, cedendo o controle ao navegador entre os blocos
   // (evita travar a aba ao renderizar centenas/milhares de linhas de uma vez).
   async function inserirLinhasEmBlocos(partes, tamanhoBloco) {
     for (let i = 0; i < partes.length; i += tamanhoBloco) {
       tbody.insertAdjacentHTML('beforeend', partes.slice(i, i + tamanhoBloco).join(''));
-      updateStats(total,baix,inap,susp,erro);
+      updateStats(total,baix,inap,susp,cliente);
       const feitos = Math.min(i + tamanhoBloco, partes.length);
       document.getElementById('status').textContent = `Exibindo resultados… ${feitos}/${partes.length}`;
       document.getElementById('barFill').style.width = Math.round((feitos/partes.length)*100)+'%';
