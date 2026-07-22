@@ -1801,11 +1801,6 @@ Patos de Minas,MG"></textarea>
           <div class="stat-lbl">PDFs gerados <i class="fas fa-arrow-up-right-from-square" style="font-size:9px;opacity:.7"></i></div>
           <div id="dashPdfsHint" style="font-size:10.5px;color:var(--accent);margin-top:4px">clique p/ ver</div>
         </div>
-        <div class="stat-card c-cyan" onclick="abrirCnpjsProspectados()" style="cursor:pointer" title="Ver TODOS os CNPJs já gerados em prospecções (mesmo os que ninguém salvou)">
-          <div class="stat-val" id="dashProsCnpjs">—</div>
-          <div class="stat-lbl">CNPJs prospectados <i class="fas fa-arrow-up-right-from-square" style="font-size:9px;opacity:.7"></i></div>
-          <div style="font-size:10.5px;color:var(--accent);margin-top:4px">clique p/ ver</div>
-        </div>
       </div>
 
       <div class="table-card" style="margin-top:6px">
@@ -2004,36 +1999,6 @@ Patos de Minas,MG"></textarea>
 </div>
 
 <!-- MODAL: TODOS OS CNPJs PROSPECTADOS (admin) -->
-<div class="modal-overlay" id="cnpjsProsModal">
-  <div class="modal-box" style="max-width:860px">
-    <div class="modal-head">
-      <div>
-        <p class="modal-head-razao">Todos os CNPJs prospectados</p>
-        <p class="modal-head-cnpj" id="cnpjsProsCount" style="color:var(--muted)"></p>
-      </div>
-      <button class="modal-close" onclick="closeModal('cnpjsProsModal')"><i class="fas fa-times"></i></button>
-    </div>
-    <div class="modal-body">
-      <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Cada CNPJ que já apareceu em qualquer prospecção (sem repetir), com a cidade, o ramo e quem prospectou. Use "Consultar" pra ver quais já viraram clientes Arcom.</p>
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
-        <input id="cnpjsProsBusca" class="regional-input" style="flex:1;min-width:220px" placeholder="🔎 Buscar (CNPJ, cidade, ramo, assessor)…" oninput="filtrarCnpjsPros()">
-        <span id="cnpjsProsFiltro" style="font-size:11px;color:var(--muted)"></span>
-      </div>
-      <div class="table-wrap" style="max-height:420px;overflow:auto">
-        <table style="width:100%">
-          <thead><tr><th>CNPJ</th><th>Cidade</th><th>Ramo</th><th>Prospectado por</th><th>Quando</th></tr></thead>
-          <tbody id="cnpjsProsBody"><tr><td colspan="5" style="color:var(--muted);font-size:13px">Carregando…</td></tr></tbody>
-        </table>
-      </div>
-    </div>
-    <div class="modal-footer-row">
-      <button class="btn btn-ghost" onclick="copiarCnpjsPros()"><i class="fas fa-copy"></i> Copiar CNPJs</button>
-      <button class="btn btn-ghost" onclick="exportarCnpjsPros()"><i class="fas fa-file-excel"></i> Exportar Excel</button>
-      <button class="btn btn-primary" onclick="consultarCnpjsPros()"><i class="fas fa-magnifying-glass"></i> Consultar na aba CNPJ</button>
-    </div>
-  </div>
-</div>
-
 <!-- MODAL: MAPA -->
 <div class="modal-overlay" id="mapModal">
   <div class="modal-box" style="max-width:640px">
@@ -3339,9 +3304,7 @@ function consultarCnpjsPdf() {
 // ── Todos os CNPJs prospectados (admin) ──────────────────────────────────────
 // Lê a coleção "prospeccoes" (toda busca fica guardada lá), junta e tira os
 // repetidos, e mostra num modal com busca/cópia/exportação/consulta.
-let cnpjsProspectadosCache = []; // [{cnpj, cidade, ramo, quem, ts}]
-const CNPJS_PROS_RENDER_MAX = 1500; // teto de linhas na tabela (o resto entra na cópia/exportação)
-const CNPJS_PROS_DOCS_MAX = 600;    // teto de documentos lidos por vez
+const CNPJS_PROS_DOCS_MAX = 600;    // teto de documentos lidos por vez (usado pela Conversão/Vendas)
 
 // Valida CNPJ pelos dígitos verificadores — evita que números de 14 dígitos
 // aleatórios (telefone, código interno) da planilha virem "match" à toa.
@@ -3378,82 +3341,9 @@ async function carregarMapaProspeccoes() {
   return { map, docsSize: snap.size };
 }
 
-async function abrirCnpjsProspectados() {
-  openModal('cnpjsProsModal');
-  const body = document.getElementById('cnpjsProsBody');
-  const cont = document.getElementById('cnpjsProsCount');
-  const filtro = document.getElementById('cnpjsProsBusca');
-  if (filtro) filtro.value = '';
-  const info = document.getElementById('cnpjsProsFiltro'); if (info) info.textContent = '';
-  if (cont) cont.textContent = '';
-  body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);font-size:13px"><span class="spinner"></span> Carregando…</td></tr>`;
-  try {
-    const prosp = await carregarMapaProspeccoes();
-    cnpjsProspectadosCache = [...prosp.map.values()].sort((a, b) => b.ts - a.ts);
-    const capNote = prosp.docsSize >= CNPJS_PROS_DOCS_MAX ? ` (mostrando as ${CNPJS_PROS_DOCS_MAX} prospecções mais recentes)` : '';
-    if (cont) cont.textContent = `${cnpjsProspectadosCache.length} CNPJ(s) único(s) já prospectado(s)${capNote}`;
-    renderCnpjsPros(cnpjsProspectadosCache);
-  } catch (e) {
-    body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);font-size:13px">Erro ao carregar: ${escapeHtml(e.message || String(e))} — confira as regras do Firestore para a coleção "prospeccoes".</td></tr>`;
-  }
-}
-
 function fmtDataProsp(ts) {
   if (!ts) return '—';
   try { return new Date(ts).toLocaleDateString('pt-BR'); } catch (e) { return '—'; }
-}
-
-function renderCnpjsPros(lista) {
-  const body = document.getElementById('cnpjsProsBody');
-  if (!body) return;
-  if (!lista.length) { body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);font-size:13px">Nenhum CNPJ prospectado ainda.</td></tr>`; return; }
-  const render = lista.slice(0, CNPJS_PROS_RENDER_MAX);
-  let h = '';
-  render.forEach(x => {
-    h += `<tr><td class="td-cnpj" style="font-family:var(--mono)">${fmt(x.cnpj)}</td><td style="font-size:12px">${escapeHtml(x.cidade || '—')}</td><td style="font-size:12px;color:var(--muted)">${escapeHtml(x.ramo || '—')}</td><td style="font-size:12px;color:var(--muted)">${escapeHtml(x.quem || '—')}</td><td style="font-size:12px;color:var(--muted);font-family:var(--mono)">${fmtDataProsp(x.ts)}</td></tr>`;
-  });
-  if (lista.length > CNPJS_PROS_RENDER_MAX) {
-    h += `<tr><td colspan="5" style="color:var(--accent);font-size:12px;text-align:center">Mostrando ${CNPJS_PROS_RENDER_MAX} de ${lista.length}. Use "Copiar" ou "Exportar" pra levar todos.</td></tr>`;
-  }
-  body.innerHTML = h;
-}
-
-function filtrarCnpjsPros() {
-  const termo = (document.getElementById('cnpjsProsBusca').value || '').trim().toLowerCase();
-  const info = document.getElementById('cnpjsProsFiltro');
-  if (!termo) { renderCnpjsPros(cnpjsProspectadosCache); if (info) info.textContent = ''; return; }
-  const filtrada = cnpjsProspectadosCache.filter(x =>
-    (x.cnpj + ' ' + x.cidade + ' ' + x.ramo + ' ' + x.quem).toLowerCase().includes(termo)
-  );
-  renderCnpjsPros(filtrada);
-  if (info) info.textContent = `${filtrada.length} de ${cnpjsProspectadosCache.length}`;
-}
-
-function copiarCnpjsPros() {
-  if (!cnpjsProspectadosCache.length) { showToast('Nenhum CNPJ pra copiar.', 'error'); return; }
-  navigator.clipboard.writeText(cnpjsProspectadosCache.map(x => x.cnpj).join('\n'))
-    .then(() => showToast(`${cnpjsProspectadosCache.length} CNPJ(s) copiados!`, 'success'))
-    .catch(() => showToast('Erro ao copiar.', 'error'));
-}
-
-async function exportarCnpjsPros() {
-  if (!cnpjsProspectadosCache.length) { showToast('Nada pra exportar.', 'error'); return; }
-  try { await carregarLib('xlsx'); } catch (e) { showToast('Não consegui carregar o exportador. Verifique a internet.', 'error'); return; }
-  const linhas = [['CNPJ', 'Cidade', 'Ramo', 'Prospectado por', 'Quando']];
-  cnpjsProspectadosCache.forEach(x => linhas.push([fmt(x.cnpj), x.cidade || '', x.ramo || '', x.quem || '', fmtDataProsp(x.ts)]));
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(linhas), 'CNPJs prospectados');
-  XLSX.writeFile(wb, 'CNPJs_prospectados_' + new Date().toISOString().split('T')[0] + '.xlsx');
-}
-
-function consultarCnpjsPros() {
-  if (!cnpjsProspectadosCache.length) { showToast('Nenhum CNPJ pra consultar.', 'error'); return; }
-  const inp = document.getElementById('input');
-  if (inp) inp.value = cnpjsProspectadosCache.map(x => x.cnpj).join('\n');
-  closeModal('cnpjsProsModal');
-  const navConsulta = document.querySelector('.nav-item[onclick*="\'consulta\'"]');
-  showTab('consulta', navConsulta);
-  startVerification();
 }
 
 // ── Conversão / Vendas (admin) ───────────────────────────────────────────────
@@ -3573,16 +3463,22 @@ async function exportarConversao() {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(outros), 'Outro caminho');
   XLSX.writeFile(wb, 'Conversao_vendas_' + new Date().toISOString().split('T')[0] + '.xlsx');
 }
+// Lê só a presença RECENTE (últimos 3 min) em vez da coleção inteira. Docs de
+// quem já saiu ficam de fora — economiza leituras do Firestore em escala.
+function lerPresencaRecente() {
+  const corte = firebase.firestore.Timestamp.fromMillis(Date.now() - PRESENCA_ONLINE_MS);
+  return presencaCol.where('lastSeen', '>=', corte).get();
+}
 let _dashUltimaCarga = 0;
 async function renderAdminDashboard(force) {
   // Economia de leituras do Firestore: se buscou há menos de 60s, não relê tudo
   // de novo (a menos que o botão "Atualizar" force). Evita gastar milhares de
   // leituras a cada vez que o painel é aberto.
-  if (!force && _dashUltimaCarga && (Date.now() - _dashUltimaCarga) < 60000) return;
+  if (!force && _dashUltimaCarga && (Date.now() - _dashUltimaCarga) < 300000) return;
   _dashUltimaCarga = Date.now();
   // Métricas de atividade + agregação por usuário (qualquer logado pode ler atividades_log)
   try {
-    const snap = await atividadesCol.orderBy('criadoEm', 'desc').limit(500).get();
+    const snap = await atividadesCol.orderBy('criadoEm', 'desc').limit(250).get();
     const c = { login:0, consulta:0, prospeccao:0, pdf_indicacao:0 };
     const porUsuario = {}; // chave: email -> { nome, email, login, consulta, prospeccao, precadastro, pdf_indicacao }
     const cnpjsPdfSet = new Set(); // todos os CNPJs já enviados em PDFs de indicação
@@ -3625,7 +3521,7 @@ async function renderAdminDashboard(force) {
   }
   // Quem está online agora (presença dos últimos 3 min)
   try {
-    const ps = await presencaCol.get();
+    const ps = await lerPresencaRecente();
     const agora = Date.now();
     const online = [];
     ps.forEach(doc => {
@@ -3645,22 +3541,22 @@ async function renderAdminDashboard(force) {
   renderHistoricoAtividades();
 }
 
-// Coleta as estatísticas do site (online, contas, atividade, consultas por UF,
-// prospecções por cidade) num texto — usada pelo CHAT pra responder perguntas
-// tipo "quantas pessoas online agora?". Cada fonte é tolerante a falha (um
-// usuário não-admin pode não ter permissão de ler tudo).
+// Coleta as estatísticas do site (online, contas, atividade, consultas por UF)
+// num texto — usada pelo CHAT pra responder perguntas tipo "quantas pessoas
+// online agora?". Cada fonte é tolerante a falha (um usuário não-admin pode não
+// ter permissão de ler tudo).
 let _statsCache = { ts: 0, texto: '' };
 async function coletarEstatisticasSite() {
-  // Cache de 60s: se o chat perguntar de novo logo em seguida, reaproveita
-  // (economiza milhares de leituras do Firestore).
-  if (_statsCache.texto && (Date.now() - _statsCache.ts) < 60000) return _statsCache.texto;
+  // Cache de 15 min: o chat quase nunca precisa de número mais fresco que isso,
+  // e cada coleta lê centenas de docs. Reaproveitar economiza MUITAS leituras.
+  if (_statsCache.texto && (Date.now() - _statsCache.ts) < 900000) return _statsCache.texto;
   const linhas = [];
   let hoje = ''; try { hoje = new Date().toLocaleString('pt-BR'); } catch (e) {}
   linhas.push(`Estatísticas do site (agora — ${hoje}):`);
 
   // Online agora
   try {
-    const ps = await presencaCol.get();
+    const ps = await lerPresencaRecente();
     const agora = Date.now(); const online = [];
     ps.forEach(doc => {
       const x = doc.data();
@@ -3680,7 +3576,7 @@ async function coletarEstatisticasSite() {
 
   // Atividade + por usuário + consultas por UF
   try {
-    const snap = await atividadesCol.orderBy('criadoEm', 'desc').limit(500).get();
+    const snap = await atividadesCol.orderBy('criadoEm', 'desc').limit(150).get();
     const c = { login: 0, consulta: 0, prospeccao: 0, pdf_indicacao: 0, precadastro: 0 };
     const porUsuario = {};
     snap.forEach(doc => {
@@ -3700,7 +3596,7 @@ async function coletarEstatisticasSite() {
 
   // Consultas por estado (UF)
   try {
-    const cSnap = await logsCol.orderBy('criadoEm', 'desc').limit(400).get();
+    const cSnap = await logsCol.orderBy('criadoEm', 'desc').limit(150).get();
     const ufConsulta = {}; let semRegiao = 0;
     cSnap.forEach(doc => {
       const d = doc.data();
@@ -3712,22 +3608,9 @@ async function coletarEstatisticasSite() {
     if (ord.length) linhas.push('- CNPJs consultados por estado: ' + ord.map(([uf, n]) => `${uf}: ${n}`).join(', ') + (semRegiao ? ` (+${semRegiao} de consultas antigas sem região)` : ''));
   } catch (e) {}
 
-  // Prospecções por cidade (dedup por loteId)
-  try {
-    const pSnap = await prospeccoesCol.orderBy('ts', 'desc').limit(400).get();
-    const cidade = {}; const lotes = new Set(); let totCnpjs = 0;
-    pSnap.forEach(doc => {
-      const d = doc.data(); const lote = d.loteId || doc.id;
-      if (lotes.has(lote)) return; lotes.add(lote);
-      totCnpjs += (d.quantidade || 0);
-      (d.cidades || []).forEach(cid => {
-        if (!cidade[cid]) cidade[cid] = { buscas: 0, cnpjs: 0 };
-        cidade[cid].buscas++; cidade[cid].cnpjs += (d.quantidade || 0);
-      });
-    });
-    const ord = Object.entries(cidade).sort((a, b) => b[1].cnpjs - a[1].cnpjs).slice(0, 15);
-    if (ord.length) linhas.push(`- Prospecções por cidade (total ${totCnpjs} CNPJs): ` + ord.map(([cid, v]) => `${cid} (${v.cnpjs} CNPJs em ${v.buscas} busca(s))`).join('; '));
-  } catch (e) {}
+  // (A antiga leitura de "prospecções por cidade" varria a coleção "prospeccoes"
+  // — 15 mil+ docs — a cada pergunta. Foi removida pra cortar leituras: o total
+  // de prospecções já aparece na contagem de atividade acima.)
 
   _statsCache = { ts: Date.now(), texto: linhas.join('\n') };
   return _statsCache.texto;
@@ -3829,7 +3712,7 @@ async function renderHistoricoAtividades() {
   const filtro = (document.getElementById('filtroAtividade') || {}).value || '';
   box.innerHTML = '<p style="color:var(--muted);font-size:13px">Carregando...</p>';
   try {
-    const snap = await atividadesCol.orderBy('criadoEm', 'desc').limit(200).get();
+    const snap = await atividadesCol.orderBy('criadoEm', 'desc').limit(120).get();
     if (snap.empty) { box.innerHTML = '<p style="color:var(--muted);font-size:13px">Nenhuma atividade registrada ainda.</p>'; return; }
     let docs = snap.docs.map(d => d.data());
     if (filtro) docs = docs.filter(d => d.tipo === filtro);
@@ -5108,15 +4991,23 @@ async function confirmarSalvarLista() {
 // Cada lista salva (10-30 CNPJs enviados a um assessor) é reconsultada na API do
 // Arcom: quantos JÁ viraram Cliente Arcom = conversão atribuível à prospecção.
 let convListasCache = [];
+let _convUltimaCarga = 0;
 function _convNoPeriodo(l, cutoff) { const t = l.ts || 0; return !cutoff || (t && t >= cutoff); }
 
-async function carregarConversao() {
+async function carregarConversao(force) {
   const box = document.getElementById('convResultado');
   if (!box) return;
+  // Economia de leituras: se já carregou há menos de 5 min, só re-renderiza o
+  // cache (não relê as listas do Firestore de novo a cada vez que abre a aba).
+  if (!force && _convUltimaCarga && (Date.now() - _convUltimaCarga) < 300000 && convListasCache.length) {
+    renderConversaoCache();
+    return;
+  }
   box.innerHTML = `<p style="color:var(--muted);font-size:13px"><span class="spinner"></span> Carregando listas…</p>`;
   try {
     const snap = await listasCol.orderBy('criadoEm', 'desc').limit(500).get();
     convListasCache = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    _convUltimaCarga = Date.now();
     renderConversaoCache();
   } catch (e) {
     box.innerHTML = `<p style="color:var(--muted);font-size:13px">Erro ao carregar as listas: ${escapeHtml(e.message || String(e))}</p>`;
