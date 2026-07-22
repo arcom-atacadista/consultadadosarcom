@@ -46,6 +46,16 @@ Aplicação web (single-page, HTML/CSS/JS puro) para consulta, prospecção e en
 - Geração de insight comercial por empresa usando **Groq** (Llama 3.3 70B) combinado com busca na web via **Tavily**.
 - Geração em lote, **ranking de leads por IA** e chat livre com histórico no navegador.
 
+### Faturamento de postos (contas a pagar)
+- Aba **Faturamento** para o controle do faturamento que os postos enviam (hoje por e-mail/WhatsApp).
+- **Upload dos anexos** (boleto, relatório e nota) — a **IA lê** o boleto/nota (via **Groq** — texto do PDF ou visão para foto/scan) e preenche **posto, valor, vencimento, banco e nº da nota** pra você conferir. Conferência offline pela **linha digitável** do boleto (banco/valor/vencimento) como rede de segurança.
+- **Conferência de documentos**: marca se veio **boleto + relatório + nota** ou o que faltou.
+- **Conciliação de quantidade** (litros do relatório × conferido no **Web SIA**): só libera a **programação de pagamento** quando bate — respeitando o mínimo de **2 dias úteis**.
+- **Dashboard**: todas as faturas **por data de pagamento**, pago/não pago, totais e gráficos (por dia e por posto).
+- Aba de **faturas pendentes por documento** (boleto/relatório/nota faltando).
+- **Assistente em linguagem natural** (Groq): perguntas como *"quanto vence essa semana do posto X?"* ou *"o que está faltando de documento?"*.
+- Observação: nesta versão (100% front-end) os **arquivos não são arquivados** — fica só o registro conferido. Captura automática do e-mail/WhatsApp e arquivamento dos anexos ficam para uma fase 2 (com back-end).
+
 ### Exportação
 - Excel/CSV (com seleção de colunas), JSON e PDF, com abas separadas para sócios e insights.
 
@@ -113,6 +123,7 @@ Também é preciso configurar no **Console do Firebase**:
   - `preCadastros` — pré-cadastros de clientes
   - `consultas_log` — log de consultas (usado no contador de uso mensal)
   - `atividades_log` — histórico geral de atividades (login, consulta, prospecção, PDF, etc.)
+  - `faturas` — faturamento dos postos (contas a pagar): posto, valor, vencimento, documentos, conciliação e status de pagamento (cada usuário vê só as próprias; admin vê todas)
 
 ### Regras do Firestore (exemplo)
 

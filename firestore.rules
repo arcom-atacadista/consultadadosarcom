@@ -81,6 +81,16 @@ service cloud.firestore {
       allow read, update, delete: if isAdmin();
     }
 
+    // ───────── Faturamento de postos (contas a pagar) ─────────
+    // Cada usuário vê/gerencia SÓ as próprias faturas; admin vê todas.
+    // (o app sempre consulta com where('uid','==', meu uid), então o read casa
+    //  com a regra abaixo sem precisar de índice composto)
+    match /faturas/{doc} {
+      allow read:           if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow create:         if isAprovado() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+    }
+
     // Qualquer outra coisa: negado
     match /{document=**} {
       allow read, write: if false;

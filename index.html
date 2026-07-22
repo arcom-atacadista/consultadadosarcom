@@ -1454,6 +1454,9 @@
     <div class="nav-item" onclick="showTab('enriquecimento', this)" title="Enriquecimento de dados (Trace360)">
       <i class="fas fa-wand-magic-sparkles"></i> Enriquecimento de dados
     </div>
+    <div class="nav-item" onclick="showTab('faturamento', this)" title="Faturamento de postos">
+      <i class="fas fa-gas-pump"></i> Faturamento
+    </div>
     <div class="nav-item" id="navAdmin" onclick="showTab('admin', this)" title="Painel do administrador" style="display:none">
       <i class="fas fa-shield-halved"></i> Painel (admin)
     </div>
@@ -1842,6 +1845,7 @@ Patos de Minas,MG"></textarea>
               <option value="razao_social">Razão social</option>
               <option value="precadastro">Pré-cadastro</option>
               <option value="pdf_indicacao">PDF de indicação</option>
+              <option value="fatura">Faturamento</option>
             </select>
             <button class="btn btn-ghost" style="font-size:12px;padding:6px 10px" onclick="abrirAdminPainel()"><i class="fas fa-user-clock"></i> Solicitações de acesso</button>
             <button class="btn btn-ghost" style="font-size:12px;padding:6px 10px" onclick="limparLogsAntigos(90)" title="Apaga SÓ registros de login com mais de 90 dias. NÃO toca em nada com CNPJ (consultas, pré-cadastros, PDFs, prospecções, listas)."><i class="fas fa-broom"></i> Limpar logins antigos</button>
@@ -1849,6 +1853,153 @@ Patos de Minas,MG"></textarea>
         </div>
         <div id="adminAtividadesList" style="padding:14px 18px;max-height:520px;overflow-y:auto">
           <p style="color:var(--muted);font-size:13px">Carregando...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: FATURAMENTO DE POSTOS -->
+    <div class="tab-panel" id="tab-faturamento">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div>
+          <h2><i class="fas fa-gas-pump" style="color:var(--accent);margin-right:8px"></i>Faturamento de postos</h2>
+          <p style="color:var(--muted);font-size:13px;margin-top:4px">Suba os anexos que cada posto envia (<strong>boleto, relatório e nota</strong>). A IA lê o boleto/nota, preenche os campos, arquiva por posto/data e confere o que veio ou faltou. Você concilia a quantidade (relatório × Web SIA) e programa o pagamento (mín. 2 dias úteis).</p>
+        </div>
+        <button class="btn btn-ghost" onclick="fatCarregar(true).then(fatRerender)"><i class="fas fa-rotate"></i> Atualizar</button>
+      </div>
+
+      <!-- sub-abas -->
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:16px 0 4px">
+        <button class="btn btn-primary fat-seg" data-sec="receber" onclick="fatSub('receber',this)"><i class="fas fa-inbox"></i> Receber / conferir</button>
+        <button class="btn btn-ghost fat-seg" data-sec="dashboard" onclick="fatSub('dashboard',this)"><i class="fas fa-chart-line"></i> Dashboard</button>
+        <button class="btn btn-ghost fat-seg" data-sec="pendentes" onclick="fatSub('pendentes',this)"><i class="fas fa-triangle-exclamation"></i> Pendentes por documento</button>
+        <button class="btn btn-ghost fat-seg" data-sec="assistente" onclick="fatSub('assistente',this)"><i class="fas fa-robot"></i> Assistente</button>
+      </div>
+
+      <!-- SEÇÃO: RECEBER / CONFERIR -->
+      <div class="fat-sec" id="fatsec-receber">
+        <div class="table-card" style="margin-top:12px">
+          <div class="table-card-header" id="fatFormTitulo"><i class="fas fa-inbox"></i> Receber / conferir faturamento</div>
+          <div style="padding:16px 18px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:14px">
+              <div style="border:1px dashed var(--border-lit);border-radius:10px;padding:12px">
+                <label class="btn btn-primary" style="font-size:12px;padding:6px 10px;cursor:pointer;width:100%;justify-content:center"><i class="fas fa-file-invoice-dollar"></i> Boleto<input type="file" accept=".pdf,image/*" style="display:none" onchange="fatUpload('boleto',this)"></label>
+                <div id="fatSlotBoleto" style="font-size:12px;margin-top:6px;min-height:16px"></div>
+              </div>
+              <div style="border:1px dashed var(--border-lit);border-radius:10px;padding:12px">
+                <label class="btn btn-primary" style="font-size:12px;padding:6px 10px;cursor:pointer;width:100%;justify-content:center"><i class="fas fa-file-lines"></i> Relatório<input type="file" accept=".pdf,image/*,.xlsx,.xls,.csv" style="display:none" onchange="fatUpload('relatorio',this)"></label>
+                <div id="fatSlotRelatorio" style="font-size:12px;margin-top:6px;min-height:16px"></div>
+              </div>
+              <div style="border:1px dashed var(--border-lit);border-radius:10px;padding:12px">
+                <label class="btn btn-primary" style="font-size:12px;padding:6px 10px;cursor:pointer;width:100%;justify-content:center"><i class="fas fa-receipt"></i> Nota fiscal<input type="file" accept=".pdf,image/*" style="display:none" onchange="fatUpload('nota',this)"></label>
+                <div id="fatSlotNota" style="font-size:12px;margin-top:6px;min-height:16px"></div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+              <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Posto</label><input list="fatPostosList" id="fatPosto" class="regional-input" style="width:100%" placeholder="Nome do posto"><datalist id="fatPostosList"></datalist></div>
+              <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Competência</label><input type="date" id="fatComp" class="regional-input" style="width:100%"></div>
+              <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Valor (R$)</label><input type="number" step="0.01" id="fatValor" class="regional-input" style="width:100%" placeholder="0,00"></div>
+              <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Vencimento</label><input type="date" id="fatVenc" class="regional-input" style="width:100%"></div>
+              <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Banco</label><input type="text" id="fatBanco" class="regional-input" style="width:100%" placeholder="Banco do boleto"></div>
+              <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Nº nota fiscal</label><input type="text" id="fatNota" class="regional-input" style="width:100%" placeholder="NF"></div>
+              <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Qtd. relatório (L)</label><input type="number" step="0.01" id="fatQtdRel" class="regional-input" style="width:100%" placeholder="litros do relatório" oninput="fatSyncStatus()"></div>
+              <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Qtd. Web SIA (L)</label><input type="number" step="0.01" id="fatQtdSia" class="regional-input" style="width:100%" placeholder="litros conferidos" oninput="fatSyncStatus()"></div>
+            </div>
+            <div style="margin-top:12px"><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">Observações</label><input type="text" id="fatObs" class="regional-input" style="width:100%" placeholder="Opcional"></div>
+
+            <div style="margin-top:14px;display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+              <span style="font-size:12px;color:var(--muted)">Documentos recebidos:</span>
+              <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="fatDocBoleto" onchange="fatSetDoc('boleto',this.checked)"> Boleto</label>
+              <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="fatDocRelatorio" onchange="fatSetDoc('relatorio',this.checked)"> Relatório</label>
+              <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="fatDocNota" onchange="fatSetDoc('nota',this.checked)"> Nota fiscal</label>
+            </div>
+            <div id="fatStatusLinha" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"></div>
+
+            <div class="action-stack" style="margin-top:14px">
+              <button class="btn btn-primary" id="fatBtnSalvar" onclick="fatSalvar()"><i class="fas fa-save"></i> Salvar fatura</button>
+              <button class="btn btn-ghost" onclick="fatLimparForm()"><i class="fas fa-eraser"></i> Limpar</button>
+            </div>
+            <p style="font-size:11.5px;color:var(--muted);margin-top:10px"><i class="fas fa-circle-info"></i> A leitura por IA preenche os campos pra você conferir — sempre revise <strong>valor</strong> e <strong>vencimento</strong> antes de salvar. Nesta versão os arquivos em si não ficam guardados (fica só o registro conferido); o arquivamento dos anexos e a captura automática do e-mail/WhatsApp entram numa próxima fase (com back-end).</p>
+          </div>
+        </div>
+
+        <div class="table-card" style="margin-top:16px">
+          <div class="table-card-header"><i class="fas fa-clock-rotate-left"></i> Últimas recebidas</div>
+          <div class="table-wrap" style="overflow:auto">
+            <table style="width:100%">
+              <thead><tr><th>Posto</th><th>Competência</th><th>Valor</th><th>Documentos</th><th>Conciliação</th><th>Pagamento</th><th></th></tr></thead>
+              <tbody id="fatRecentesBody"><tr><td colspan="7" style="color:var(--muted);font-size:13px">Carregando…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- SEÇÃO: DASHBOARD -->
+      <div class="fat-sec" id="fatsec-dashboard" style="display:none">
+        <div class="stats-row dash" style="margin-top:12px">
+          <div class="stat-card c-cyan"><div class="stat-val" id="fatStQtd">—</div><div class="stat-lbl">Faturas (no filtro)</div></div>
+          <div class="stat-card c-yellow"><div class="stat-val" id="fatStAPagar">—</div><div class="stat-lbl">Total a pagar</div></div>
+          <div class="stat-card c-green"><div class="stat-val" id="fatStPago">—</div><div class="stat-lbl">Total pago</div></div>
+          <div class="stat-card c-red"><div class="stat-val" id="fatStPendDoc">—</div><div class="stat-lbl">Pendentes de doc.</div></div>
+          <div class="stat-card c-red"><div class="stat-val" id="fatStDiverg">—</div><div class="stat-lbl">Divergências</div></div>
+        </div>
+
+        <div class="table-card" style="margin-top:16px">
+          <div class="table-card-header" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <i class="fas fa-filter"></i> Filtros
+            <input type="date" id="fatFDe" class="regional-input" style="width:auto;padding:5px 8px;font-size:12px" onchange="fatRenderDashboard()" title="Vencimento a partir de">
+            <input type="date" id="fatFAte" class="regional-input" style="width:auto;padding:5px 8px;font-size:12px" onchange="fatRenderDashboard()" title="Vencimento até">
+            <input type="text" id="fatFPosto" class="regional-input" style="width:auto;padding:5px 8px;font-size:12px" placeholder="Posto" oninput="fatRenderDashboard()">
+            <select id="fatFStatus" class="regional-input" style="width:auto;padding:5px 8px;font-size:12px" onchange="fatRenderDashboard()">
+              <option value="">Todos os status</option><option value="a_pagar">A pagar</option><option value="programado">Programado</option><option value="pago">Pago</option>
+            </select>
+          </div>
+          <div style="padding:14px 18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
+            <div style="height:260px;position:relative"><canvas id="fatChartDia"></canvas></div>
+            <div style="height:260px;position:relative"><canvas id="fatChartPosto"></canvas></div>
+          </div>
+        </div>
+
+        <div class="table-card" style="margin-top:16px">
+          <div class="table-card-header"><i class="fas fa-money-check-dollar"></i> Faturas por data de pagamento</div>
+          <div class="table-wrap" style="max-height:520px;overflow:auto">
+            <table style="width:100%">
+              <thead><tr><th>Posto</th><th>Competência</th><th>Valor</th><th>Documentos</th><th>Conciliação</th><th>Pagamento</th><th></th></tr></thead>
+              <tbody id="fatDashBody"><tr><td colspan="7" style="color:var(--muted);font-size:13px">Carregando…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- SEÇÃO: PENDENTES POR DOCUMENTO -->
+      <div class="fat-sec" id="fatsec-pendentes" style="display:none">
+        <div class="table-card" style="margin-top:12px">
+          <div class="table-card-header" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <i class="fas fa-triangle-exclamation"></i> Faturas pendentes por documento
+            <select id="fatPendDoc" class="regional-input" style="width:auto;padding:5px 8px;font-size:12px;margin-left:auto" onchange="fatRenderPendentes()">
+              <option value="">Qualquer documento faltando</option><option value="boleto">Falta boleto</option><option value="relatorio">Falta relatório</option><option value="nota">Falta nota</option>
+            </select>
+          </div>
+          <div class="table-wrap" style="max-height:560px;overflow:auto">
+            <table style="width:100%">
+              <thead><tr><th>Posto</th><th>Competência</th><th>Valor</th><th>Situação</th><th>Marcar recebido</th><th></th></tr></thead>
+              <tbody id="fatPendBody"><tr><td colspan="6" style="color:var(--muted);font-size:13px">Carregando…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- SEÇÃO: ASSISTENTE -->
+      <div class="fat-sec" id="fatsec-assistente" style="display:none">
+        <div class="table-card" style="margin-top:12px">
+          <div class="table-card-header"><i class="fas fa-robot"></i> Assistente do faturamento</div>
+          <div style="padding:14px 18px">
+            <div id="fatChatMsgs" style="display:flex;flex-direction:column;gap:12px;min-height:220px;max-height:440px;overflow-y:auto;padding:6px"></div>
+            <div style="display:flex;gap:8px;margin-top:12px">
+              <input id="fatChatInput" type="text" class="regional-input" style="width:100%" placeholder="Ex.: quanto vence essa semana do posto X?" maxlength="500" onkeydown="if(event.key==='Enter')fatChatEnviar()">
+              <button class="btn btn-primary" onclick="fatChatEnviar()"><i class="fas fa-paper-plane"></i></button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -2323,6 +2474,7 @@ const LIBS = {
   xlsx:     'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
   html2pdf: 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js',
   qrcode:   'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',
+  pdfjs:    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
 };
 const _libsPromise = {};
 function carregarLib(nome) {
@@ -2415,6 +2567,7 @@ function showTab(name, el) {
   el.classList.add('active');
   if (name === 'admin') renderAdminDashboard();
   if (name === 'enriquecimento') carregarEnriquecimentos();
+  if (name === 'faturamento') initFaturamento();
 }
 
 // ── ENRIQUECIMENTO DE DADOS (Trace360 AI, via proxy) ─────────────────────────
@@ -3733,7 +3886,8 @@ const ATIVIDADE_META = {
   prospeccao:    { icon: 'fa-bullseye',         label: 'Prospecção',       cor: '#FBBF24' },
   razao_social:  { icon: 'fa-building',         label: 'Razão social',     cor: '#A78BFA' },
   precadastro:   { icon: 'fa-user-plus',        label: 'Pré-cadastro',     cor: '#4ADE80' },
-  pdf_indicacao: { icon: 'fa-file-pdf',         label: 'PDF de indicação', cor: '#F87171' }
+  pdf_indicacao: { icon: 'fa-file-pdf',         label: 'PDF de indicação', cor: '#F87171' },
+  fatura:        { icon: 'fa-gas-pump',         label: 'Faturamento',      cor: '#4ADE80' }
 };
 
 // Apaga SÓ registros de LOGIN antigos (ruído de acesso). NUNCA apaga nada com
@@ -6804,5 +6958,641 @@ async function chatEnviar(){
 renderMensagensChat(); // exibe o histórico salvo assim que a página carrega
 </script>
 
+
+<script>
+// ══════════════════════════════════════════════════════════════════════════
+// FATURAMENTO DE POSTOS — controle de contas a pagar (boleto + relatório + nota)
+// ------------------------------------------------------------------------------
+// Fluxo: o posto manda o faturamento; aqui a pessoa SOBE os anexos (boleto,
+// relatório e nota). A IA lê o boleto/nota (valor, vencimento, posto, banco),
+// arquiva por posto/data, confere o que veio/faltou, concilia a quantidade
+// (relatório × Web SIA) e libera a PROGRAMAÇÃO de pagamento (mín. 2 dias úteis).
+// Reaproveita: db (Firestore), auth, carregarLib, showToast, escapeHtml,
+// registrarAtividade, GROQ_API_URL/MODELOS, formatarBolhaChat.
+//
+// v1 = 100% front-end (sem back-end). Os ARQUIVOS não são guardados — fica só o
+// registro conferido. Puxar anexo do e-mail/WhatsApp e arquivar o PDF entram na
+// fase 2 (com back-end). O código já isola a leitura (lerDocumento) pra facilitar.
+// ══════════════════════════════════════════════════════════════════════════
+
+const GROQ_MODEL_VISAO = 'meta-llama/llama-4-scout-17b-16e-instruct'; // multimodal (Groq)
+const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+function faturasCol() { return db.collection('faturas'); }
+
+// ── estado ──────────────────────────────────────────────────────────────────
+let _faturas = [];
+let _faturasCarregado = false;
+let _fatSub = 'receber';
+let _fatDraft = { docs: { boleto: false, relatorio: false, nota: false }, linhaDigitavel: '', statusPagamento: 'a_pagar', programadoPara: null };
+let _chartFatDia = null, _chartFatPosto = null;
+let _fatChat = [];
+let _fatChatLoading = false;
+
+// ── utilitários ───────────────────────────────────────────────────────────────
+function fmtBRL(v) { return (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+function fmtData(iso) { if (!iso) return '—'; const p = String(iso).slice(0, 10).split('-'); return (p[2] && p[1] && p[0]) ? `${p[2]}/${p[1]}/${p[0]}` : iso; }
+function _fatIso(dt) { const p = n => String(n).padStart(2, '0'); return dt.getFullYear() + '-' + p(dt.getMonth() + 1) + '-' + p(dt.getDate()); }
+function _fatHoje() { return _fatIso(new Date()); }
+function _fatCap(s) { return String(s).charAt(0).toUpperCase() + String(s).slice(1); }
+function _fatNorm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+function _fatSet(id, v) { const e = document.getElementById(id); if (e) e.textContent = v; }
+function _fatVal(id) { const e = document.getElementById(id); return e ? e.value : ''; }
+function _fatNumOuNull(id) { const v = parseFloat(_fatVal(id)); return isNaN(v) ? null : v; }
+function _fatMaxISO(a, b) { if (!a) return b; if (!b) return a; return a > b ? a : b; }
+
+// próximo(s) dia(s) útil(eis) — pula sábado/domingo (feriados não considerados)
+function _fatDiasUteis(base, n) {
+  const d = new Date(base.getTime());
+  let add = 0;
+  while (add < n) { d.setDate(d.getDate() + 1); const w = d.getDay(); if (w !== 0 && w !== 6) add++; }
+  return d;
+}
+function _fatMinProg() { return _fatIso(_fatDiasUteis(new Date(), 2)); }
+
+// ── bancos (código → nome) ────────────────────────────────────────────────────
+const BANCOS = { '001': 'Banco do Brasil', '033': 'Santander', '041': 'Banrisul', '070': 'BRB', '077': 'Inter', '104': 'Caixa', '208': 'BTG Pactual', '212': 'Banco Original', '237': 'Bradesco', '246': 'ABC Brasil', '260': 'Nubank', '336': 'C6 Bank', '341': 'Itaú', '389': 'Mercantil', '422': 'Safra', '623': 'Banco Pan', '633': 'Rendimento', '655': 'Votorantim', '745': 'Citibank', '748': 'Sicredi', '756': 'Sicoob' };
+function nomeBanco(cod) { cod = String(cod || '').replace(/\D/g, '').padStart(3, '0'); if (cod === '000') return ''; return BANCOS[cod] ? BANCOS[cod] + ' (' + cod + ')' : 'Banco ' + cod; }
+
+// ── linha digitável (boleto bancário de 47 dígitos) ────────────────────────────
+// Reconstrói o código de barras (44) a partir da linha digitável (47) e extrai
+// banco, valor e fator de vencimento. 100% offline — serve de conferência.
+function parseLinha47(linha) {
+  const s = String(linha || '').replace(/\D/g, '');
+  if (s.length !== 47) return null;
+  const c1 = s.slice(0, 10), c2 = s.slice(10, 21), c3 = s.slice(21, 32), c4 = s.slice(32, 33), c5 = s.slice(33, 47);
+  const barcode = c1.slice(0, 4) + c4 + c5 + c1.slice(4, 9) + c2.slice(0, 10) + c3.slice(0, 10);
+  if (barcode.length !== 44) return null;
+  const banco = barcode.slice(0, 3);
+  const fator = parseInt(barcode.slice(5, 9), 10);
+  const valor = parseInt(barcode.slice(9, 19), 10) / 100;
+  return { banco, valor: valor || null, vencimento: fatorParaISO(fator) };
+}
+// Fator de vencimento → data. Base 07/10/1997. Trata o rollover FEBRABAN de
+// 22/02/2025 (o fator reiniciou): escolhe o ciclo cuja data cai mais perto de hoje.
+function fatorParaISO(fator) {
+  fator = parseInt(fator, 10);
+  if (!fator) return null;
+  const base = Date.UTC(1997, 9, 7);
+  const cand1 = base + fator * 86400000;
+  const cand2 = base + (fator + 9000) * 86400000;
+  const hoje = Date.now();
+  const escolhido = Math.abs(cand1 - hoje) <= Math.abs(cand2 - hoje) ? cand1 : cand2;
+  const d = new Date(escolhido);
+  const p = n => String(n).padStart(2, '0');
+  return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate());
+}
+function acharLinhaDigitavel(texto) {
+  const m = String(texto || '').match(/\d[\d.\s]{44,62}\d/g) || [];
+  for (const cand of m) { const s = cand.replace(/\D/g, ''); if (s.length === 47) return s; }
+  return null;
+}
+
+// ── leitura de documento (PDF texto → IA texto; imagem/scan → IA visão) ─────────
+async function pdfDoArquivo(file) {
+  await carregarLib('pdfjs');
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+  const buf = await file.arrayBuffer();
+  return await window.pdfjsLib.getDocument({ data: buf }).promise;
+}
+async function textoDoPdf(pdf) {
+  let out = '';
+  const n = Math.min(pdf.numPages, 3);
+  for (let i = 1; i <= n; i++) { const pg = await pdf.getPage(i); const tc = await pg.getTextContent(); out += tc.items.map(x => x.str).join(' ') + '\n'; }
+  return out.trim();
+}
+async function imagemDoPdf(pdf) {
+  const pg = await pdf.getPage(1);
+  const vp = pg.getViewport({ scale: 2 });
+  const cv = document.createElement('canvas');
+  cv.width = vp.width; cv.height = vp.height;
+  await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+  return cv.toDataURL('image/jpeg', 0.85);
+}
+function _fatDownscale(dataUrl, max) {
+  return new Promise(res => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if (Math.max(w, h) > max) { const r = max / Math.max(w, h); w = Math.round(w * r); h = Math.round(h * r); }
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      cv.getContext('2d').drawImage(img, 0, 0, w, h);
+      res(cv.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => res(dataUrl);
+    img.src = dataUrl;
+  });
+}
+async function imagemDoArquivo(file) {
+  const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+  return await _fatDownscale(dataUrl, 1600);
+}
+
+const PROMPT_EXTRACAO = `Você lê documentos de faturamento de POSTOS DE COMBUSTÍVEL (boleto bancário e nota fiscal) para contas a pagar. Extraia os campos e responda SOMENTE com JSON válido, sem texto antes ou depois. NÃO invente: se não encontrar um campo, use null.
+Formato exato:
+{
+  "posto": "nome do posto / beneficiário / fornecedor (razão social ou nome fantasia) ou null",
+  "valor": número com ponto decimal, sem "R$" nem separador de milhar, ou null,
+  "vencimento": "AAAA-MM-DD (data de vencimento/pagamento do boleto) ou null",
+  "banco": "código de 3 dígitos do banco do boleto ou null",
+  "linha_digitavel": "somente os dígitos da linha digitável do boleto, ou null",
+  "numero_nota": "número da nota fiscal, ou null",
+  "tipo_documento": "boleto | nota | relatorio | outro"
+}`;
+
+function parseJsonSeguro(txt) {
+  if (!txt) return {};
+  let s = String(txt).trim().replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
+  const i = s.indexOf('{'), j = s.lastIndexOf('}');
+  if (i >= 0 && j > i) s = s.slice(i, j + 1);
+  try { return JSON.parse(s); } catch (e) { return {}; }
+}
+async function extrairPorTexto(texto) {
+  const r = await fetch(GROQ_API_URL, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: GROQ_MODEL, temperature: 0, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: PROMPT_EXTRACAO }, { role: 'user', content: 'Documento:\n' + texto.slice(0, 9000) }] })
+  });
+  if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error('IA HTTP ' + r.status + ' ' + t.slice(0, 120)); }
+  const d = await r.json();
+  return parseJsonSeguro(d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content);
+}
+async function extrairPorImagem(dataUrl) {
+  const r = await fetch(GROQ_API_URL, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: GROQ_MODEL_VISAO, temperature: 0, messages: [{ role: 'user', content: [{ type: 'text', text: PROMPT_EXTRACAO }, { type: 'image_url', image_url: { url: dataUrl } }] }] })
+  });
+  if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error('IA visão HTTP ' + r.status + ' ' + t.slice(0, 120)); }
+  const d = await r.json();
+  return parseJsonSeguro(d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content);
+}
+
+// Ponto único de leitura (facilita a fase 2 com back-end).
+async function lerDocumento(file) {
+  const nome = (file.name || '').toLowerCase();
+  const ehPdf = file.type === 'application/pdf' || nome.endsWith('.pdf');
+  let extra = {};
+  if (ehPdf) {
+    const pdf = await pdfDoArquivo(file);
+    const texto = await textoDoPdf(pdf);
+    if (texto && texto.replace(/\s/g, '').length > 40) {
+      extra = await extrairPorTexto(texto);
+      const ld = (extra.linha_digitavel && String(extra.linha_digitavel).replace(/\D/g, '')) || acharLinhaDigitavel(texto);
+      const p = parseLinha47(ld);
+      if (p) { extra.linha_digitavel = extra.linha_digitavel || ld; extra.banco = extra.banco || p.banco; if (extra.valor == null) extra.valor = p.valor; extra.vencimento = extra.vencimento || p.vencimento; }
+    } else {
+      const img = await imagemDoPdf(pdf);
+      extra = await extrairPorImagem(img);
+      const p = parseLinha47(extra.linha_digitavel);
+      if (p) { extra.banco = extra.banco || p.banco; if (extra.valor == null) extra.valor = p.valor; extra.vencimento = extra.vencimento || p.vencimento; }
+    }
+  } else {
+    const img = await imagemDoArquivo(file);
+    extra = await extrairPorImagem(img);
+    const p = parseLinha47(extra.linha_digitavel);
+    if (p) { extra.banco = extra.banco || p.banco; if (extra.valor == null) extra.valor = p.valor; extra.vencimento = extra.vencimento || p.vencimento; }
+  }
+  return extra;
+}
+
+// ── status derivados ────────────────────────────────────────────────────────
+function docsFaltando(f) { const d = f.docs || {}; const falta = []; if (!d.boleto) falta.push('boleto'); if (!d.relatorio) falta.push('relatório'); if (!d.nota) falta.push('nota'); return falta; }
+function docsCompletos(f) { return docsFaltando(f).length === 0; }
+function conciliaStatus(f) {
+  const temA = f.qtdRelatorio != null && f.qtdRelatorio !== '';
+  const temB = f.qtdWebSia != null && f.qtdWebSia !== '';
+  if (!temA || !temB) return 'pendente';
+  const a = Number(f.qtdRelatorio), b = Number(f.qtdWebSia);
+  const dif = Math.abs(a - b);
+  const tol = Math.max(0.01, a * 0.005); // 0,5% de tolerância
+  return dif <= tol ? 'ok' : 'divergente';
+}
+function podeProgramar(f) { return docsCompletos(f) && conciliaStatus(f) === 'ok'; }
+
+function badgeDocs(f) { const falta = docsFaltando(f); return falta.length ? `<span class="badge badge-baixada">Falta: ${falta.join(', ')}</span>` : `<span class="badge badge-ativa">Completo</span>`; }
+function badgeConcilia(f) { const s = conciliaStatus(f); return s === 'ok' ? '<span class="badge badge-ativa">Bateu</span>' : s === 'divergente' ? '<span class="badge badge-error">Divergente</span>' : '<span class="badge badge-inapta">Pendente</span>'; }
+function badgePagamento(f) { const s = f.statusPagamento; if (s === 'pago') return '<span class="badge badge-ativa">Pago</span>'; if (s === 'programado') return `<span class="badge badge-suspensa">Programado ${fmtData(f.programadoPara)}</span>`; return '<span class="badge badge-inapta">A pagar</span>'; }
+
+// ── carregar / navegar ─────────────────────────────────────────────────────
+async function initFaturamento() {
+  if (!_faturasCarregado) await fatCarregar();
+  const btn = document.querySelector('#tab-faturamento .fat-seg[data-sec="' + _fatSub + '"]');
+  fatSub(_fatSub, btn);
+}
+async function fatCarregar(force) {
+  const uid = auth.currentUser && auth.currentUser.uid;
+  if (!uid) { _faturas = []; _faturasCarregado = true; return; }
+  try {
+    const snap = await faturasCol().where('uid', '==', uid).get();
+    _faturas = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    _faturas.sort((a, b) => String(a.vencimento || 'zzzz').localeCompare(String(b.vencimento || 'zzzz')));
+    _faturasCarregado = true;
+    fatAtualizarDatalist();
+  } catch (e) { showToast('Não consegui carregar as faturas: ' + (e.message || e), 'error'); }
+}
+function fatRerender() { if (_fatSub === 'dashboard') fatRenderDashboard(); else if (_fatSub === 'pendentes') fatRenderPendentes(); else if (_fatSub === 'receber') fatRenderRecentes(); else _fatChatRender(); }
+function fatSub(sec, el) {
+  _fatSub = sec;
+  document.querySelectorAll('#tab-faturamento .fat-seg').forEach(b => { b.classList.remove('btn-primary'); b.classList.add('btn-ghost'); });
+  if (el) { el.classList.remove('btn-ghost'); el.classList.add('btn-primary'); }
+  document.querySelectorAll('#tab-faturamento .fat-sec').forEach(s => { s.style.display = 'none'; });
+  const active = document.getElementById('fatsec-' + sec);
+  if (active) active.style.display = '';
+  if (sec === 'dashboard') fatRenderDashboard();
+  else if (sec === 'pendentes') fatRenderPendentes();
+  else if (sec === 'assistente') _fatChatRender();
+  else fatRenderRecentes();
+}
+function fatAtualizarDatalist() {
+  const dl = document.getElementById('fatPostosList');
+  if (!dl) return;
+  const set = Array.from(new Set(_faturas.map(f => f.posto).filter(Boolean))).sort();
+  dl.innerHTML = set.map(p => `<option value="${escapeHtml(p)}"></option>`).join('');
+}
+
+// ── upload + preenchimento do formulário ───────────────────────────────────
+function fatSlotStatus(tipo, nome, estado) {
+  const el = document.getElementById('fatSlot' + _fatCap(tipo));
+  if (!el) return;
+  if (estado === 'lendo') { el.innerHTML = '<i class="fas fa-spinner fa-spin"></i> lendo…'; el.style.color = 'var(--muted)'; }
+  else if (estado === 'ok') { el.innerHTML = '<i class="fas fa-circle-check"></i> ' + (nome ? escapeHtml(nome) : 'recebido'); el.style.color = 'var(--accent)'; }
+  else if (estado === 'erro') { el.innerHTML = '<i class="fas fa-triangle-exclamation"></i> ' + (nome ? escapeHtml(nome) : 'anexado (leitura falhou)'); el.style.color = 'var(--yellow)'; }
+  else { el.innerHTML = ''; }
+}
+function fatSetDoc(tipo, val) {
+  _fatDraft.docs[tipo] = val;
+  const cb = document.getElementById('fatDoc' + _fatCap(tipo));
+  if (cb) cb.checked = val;
+  if (!val) fatSlotStatus(tipo, '', '');
+  fatSyncStatus();
+}
+function fatAplicarExtracao(ex) {
+  if (!ex) return;
+  const set = (id, v) => { const el = document.getElementById(id); if (el && v != null && v !== '' && !el.value) el.value = v; };
+  if (ex.posto) set('fatPosto', ex.posto);
+  if (ex.valor != null) set('fatValor', ex.valor);
+  if (ex.vencimento) set('fatVenc', ex.vencimento);
+  if (ex.banco) set('fatBanco', nomeBanco(ex.banco));
+  if (ex.numero_nota) set('fatNota', ex.numero_nota);
+  if (ex.linha_digitavel) _fatDraft.linhaDigitavel = String(ex.linha_digitavel).replace(/\D/g, '');
+}
+async function fatUpload(tipo, input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  fatSetDoc(tipo, true);
+  if (tipo === 'boleto' || tipo === 'nota') {
+    fatSlotStatus(tipo, file.name, 'lendo');
+    try {
+      const ex = await lerDocumento(file);
+      fatAplicarExtracao(ex);
+      fatSlotStatus(tipo, file.name, 'ok');
+      showToast('Li o ' + tipo + ' e preenchi os campos. Confira antes de salvar.', 'success');
+    } catch (e) {
+      fatSlotStatus(tipo, file.name, 'erro');
+      showToast('Anexei o ' + tipo + ', mas não li automaticamente (' + (e.message || e) + '). Preencha na mão.', 'error');
+    }
+  } else {
+    fatSlotStatus(tipo, file.name, 'ok');
+  }
+  input.value = '';
+}
+function fatSyncStatus() {
+  const el = document.getElementById('fatStatusLinha');
+  if (!el) return;
+  const falta = [];
+  ['boleto', 'relatorio', 'nota'].forEach(t => { if (!_fatDraft.docs[t]) falta.push(t === 'relatorio' ? 'relatório' : t); });
+  const rel = parseFloat(_fatVal('fatQtdRel')), sia = parseFloat(_fatVal('fatQtdSia'));
+  let conc;
+  if (!isNaN(rel) && !isNaN(sia)) {
+    const dif = Math.abs(rel - sia), tol = Math.max(0.01, rel * 0.005);
+    conc = dif <= tol ? '<span class="badge badge-ativa">Quantidade bate</span>' : '<span class="badge badge-error">Divergência de ' + (Math.round(dif * 100) / 100) + '</span>';
+  } else conc = '<span class="badge badge-inapta">Conciliação pendente</span>';
+  const docsB = falta.length ? '<span class="badge badge-baixada">Falta: ' + falta.join(', ') + '</span>' : '<span class="badge badge-ativa">Documentos completos</span>';
+  el.innerHTML = docsB + ' ' + conc;
+}
+function fatLimparForm() {
+  _fatDraft = { docs: { boleto: false, relatorio: false, nota: false }, linhaDigitavel: '', statusPagamento: 'a_pagar', programadoPara: null };
+  ['fatPosto', 'fatValor', 'fatVenc', 'fatBanco', 'fatNota', 'fatQtdRel', 'fatQtdSia', 'fatObs'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+  const comp = document.getElementById('fatComp'); if (comp) comp.value = _fatHoje();
+  ['boleto', 'relatorio', 'nota'].forEach(t => { const cb = document.getElementById('fatDoc' + _fatCap(t)); if (cb) cb.checked = false; fatSlotStatus(t, '', ''); });
+  const tt = document.getElementById('fatFormTitulo'); if (tt) tt.innerHTML = '<i class="fas fa-inbox"></i> Receber / conferir faturamento';
+  const bs = document.getElementById('fatBtnSalvar'); if (bs) bs.innerHTML = '<i class="fas fa-save"></i> Salvar fatura';
+  fatSyncStatus();
+}
+async function fatSalvar() {
+  const uid = auth.currentUser && auth.currentUser.uid;
+  if (!uid) { showToast('Faça login para salvar.', 'error'); return; }
+  const posto = (_fatVal('fatPosto') || '').trim();
+  if (!posto) { showToast('Informe o posto.', 'error'); return; }
+  let nome = '';
+  try { nome = (userDoc && userDoc.nome) || ''; } catch (e) { nome = ''; }
+  const obj = {
+    uid, email: auth.currentUser.email || '', nomeUsuario: nome || (auth.currentUser.email || ''),
+    posto,
+    competencia: _fatVal('fatComp') || _fatHoje(),
+    valor: _fatNumOuNull('fatValor'),
+    vencimento: _fatVal('fatVenc') || null,
+    banco: (_fatVal('fatBanco') || '').trim(),
+    numeroNota: (_fatVal('fatNota') || '').trim(),
+    linhaDigitavel: _fatDraft.linhaDigitavel || '',
+    docs: { boleto: !!_fatDraft.docs.boleto, relatorio: !!_fatDraft.docs.relatorio, nota: !!_fatDraft.docs.nota },
+    qtdRelatorio: _fatNumOuNull('fatQtdRel'),
+    qtdWebSia: _fatNumOuNull('fatQtdSia'),
+    statusPagamento: _fatDraft.statusPagamento || 'a_pagar',
+    programadoPara: _fatDraft.programadoPara || null,
+    obs: (_fatVal('fatObs') || '').trim(),
+    ts: Date.now()
+  };
+  try {
+    if (_fatDraft.id) {
+      obj.atualizadoEm = firebase.firestore.FieldValue.serverTimestamp();
+      await faturasCol().doc(_fatDraft.id).update(obj);
+      registrarAtividade('fatura', 'Atualizou faturamento do posto ' + posto);
+      showToast('Fatura atualizada.', 'success');
+    } else {
+      obj.criadoEm = firebase.firestore.FieldValue.serverTimestamp();
+      await faturasCol().add(obj);
+      registrarAtividade('fatura', 'Cadastrou faturamento do posto ' + posto);
+      showToast('Fatura salva.', 'success');
+    }
+    fatLimparForm();
+    await fatCarregar(true);
+    fatRenderRecentes();
+  } catch (e) { showToast('Erro ao salvar: ' + (e.message || e), 'error'); }
+}
+
+// ── ações por linha ─────────────────────────────────────────────────────────
+function fatEditar(id) {
+  const f = _faturas.find(x => x.id === id);
+  if (!f) return;
+  _fatDraft = { id: f.id, docs: Object.assign({ boleto: false, relatorio: false, nota: false }, f.docs || {}), linhaDigitavel: f.linhaDigitavel || '', statusPagamento: f.statusPagamento || 'a_pagar', programadoPara: f.programadoPara || null };
+  const put = (id2, v) => { const e = document.getElementById(id2); if (e) e.value = (v == null ? '' : v); };
+  put('fatPosto', f.posto); put('fatComp', (f.competencia || '').slice(0, 10)); put('fatValor', f.valor); put('fatVenc', (f.vencimento || '').slice(0, 10));
+  put('fatBanco', f.banco); put('fatNota', f.numeroNota); put('fatQtdRel', f.qtdRelatorio); put('fatQtdSia', f.qtdWebSia); put('fatObs', f.obs);
+  ['boleto', 'relatorio', 'nota'].forEach(t => { const cb = document.getElementById('fatDoc' + _fatCap(t)); if (cb) cb.checked = !!_fatDraft.docs[t]; fatSlotStatus(t, '', _fatDraft.docs[t] ? 'ok' : ''); });
+  const tt = document.getElementById('fatFormTitulo'); if (tt) tt.innerHTML = '<i class="fas fa-pen"></i> Editar / conferir fatura';
+  const bs = document.getElementById('fatBtnSalvar'); if (bs) bs.innerHTML = '<i class="fas fa-save"></i> Atualizar fatura';
+  fatSyncStatus();
+  fatSub('receber', document.querySelector('#tab-faturamento .fat-seg[data-sec="receber"]'));
+  try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}
+}
+async function fatProgramar(id) {
+  const f = _faturas.find(x => x.id === id);
+  if (!f) return;
+  if (!podeProgramar(f)) {
+    const motivos = [];
+    if (!docsCompletos(f)) motivos.push('faltam documentos (' + docsFaltando(f).join(', ') + ')');
+    if (conciliaStatus(f) !== 'ok') motivos.push('conciliação de quantidade não bateu');
+    showToast('Ainda não dá pra programar: ' + motivos.join(' e ') + '.', 'error');
+    return;
+  }
+  const min = _fatMinProg();
+  const sugestao = _fatMaxISO((f.vencimento || '').slice(0, 10), min);
+  const escolha = prompt('Data de pagamento (AAAA-MM-DD).\nMínimo ' + min + ' (2 dias úteis de antecedência):', sugestao);
+  if (!escolha) return;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(escolha)) { showToast('Data inválida. Use o formato AAAA-MM-DD.', 'error'); return; }
+  if (escolha < min) { showToast('O sistema exige no mínimo 2 dias úteis. Programe a partir de ' + min + '.', 'error'); return; }
+  try {
+    await faturasCol().doc(id).update({ statusPagamento: 'programado', programadoPara: escolha, atualizadoEm: firebase.firestore.FieldValue.serverTimestamp() });
+    registrarAtividade('fatura', 'Programou pagamento do posto ' + (f.posto || '') + ' para ' + fmtData(escolha));
+    await fatCarregar(true); fatRerender();
+    showToast('Pagamento programado para ' + fmtData(escolha) + '.', 'success');
+  } catch (e) { showToast('Erro: ' + (e.message || e), 'error'); }
+}
+async function fatMarcarPago(id) {
+  const f = _faturas.find(x => x.id === id);
+  try {
+    await faturasCol().doc(id).update({ statusPagamento: 'pago', pagoEm: firebase.firestore.FieldValue.serverTimestamp(), atualizadoEm: firebase.firestore.FieldValue.serverTimestamp() });
+    registrarAtividade('fatura', 'Marcou como pago: posto ' + ((f && f.posto) || ''));
+    await fatCarregar(true); fatRerender();
+    showToast('Marcado como pago.', 'success');
+  } catch (e) { showToast('Erro: ' + (e.message || e), 'error'); }
+}
+async function fatToggleDoc(id, tipo, val) {
+  try {
+    const patch = {}; patch['docs.' + tipo] = !!val; patch.atualizadoEm = firebase.firestore.FieldValue.serverTimestamp();
+    await faturasCol().doc(id).update(patch);
+    await fatCarregar(true); fatRerender();
+  } catch (e) { showToast('Erro: ' + (e.message || e), 'error'); }
+}
+async function fatExcluir(id) {
+  if (!confirm('Excluir esta fatura? Essa ação não tem volta.')) return;
+  try { await faturasCol().doc(id).delete(); await fatCarregar(true); fatRerender(); showToast('Fatura excluída.', 'info'); }
+  catch (e) { showToast('Erro: ' + (e.message || e), 'error'); }
+}
+
+// ── tabelas ────────────────────────────────────────────────────────────────
+function fatLinhaTabela(f) {
+  const acoes = [];
+  acoes.push(`<button class="btn btn-ghost" style="padding:4px 8px;font-size:11px" onclick="fatEditar('${f.id}')" title="Editar / conferir"><i class="fas fa-pen"></i></button>`);
+  if (f.statusPagamento !== 'pago') {
+    acoes.push(`<button class="btn btn-ghost" style="padding:4px 8px;font-size:11px" onclick="fatProgramar('${f.id}')" title="Programar pagamento"><i class="fas fa-calendar-check"></i></button>`);
+    acoes.push(`<button class="btn btn-ghost" style="padding:4px 8px;font-size:11px" onclick="fatMarcarPago('${f.id}')" title="Marcar como pago"><i class="fas fa-check-double"></i></button>`);
+  }
+  acoes.push(`<button class="btn btn-ghost" style="padding:4px 8px;font-size:11px;color:var(--red)" onclick="fatExcluir('${f.id}')" title="Excluir"><i class="fas fa-trash"></i></button>`);
+  return `<tr>
+    <td><strong>${escapeHtml(f.posto || '—')}</strong>${f.numeroNota ? `<br><small style="color:var(--muted)">NF ${escapeHtml(String(f.numeroNota))}</small>` : ''}</td>
+    <td>${fmtData(f.competencia)}</td>
+    <td>${fmtBRL(f.valor)}${f.vencimento ? `<br><small style="color:var(--muted)">venc. ${fmtData(f.vencimento)}</small>` : ''}</td>
+    <td>${badgeDocs(f)}</td>
+    <td>${badgeConcilia(f)}</td>
+    <td>${badgePagamento(f)}</td>
+    <td style="white-space:nowrap">${acoes.join(' ')}</td>
+  </tr>`;
+}
+function fatRenderRecentes() {
+  fatAtualizarDatalist();
+  const tb = document.getElementById('fatRecentesBody');
+  if (!tb) return;
+  const lista = _faturas.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 15);
+  tb.innerHTML = lista.length ? lista.map(fatLinhaTabela).join('') : '<tr><td colspan="7" style="color:var(--muted);font-size:13px">Nenhuma fatura ainda. Suba os anexos acima para começar.</td></tr>';
+}
+function fatRenderDashboard() {
+  fatAtualizarDatalist();
+  const de = _fatVal('fatFDe'), ate = _fatVal('fatFAte');
+  const posto = (_fatVal('fatFPosto') || '').trim();
+  const status = _fatVal('fatFStatus');
+  let lista = _faturas.slice();
+  if (de) lista = lista.filter(f => (f.vencimento || '') >= de);
+  if (ate) lista = lista.filter(f => (f.vencimento || '') <= ate);
+  if (posto) { const q = _fatNorm(posto); lista = lista.filter(f => _fatNorm(f.posto).includes(q)); }
+  if (status) lista = lista.filter(f => (f.statusPagamento || 'a_pagar') === status);
+  lista.sort((a, b) => String(a.vencimento || 'zzzz').localeCompare(String(b.vencimento || 'zzzz')));
+  const pagas = lista.filter(f => f.statusPagamento === 'pago');
+  const aPagar = lista.filter(f => f.statusPagamento !== 'pago');
+  const somaPago = pagas.reduce((s, f) => s + (Number(f.valor) || 0), 0);
+  const somaAP = aPagar.reduce((s, f) => s + (Number(f.valor) || 0), 0);
+  const pendDoc = lista.filter(f => !docsCompletos(f)).length;
+  const diverg = lista.filter(f => conciliaStatus(f) === 'divergente').length;
+  _fatSet('fatStQtd', lista.length);
+  _fatSet('fatStAPagar', fmtBRL(somaAP));
+  _fatSet('fatStPago', fmtBRL(somaPago));
+  _fatSet('fatStPendDoc', pendDoc);
+  _fatSet('fatStDiverg', diverg);
+  const tb = document.getElementById('fatDashBody');
+  if (tb) tb.innerHTML = lista.length ? lista.map(fatLinhaTabela).join('') : '<tr><td colspan="7" style="color:var(--muted);font-size:13px">Nenhuma fatura no filtro.</td></tr>';
+  fatDesenharGraficos(lista);
+}
+async function fatDesenharGraficos(lista) {
+  try { await carregarLib('chart'); } catch (e) { return; }
+  const porDia = {};
+  lista.forEach(f => { if (f.vencimento) porDia[f.vencimento] = (porDia[f.vencimento] || 0) + (Number(f.valor) || 0); });
+  const dias = Object.keys(porDia).sort();
+  const porPosto = {};
+  lista.forEach(f => { const k = f.posto || '—'; porPosto[k] = (porPosto[k] || 0) + (Number(f.valor) || 0); });
+  const postos = Object.entries(porPosto).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const accent = (getComputedStyle(document.documentElement).getPropertyValue('--accent') || '#007840').trim();
+  if (_chartFatDia) { _chartFatDia.destroy(); _chartFatDia = null; }
+  if (_chartFatPosto) { _chartFatPosto.destroy(); _chartFatPosto = null; }
+  const opts = t => ({ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, title: { display: true, text: t } } });
+  const c1 = document.getElementById('fatChartDia');
+  const c2 = document.getElementById('fatChartPosto');
+  if (c1) _chartFatDia = new Chart(c1, { type: 'bar', data: { labels: dias.map(fmtData), datasets: [{ label: 'A pagar', data: dias.map(d => porDia[d]), backgroundColor: accent }] }, options: opts('R$ por data de pagamento') });
+  if (c2) _chartFatPosto = new Chart(c2, { type: 'bar', data: { labels: postos.map(p => p[0]), datasets: [{ label: 'Total', data: postos.map(p => p[1]), backgroundColor: '#BAE64F' }] }, options: Object.assign(opts('Top postos (R$)'), { indexAxis: 'y' }) });
+}
+function fatRenderPendentes() {
+  const filtroDoc = _fatVal('fatPendDoc');
+  let lista = _faturas.filter(f => !docsCompletos(f));
+  if (filtroDoc) lista = lista.filter(f => !(f.docs && f.docs[filtroDoc]));
+  lista.sort((a, b) => String(a.competencia || '').localeCompare(String(b.competencia || '')));
+  const tb = document.getElementById('fatPendBody');
+  if (!tb) return;
+  if (!lista.length) { tb.innerHTML = '<tr><td colspan="6" style="color:var(--muted);font-size:13px">Nenhuma fatura pendente de documento. 🎉</td></tr>'; return; }
+  tb.innerHTML = lista.map(f => {
+    const chk = (t, l) => `<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;margin-right:8px"><input type="checkbox" ${f.docs && f.docs[t] ? 'checked' : ''} onchange="fatToggleDoc('${f.id}','${t}',this.checked)"> ${l}</label>`;
+    return `<tr>
+      <td><strong>${escapeHtml(f.posto || '—')}</strong></td>
+      <td>${fmtData(f.competencia)}</td>
+      <td>${fmtBRL(f.valor)}</td>
+      <td><span class="badge badge-baixada">Falta: ${docsFaltando(f).join(', ')}</span></td>
+      <td>${chk('boleto', 'Boleto')}${chk('relatorio', 'Relatório')}${chk('nota', 'Nota')}</td>
+      <td style="white-space:nowrap"><button class="btn btn-ghost" style="padding:4px 8px;font-size:11px" onclick="fatEditar('${f.id}')"><i class="fas fa-pen"></i> Abrir</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── assistente (linguagem natural) ─────────────────────────────────────────
+function fatConsultaTool(filtros) {
+  filtros = filtros || {};
+  let lista = _faturas.slice();
+  if (filtros.posto) { const q = _fatNorm(filtros.posto); lista = lista.filter(f => _fatNorm(f.posto).includes(q)); }
+  if (filtros.de) lista = lista.filter(f => (f.vencimento || '') >= filtros.de);
+  if (filtros.ate) lista = lista.filter(f => (f.vencimento || '') <= filtros.ate);
+  if (filtros.data) lista = lista.filter(f => (f.vencimento || '').slice(0, 10) === filtros.data);
+  if (filtros.valor_min != null) lista = lista.filter(f => (Number(f.valor) || 0) >= filtros.valor_min);
+  if (filtros.valor_max != null) lista = lista.filter(f => (Number(f.valor) || 0) <= filtros.valor_max);
+  if (filtros.status) lista = lista.filter(f => (f.statusPagamento || 'a_pagar') === filtros.status);
+  if (filtros.doc_faltando) lista = lista.filter(f => !(f.docs && f.docs[filtros.doc_faltando]));
+  const soma = lista.reduce((s, f) => s + (Number(f.valor) || 0), 0);
+  const porPosto = {};
+  lista.forEach(f => { const k = f.posto || '—'; porPosto[k] = (porPosto[k] || 0) + (Number(f.valor) || 0); });
+  return JSON.stringify({
+    quantidade: lista.length,
+    soma_total: Math.round(soma * 100) / 100,
+    soma_formatada: fmtBRL(soma),
+    por_posto: porPosto,
+    faturas: lista.slice(0, 40).map(f => ({ posto: f.posto, valor: f.valor, vencimento: f.vencimento, competencia: f.competencia, pagamento: f.statusPagamento || 'a_pagar', programado_para: f.programadoPara || null, docs_faltando: docsFaltando(f), conciliacao: conciliaStatus(f) }))
+  });
+}
+function _fatResumoContexto() {
+  if (!_faturas.length) return 'Ainda não há faturas cadastradas.';
+  const n = _faturas.length;
+  const soma = _faturas.reduce((s, f) => s + (Number(f.valor) || 0), 0);
+  const aPagar = _faturas.filter(f => f.statusPagamento !== 'pago');
+  const somaAP = aPagar.reduce((s, f) => s + (Number(f.valor) || 0), 0);
+  const pend = _faturas.filter(f => !docsCompletos(f)).length;
+  const div = _faturas.filter(f => conciliaStatus(f) === 'divergente').length;
+  return `${n} faturas no total (${fmtBRL(soma)}). A pagar: ${aPagar.length} (${fmtBRL(somaAP)}). Pagas: ${n - aPagar.length}. Pendentes de documento: ${pend}. Divergências de conciliação: ${div}.`;
+}
+function _fatSystemPrompt() {
+  let hoje = '';
+  try { hoje = new Date().toLocaleDateString('pt-BR'); } catch (e) {}
+  return `Você é o assistente de faturamento de POSTOS da Arcom (contas a pagar). Fale em português do Brasil, direto e prático.${hoje ? ' Hoje é ' + hoje + '.' : ''} O pagamento só pode ser programado com no mínimo 2 dias úteis de antecedência (a partir de ${_fatMinProg()}).
+Cada fatura tem: posto, competência, valor, vencimento, documentos (boleto, relatório, nota), conciliação de quantidade (relatório × Web SIA) e status de pagamento (a_pagar, programado, pago).
+Para responder QUALQUER pergunta sobre números, datas, o que falta de documento ou o que está pendente/pago, CHAME a ferramenta "consultar_faturas" com os filtros adequados e responda com os números reais. Nunca invente valores. Formate valores em reais e datas em DD/MM/AAAA.
+Resumo atual: ${_fatResumoContexto()}`;
+}
+async function _fatChamarGroq(messages) {
+  const TOOLS = [{
+    type: 'function',
+    function: {
+      name: 'consultar_faturas',
+      description: 'Filtra e soma as faturas de postos já cadastradas (contas a pagar). Datas em AAAA-MM-DD.',
+      parameters: {
+        type: 'object',
+        properties: {
+          posto: { type: 'string', description: 'nome (ou parte) do posto' },
+          de: { type: 'string', description: 'vencimento a partir de AAAA-MM-DD' },
+          ate: { type: 'string', description: 'vencimento até AAAA-MM-DD' },
+          data: { type: 'string', description: 'um dia específico de vencimento AAAA-MM-DD' },
+          valor_min: { type: 'number' },
+          valor_max: { type: 'number' },
+          status: { type: 'string', enum: ['a_pagar', 'programado', 'pago'] },
+          doc_faltando: { type: 'string', enum: ['boleto', 'relatorio', 'nota'] }
+        },
+        required: []
+      }
+    }
+  }];
+  const r = await fetch(GROQ_API_URL, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: GROQ_MODEL_RAPIDO, messages, temperature: 0.3, tools: TOOLS, tool_choice: 'auto' })
+  });
+  if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error('Groq HTTP ' + r.status + ' ' + t.slice(0, 120)); }
+  return r.json();
+}
+async function _fatConsultarIA(pergunta) {
+  const messages = [{ role: 'system', content: _fatSystemPrompt() }];
+  _fatChat.slice(-10).forEach(m => messages.push({ role: m.role === 'user' ? 'user' : 'assistant', content: m.texto }));
+  messages.push({ role: 'user', content: pergunta });
+  let guard = 0;
+  while (guard < 5) {
+    guard++;
+    const data = await _fatChamarGroq(messages);
+    const msg = data.choices && data.choices[0] && data.choices[0].message;
+    if (!msg) return 'Não consegui responder agora.';
+    if (msg.tool_calls && msg.tool_calls.length) {
+      messages.push(msg);
+      for (const tc of msg.tool_calls) {
+        let out;
+        try { const args = JSON.parse((tc.function && tc.function.arguments) || '{}'); out = fatConsultaTool(args); }
+        catch (e) { out = 'Erro na ferramenta: ' + (e.message || e); }
+        messages.push({ role: 'tool', tool_call_id: tc.id, name: (tc.function && tc.function.name) || 'consultar_faturas', content: out });
+      }
+      continue;
+    }
+    return msg.content || 'Sem resposta.';
+  }
+  return 'Fiz várias consultas mas não consegui fechar a resposta.';
+}
+function _fatChatRender() {
+  const box = document.getElementById('fatChatMsgs');
+  if (!box) return;
+  if (!_fatChat.length && !_fatChatLoading) {
+    box.innerHTML = '<div class="chat-empty">Pergunte, por exemplo: "quanto vence essa semana?", "o que falta de documento?", "total a pagar do posto X".</div>';
+    return;
+  }
+  let html = _fatChat.map(m => `<div class="chat-msg ${m.role === 'user' ? 'own' : ''}"><div class="chat-msg-meta"><span>${m.role === 'user' ? 'Você' : 'IA'}</span></div><div class="chat-msg-bubble">${formatarBolhaChat(m.texto)}</div></div>`).join('');
+  if (_fatChatLoading) html += '<div class="chat-typing"><span></span><span></span><span></span></div>';
+  box.innerHTML = html;
+  box.scrollTop = box.scrollHeight;
+}
+async function fatChatEnviar() {
+  const input = document.getElementById('fatChatInput');
+  const texto = (input.value || '').trim();
+  if (!texto || _fatChatLoading) return;
+  if (!_faturasCarregado) await fatCarregar();
+  _fatChat.push({ role: 'user', texto });
+  input.value = '';
+  _fatChatLoading = true;
+  _fatChatRender();
+  try { const resp = await _fatConsultarIA(texto); _fatChat.push({ role: 'assistant', texto: resp }); }
+  catch (e) { _fatChat.push({ role: 'assistant', texto: '⚠️ Erro ao falar com a IA: ' + (e.message || e) }); }
+  _fatChatLoading = false;
+  _fatChatRender();
+  input.focus();
+}
+
+</script>
 </body>
 </html>
