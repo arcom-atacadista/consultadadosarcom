@@ -15,9 +15,9 @@ services:
     restart: unless-stopped
     environment:
       # alvo do proxy /api dentro da rede do compose
-      API_TARGET: "http://backend:3000"
+      API_TARGET: "http://backend:3021"
     ports:
-      - "8080:4173"        # navegador -> http://localhost:8080
+      - "3020:4173"        # navegador -> http://localhost:8080
     depends_on: [backend]
 
   backend:
@@ -26,7 +26,7 @@ services:
     environment:
       DATABASE_URL: "postgresql://app:${POSTGRES_PASSWORD:-app}@postgres:5432/app"
       REDIS_URL: "redis://redis:6379/0"
-      PORT: "3000"
+      PORT: "3021"
       # Fase 3 (auth) — troque no .env em produção.
       JWT_SECRET: "${JWT_SECRET:-dev-secret-troque-em-producao}"
       SUPER_ADMIN_EMAIL: "${SUPER_ADMIN_EMAIL:-admin@arcom.com.br}"
@@ -42,12 +42,12 @@ services:
       GROQ_API_URL: "${GROQ_API_URL:-}"
       TAVILY_API_KEY: "${TAVILY_API_KEY:-}"
       TAVILY_API_URL: "${TAVILY_API_URL:-}"
-    expose: ["3000"]       # só a rede interna acessa; o front faz o proxy
+    expose: ["3021"]       # só a rede interna acessa; o front faz o proxy
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3021/api/health"]
       interval: 10s
       timeout: 3s
       retries: 5
