@@ -2,7 +2,30 @@
 
 Aplicação web (single-page, HTML/CSS/JS puro) para consulta, prospecção e enriquecimento comercial de empresas via CNPJ. Feita para uso interno da Arcom Atacadista.
 
-🔗 Deploy: https://arcom-atacadista.github.io/consultadadosarcom/
+🔗 Deploy (versão em produção, `index.html`): https://arcom-atacadista.github.io/consultadadosarcom/
+
+---
+
+## 🚧 Migração em andamento para o padrão ARCOM AI-First
+
+Este repositório está sendo migrado do `index.html` monolítico para a
+arquitetura padrão da ARCOM: `frontend/` (React + Vite + Tailwind + shadcn) +
+`backend/` (Go + chi), subindo com `docker compose up --build`.
+
+- **Documentação completa da migração:** [`docs/migracao/`](docs/migracao/README.md)
+  (diagnóstico, arquitetura alvo, contrato de API, modelo de dados, fases).
+- **Enquanto a migração roda:** o `index.html` continua sendo a versão em
+  produção (GitHub Pages). O novo stack (`frontend/` + `backend/`) sobe em
+  paralelo, local, até atingir paridade — ver `docs/migracao/09-fases.md`.
+
+### Rodar o novo stack (em construção)
+
+```bash
+docker compose up --build   # abre em http://localhost:8080
+```
+
+`GET /api/health` responde `{"status":"ok"}`. Estrutura e padrões: pastas
+`frontend/` e `backend/`, guias completos em `docs/migracao/`.
 
 ---
 

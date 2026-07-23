@@ -1,0 +1,68 @@
+# Sobe o projeto inteiro com:  docker compose up --build
+# Sem Traefik: o próprio Vite (frontend) faz proxy de /api pro backend,
+# então tudo funciona numa origem só, sem CORS.
+#
+# Abra no navegador:  http://localhost:8080
+#
+# Se o SEU projeto NÃO usa banco, remova os serviços postgres e redis
+# (e as variáveis DATABASE_URL / REDIS_URL do backend).
+
+name: ${PROJECT_NAME:-meu-projeto}
+
+services:
+  frontend:
+    build: { context: ./frontend }
+    restart: unless-stopped
+    environment:
+      # alvo do proxy /api dentro da rede do compose
+      API_TARGET: "http://backend:3000"
+    ports:
+      - "8080:4173"        # navegador -> http://localhost:8080
+    depends_on: [backend]
+
+  backend:
+    build: { context: ./backend }
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql://app:${POSTGRES_PASSWORD:-app}@postgres:5432/app"
+      REDIS_URL: "redis://redis:6379/0"
+      PORT: "3000"
+    expose: ["3000"]       # só a rede interna acessa; o front faz o proxy
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+      POSTGRES_DB: app
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
+  redisdata:

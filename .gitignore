@@ -1,0 +1,11 @@
+# node / front
+node_modules/
+dist/
+*.tsbuildinfo
+/frontend/vite.config.js
+/frontend/vite.config.d.ts
+# go / back
+/backend/server
+*.exe
+# ambiente
+.env
