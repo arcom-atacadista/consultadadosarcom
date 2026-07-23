@@ -23,7 +23,10 @@ passam a ser variáveis de ambiente do serviço `backend` (ver [`02`](02-arquite
 ## 2. Autenticação
 
 - **Login:** `POST /api/auth/login` valida e-mail/senha (bcrypt) e devolve **JWT**
-  assinado com `JWT_SECRET`. Claims: `uid`, `email`, `isAdmin`, `status`.
+  assinado com `JWT_SECRET`. Claims: `uid`, `email`, `nome`, `isAdmin`, `aprovado`
+  — os dois últimos já vêm calculados (super-admin por e-mail OU coluna do
+  banco), então o middleware só lê o token, sem round-trip no Postgres por
+  requisição. Expira em 24h.
 - **Cadastro:** `POST /api/auth/register` cria usuário `pendente`, `isAdmin=false`
   (idêntico à regra Firestore de hoje).
 - **Token** no navegador em `localStorage.token`; enviado em `Authorization:

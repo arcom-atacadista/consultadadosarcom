@@ -27,6 +27,9 @@ services:
       DATABASE_URL: "postgresql://app:${POSTGRES_PASSWORD:-app}@postgres:5432/app"
       REDIS_URL: "redis://redis:6379/0"
       PORT: "3000"
+      # Fase 3 (auth) — troque no .env em produção.
+      JWT_SECRET: "${JWT_SECRET:-dev-secret-troque-em-producao}"
+      SUPER_ADMIN_EMAIL: "${SUPER_ADMIN_EMAIL:-admin@arcom.com.br}"
     expose: ["3000"]       # só a rede interna acessa; o front faz o proxy
     depends_on:
       postgres: { condition: service_healthy }

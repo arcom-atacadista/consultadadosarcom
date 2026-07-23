@@ -32,8 +32,16 @@ API externa.
 | PATCH | `/api/usuarios/:id` | admin | aprovar/negar/promover `{ status, isAdmin }` |
 | DELETE | `/api/usuarios/:id` | admin | remove usuário |
 
-`login` só devolve token se `status == aprovado`. Cadastro sempre `pendente` e
-`isAdmin=false` (igual às regras Firestore de hoje).
+`login` sempre devolve token se a senha bater — autenticação e autorização são
+coisas separadas. O token carrega `isAdmin`/`aprovado` já calculados (ver
+`efetivos()` em `07-seguranca.md`); rotas `aprovado`/`admin` é que barram quem
+não tem o nível certo. Isso deixa o front levar quem está pendente pra tela de
+espera com um token válido, em vez de travar no próprio login. Cadastro sempre
+`pendente` e `isAdmin=false` (igual às regras Firestore de hoje).
+
+Como o JWT é stateless, uma aprovação feita por um admin só passa a valer no
+**próximo login** do usuário (o token antigo continua com `aprovado=false` até
+expirar ou ele logar de novo).
 
 ## 3. CNPJ (`internal/cnpj`)
 | Método | Rota | Auth | Descrição |

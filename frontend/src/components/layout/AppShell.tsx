@@ -2,7 +2,6 @@ import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 
-// Guarda de rota (usuário logado/aprovado) entra na Fase 3 (auth).
 export function AppShell() {
   return (
     <div className="flex min-h-screen bg-surface">
