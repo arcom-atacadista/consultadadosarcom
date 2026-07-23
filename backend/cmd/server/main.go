@@ -8,9 +8,11 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/auth"
+	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/cnpj"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/config"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/db"
 	apihttp "github.com/arcom-atacadista/consultadadosarcom/backend/internal/http"
+	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/redis"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/usuarios"
 )
 
@@ -27,14 +29,27 @@ func main() {
 		slog.Error("falha ao conectar no postgres", "erro", err)
 		os.Exit(1)
 	}
+	rdb, err := redis.Connect(cfg.RedisURL)
+	if err != nil {
+		slog.Error("falha ao conectar no redis", "erro", err)
+		os.Exit(1)
+	}
 
 	usuariosRepo := usuarios.NewRepo(gdb)
 	authService := auth.NewService(usuariosRepo, cfg.JWTSecret, cfg.SuperAdminEmail)
+
+	cnpjService := cnpj.NewService(
+		cnpj.NewArcomClient(cfg.ArcomAPIBaseURL, cfg.ArcomAPIKey),
+		cnpj.NewBrasilAPIClient(),
+		cnpj.NewCache(rdb),
+		cnpj.NewRepo(gdb),
+	)
 
 	r := apihttp.NewRouter(apihttp.Deps{
 		JWTSecret:       cfg.JWTSecret,
 		AuthHandler:     auth.NewHandler(authService, usuariosRepo),
 		UsuariosHandler: usuarios.NewHandler(usuariosRepo),
+		CNPJHandler:     cnpj.NewHandler(cnpjService),
 	})
 
 	slog.Info("subindo servidor", "port", cfg.Port)

@@ -7,5 +7,6 @@ dist/
 # go / back
 /backend/server
 *.exe
+*.rdb
 # ambiente
 .env

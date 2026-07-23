@@ -6,6 +6,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/auth"
+	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/cnpj"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/usuarios"
 )
 
@@ -15,6 +16,7 @@ type Deps struct {
 	JWTSecret       string
 	AuthHandler     *auth.Handler
 	UsuariosHandler *usuarios.Handler
+	CNPJHandler     *cnpj.Handler
 }
 
 // NewRouter monta o router da aplicação. Novos recursos (cnpj, prospeccao,
@@ -38,6 +40,11 @@ func NewRouter(deps Deps) *chi.Mux {
 		api.Route("/usuarios", func(u chi.Router) {
 			u.Use(requireAuth, auth.RequireAdmin)
 			u.Mount("/", deps.UsuariosHandler.Routes())
+		})
+
+		api.Route("/cnpj", func(c chi.Router) {
+			c.Use(requireAuth, auth.RequireAprovado)
+			c.Post("/consultar", deps.CNPJHandler.Consultar)
 		})
 	})
 
