@@ -6214,8 +6214,8 @@ Resultados de busca na internet sobre esta empresa:
 ${blocoWeb}
 
 REGRAS IMPORTANTES:
-- PRIORIDADE MÁXIMA: o telefone para contato tem que ser CERTEIRO. O telefone OFICIAL da Receita Federal (acima) é a fonte mais confiável — o sistema já vai usá-lo. Sua tarefa com telefone é APENAS confirmar/complementar pela web.
-- Em "contatos_encontrados.telefone": só coloque um telefone se ele aparecer LITERALMENTE nos trechos de busca acima E for claramente da MESMA empresa (confira nome/endereço/cidade). Se houver qualquer dúvida de que seja outra empresa, deixe null. NUNCA invente nem "complete" um número.
+- OBJETIVO PRINCIPAL: ENCONTRE o telefone de contato da empresa NOS TRECHOS DE BUSCA (site oficial, Google, Google Maps, Instagram, LinkedIn, páginas amarelas). Esse telefone achado na web é o que MAIS interessa — o telefone oficial da Receita Federal o usuário já vê em outra tela, então não é ele que você precisa devolver.
+- Em "contatos_encontrados.telefone": coloque o telefone que aparecer LITERALMENTE nos trechos de busca acima E for claramente da MESMA empresa (confira nome/endereço/cidade). Se houver qualquer dúvida de que seja outra empresa, deixe null. NUNCA invente nem "complete" um número — precisão acima de tudo.
 - Para site, instagram, linkedin e email: mesma regra — só se aparecer literalmente nos trechos. Se não encontrar, null.
 - Para "pontos_fortes", "sinais_atencao", "abordagem_sugerida" e "perguntas_qualificacao": baseie-se nos dados da Receita Federal, sem inventar.
 - Em "fontes", liste apenas os números [n] dos resultados de busca que você realmente usou para extrair algum contato.
@@ -6311,13 +6311,14 @@ function renderEnrichBody(cnpj, dados) {
     return out;
   };
   const telOf = c.telefoneOficial, telOf2 = c.telefoneOficial2, telWeb = c.telefoneWeb;
-  const webDif = telWeb && (telWeb || '').replace(/\D/g, '') !== (telOf || '').replace(/\D/g, '');
+  const webBateOficial = telWeb && (telWeb || '').replace(/\D/g, '') === (telOf || '').replace(/\D/g, '');
   html += `<div class="modal-section" style="border:1px solid var(--accent);border-radius:10px;padding:12px 14px">
     <div class="modal-section-title" style="color:var(--accent)"><i class="fas fa-phone"></i> Telefone para contato</div>
-    ${telOf ? `<div style="font-size:16px;font-weight:700;margin-top:2px">${telLink(telOf)} <span style="font-size:11px;font-weight:400;color:var(--muted)">· oficial (Receita Federal)</span></div>` : ''}
-    ${telOf2 ? `<div style="font-size:14px;margin-top:3px">${telLink(telOf2)} <span style="font-size:11px;color:var(--muted)">· oficial (2º número)</span></div>` : ''}
-    ${webDif ? `<div style="font-size:13px;margin-top:5px">${telLink(telWeb)} <span style="font-size:11px;color:var(--muted)">· encontrado na web — <strong>confirme</strong></span></div>` : ''}
-    ${(!telOf && !telWeb) ? '<div class="enrich-empty">Sem telefone oficial nem na web. Pra buscar no Google Maps, gere o dossiê na aba "Enriquecimento de dados".</div>' : ''}
+    ${telWeb ? `<div style="font-size:16px;font-weight:700;margin-top:2px">${telLink(telWeb)} <span style="font-size:11px;font-weight:400;color:var(--muted)">· achado na web ${webBateOficial ? '(confere com a Receita ✓)' : '— <strong>confirme</strong>'}</span></div>` : ''}
+    ${(telOf && !webBateOficial) ? `<div style="font-size:${telWeb ? '13' : '16'}px;font-weight:${telWeb ? '400' : '700'};margin-top:${telWeb ? '5' : '2'}px">${telLink(telOf)} <span style="font-size:11px;font-weight:400;color:var(--muted)">· oficial (Receita Federal)${telWeb ? ' — também no "Ver"' : ''}</span></div>` : ''}
+    ${telOf2 ? `<div style="font-size:13px;margin-top:3px">${telLink(telOf2)} <span style="font-size:11px;color:var(--muted)">· oficial (2º número)</span></div>` : ''}
+    ${(!telOf && !telWeb) ? '<div class="enrich-empty">Não achei telefone na web nem na Receita. Pra buscar no Google Maps, gere o dossiê na aba "Enriquecimento de dados".</div>' : ''}
+    ${(telWeb && !webBateOficial) ? '' : (telOf && !telWeb ? '<div style="font-size:11px;color:var(--muted);margin-top:6px">Nada novo achado na web — só o telefone oficial da Receita.</div>' : '')}
   </div>`;
 
   const temContatoWeb = c.site || c.instagram || c.linkedin || c.email;
