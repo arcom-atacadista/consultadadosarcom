@@ -109,3 +109,19 @@ func (r *Repo) RegistrarBusca(ctx context.Context, uid string, filtros any, tota
 	log := ProspeccaoLog{ID: uuid.NewString(), UID: uid, Filtros: filtros, Total: total}
 	return r.db.WithContext(ctx).Create(&log).Error
 }
+
+// ContarBuscas dá o total de buscas de prospecção feitas e a soma de
+// prospects encontrados em todas elas (usado em estatisticas_do_site).
+func (r *Repo) ContarBuscas(ctx context.Context) (buscas int64, totalProspects int64, err error) {
+	if err = r.db.WithContext(ctx).Model(&ProspeccaoLog{}).Count(&buscas).Error; err != nil {
+		return 0, 0, err
+	}
+	var soma *int64
+	if err = r.db.WithContext(ctx).Model(&ProspeccaoLog{}).Select("SUM(total)").Scan(&soma).Error; err != nil {
+		return 0, 0, err
+	}
+	if soma != nil {
+		totalProspects = *soma
+	}
+	return buscas, totalProspects, nil
+}

@@ -7,7 +7,9 @@ import (
 
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/auth"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/cnpj"
+	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/enriquecimento"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/geo"
+	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/ia"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/prospeccao"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/usuarios"
 )
@@ -15,13 +17,15 @@ import (
 // Deps são as dependências já montadas em main.go que o router precisa
 // para expor as rotas autenticadas/administrativas.
 type Deps struct {
-	JWTSecret          string
-	AuthHandler        *auth.Handler
-	UsuariosHandler    *usuarios.Handler
-	CNPJHandler        *cnpj.Handler
-	ProspeccaoHandler  *prospeccao.Handler
-	PreCadastroHandler *prospeccao.PreCadastroHandler
-	GeoHandler         *geo.Handler
+	JWTSecret             string
+	AuthHandler           *auth.Handler
+	UsuariosHandler       *usuarios.Handler
+	CNPJHandler           *cnpj.Handler
+	ProspeccaoHandler     *prospeccao.Handler
+	PreCadastroHandler    *prospeccao.PreCadastroHandler
+	GeoHandler            *geo.Handler
+	IAHandler             *ia.Handler
+	EnriquecimentoHandler *enriquecimento.Handler
 }
 
 // NewRouter monta o router da aplicação. Novos recursos (cnpj, prospeccao,
@@ -65,6 +69,18 @@ func NewRouter(deps Deps) *chi.Mux {
 		api.Route("/geo", func(g chi.Router) {
 			g.Use(requireAuth, auth.RequireAprovado)
 			g.Get("/geocode", deps.GeoHandler.Geocode)
+		})
+
+		api.Route("/ia", func(i chi.Router) {
+			i.Use(requireAuth, auth.RequireAprovado)
+			i.Post("/insight", deps.IAHandler.Insight)
+			i.Post("/ranking", deps.IAHandler.Ranking)
+			i.Post("/chat", deps.IAHandler.Chat)
+		})
+
+		api.Route("/enriquecimento", func(e chi.Router) {
+			e.Use(requireAuth, auth.RequireAprovado)
+			e.Mount("/", deps.EnriquecimentoHandler.Routes())
 		})
 	})
 

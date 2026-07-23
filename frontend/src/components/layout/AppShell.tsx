@@ -1,6 +1,7 @@
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
+import { ChatWidget } from "@/components/ia/ChatWidget";
 
 export function AppShell() {
   return (
@@ -16,6 +17,7 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      <ChatWidget />
     </div>
   );
 }

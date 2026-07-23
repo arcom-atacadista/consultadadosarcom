@@ -40,3 +40,11 @@ func (r *Repo) RegistrarConsultas(ctx context.Context, uid string, cnpjs []strin
 	}
 	return r.db.WithContext(ctx).Create(&entradas).Error
 }
+
+// ContarConsultas dá o total de CNPJs efetivamente buscados nas fontes
+// externas (usado em estatisticas_do_site).
+func (r *Repo) ContarConsultas(ctx context.Context) (int64, error) {
+	var total int64
+	err := r.db.WithContext(ctx).Model(&ConsultaLogEntry{}).Count(&total).Error
+	return total, err
+}

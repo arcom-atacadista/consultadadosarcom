@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { Search, Star, History, Loader2 } from "lucide-react";
+import { Search, Star, History, Loader2, Sparkles, Trophy } from "lucide-react";
 import { api } from "@/lib/api";
 import { cnpjValido, formatarCNPJ, parseCNPJs, type Empresa } from "@/lib/cnpj";
 import { useCnpjHistorico } from "@/hooks/useCnpjHistorico";
@@ -16,6 +16,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { InsightDialog } from "@/components/ia/InsightDialog";
+import { RankingDialog } from "@/components/ia/RankingDialog";
 
 function badgeSituacao(situacao: string) {
   if (situacao === "ATIVA") return <Badge variant="brand">{situacao}</Badge>;
@@ -39,6 +41,9 @@ export default function Consulta() {
 
   const { favoritos, historico, isFavorito, alternarFavorito, registrarHistorico, limparHistorico } =
     useCnpjHistorico();
+
+  const [insightEmpresa, setInsightEmpresa] = useState<Empresa | null>(null);
+  const [rankingEmpresas, setRankingEmpresas] = useState<Empresa[] | null>(null);
 
   const cnpjsDigitados = useMemo(() => parseCNPJs(texto), [texto]);
   const invalidos = useMemo(() => cnpjsDigitados.filter((c) => !cnpjValido(c)), [cnpjsDigitados]);
@@ -160,9 +165,20 @@ export default function Consulta() {
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Resultados</CardTitle>
-          <CardDescription>{resultados.length} CNPJ(s) consultado(s).</CardDescription>
+        <CardHeader className="flex-row items-center justify-between">
+          <div>
+            <CardTitle>Resultados</CardTitle>
+            <CardDescription>{resultados.length} CNPJ(s) consultado(s).</CardDescription>
+          </div>
+          {resultados.some((e) => e.encontrado) && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setRankingEmpresas(resultados.filter((e) => e.encontrado))}
+            >
+              <Trophy className="h-4 w-4" /> Ranking de leads (IA)
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           {resultados.length === 0 ? (
@@ -199,18 +215,20 @@ export default function Consulta() {
                     )}
                     <TableCell>
                       {e.encontrado && (
-                        <button
-                          onClick={() => alternarFavorito(e.cnpj, e.razao)}
-                          aria-label="Favoritar"
-                        >
-                          <Star
-                            className={
-                              isFavorito(e.cnpj)
-                                ? "h-4 w-4 fill-verde-lima text-verde-lima"
-                                : "h-4 w-4 text-arcom-gray"
-                            }
-                          />
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => alternarFavorito(e.cnpj, e.razao)} aria-label="Favoritar">
+                            <Star
+                              className={
+                                isFavorito(e.cnpj)
+                                  ? "h-4 w-4 fill-verde-lima text-verde-lima"
+                                  : "h-4 w-4 text-arcom-gray"
+                              }
+                            />
+                          </button>
+                          <button onClick={() => setInsightEmpresa(e)} title="Gerar Insight IA">
+                            <Sparkles className="h-4 w-4 text-arcom-gray hover:text-verde-arcom" />
+                          </button>
+                        </div>
                       )}
                     </TableCell>
                   </TableRow>
@@ -220,6 +238,9 @@ export default function Consulta() {
           )}
         </CardContent>
       </Card>
+
+      <InsightDialog empresa={insightEmpresa} onClose={() => setInsightEmpresa(null)} />
+      <RankingDialog empresas={rankingEmpresas} onClose={() => setRankingEmpresas(null)} />
     </div>
   );
 }

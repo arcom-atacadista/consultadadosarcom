@@ -21,6 +21,15 @@ func (r *Repo) Criar(ctx context.Context, u *Usuario) error {
 	return r.db.WithContext(ctx).Create(u).Error
 }
 
+// ContarPorStatus dá o total de contas e quantas estão pendentes de aprovação.
+func (r *Repo) ContarPorStatus(ctx context.Context) (total int64, pendentes int64, err error) {
+	if err = r.db.WithContext(ctx).Model(&Usuario{}).Count(&total).Error; err != nil {
+		return 0, 0, err
+	}
+	err = r.db.WithContext(ctx).Model(&Usuario{}).Where("status = ?", StatusPendente).Count(&pendentes).Error
+	return total, pendentes, err
+}
+
 func (r *Repo) BuscarPorEmail(ctx context.Context, email string) (*Usuario, error) {
 	var u Usuario
 	err := r.db.WithContext(ctx).Where("email = ?", email).First(&u).Error
