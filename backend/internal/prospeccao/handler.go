@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 
+	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/atividades"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/auth"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/httputil"
 )
@@ -16,13 +19,14 @@ import (
 var validate = validator.New()
 
 type Handler struct {
-	service  *Service
-	repo     *Repo
-	buscador *Buscador
+	service    *Service
+	repo       *Repo
+	buscador   *Buscador
+	atividades *atividades.Service
 }
 
-func NewHandler(service *Service, repo *Repo, buscador *Buscador) *Handler {
-	return &Handler{service: service, repo: repo, buscador: buscador}
+func NewHandler(service *Service, repo *Repo, buscador *Buscador, atividadesService *atividades.Service) *Handler {
+	return &Handler{service: service, repo: repo, buscador: buscador, atividades: atividadesService}
 }
 
 func (h *Handler) Routes() chi.Router {
@@ -79,13 +83,22 @@ func (h *Handler) buscar(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	if claims, ok := auth.FromContext(r.Context()); ok {
+		cidadesTxt := make([]string, len(in.Cidades))
+		for i, c := range in.Cidades {
+			cidadesTxt[i] = c.Cidade + "/" + c.UF
+		}
+		detalhe := fmt.Sprintf("%d prospect(s) · %s · %d ramo(s)", len(prospects), strings.Join(cidadesTxt, ", "), len(in.CNAEs))
+		h.atividades.Registrar(r.Context(), claims.UID, claims.Nome, claims.Email, atividades.TipoProspeccao, detalhe, nil)
+	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"prospects": prospects})
 }
 
 type criarListaInput struct {
-	Nome    string `json:"nome" validate:"required"`
-	Filtros any    `json:"filtros" validate:"required"`
-	Itens   any    `json:"itens" validate:"required"`
+	Nome     string `json:"nome" validate:"required"`
+	Assessor string `json:"assessor" validate:"required"`
+	Filtros  any    `json:"filtros" validate:"required"`
+	Itens    any    `json:"itens" validate:"required"`
 }
 
 func (h *Handler) criarLista(w http.ResponseWriter, r *http.Request) {
@@ -95,11 +108,15 @@ func (h *Handler) criarLista(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := validate.Struct(in); err != nil {
-		httputil.WriteError(w, http.StatusBadRequest, "informe nome, filtros e itens")
+		httputil.WriteError(w, http.StatusBadRequest, "informe nome, assessor, filtros e itens")
 		return
 	}
-	uid := uidDoContexto(r.Context())
-	lista := ListaProspeccao{UID: uid, Nome: in.Nome, Filtros: in.Filtros, Itens: in.Itens}
+	claims, _ := auth.FromContext(r.Context())
+	lista := ListaProspeccao{
+		UID: claims.UID, Nome: in.Nome, Assessor: in.Assessor,
+		NomeUsuario: claims.Nome, Email: claims.Email,
+		Filtros: in.Filtros, Itens: in.Itens,
+	}
 	if err := h.repo.CriarLista(r.Context(), &lista); err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, "falha ao salvar lista")
 		return

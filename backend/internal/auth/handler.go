@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
+	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/atividades"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/httputil"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/usuarios"
 )
@@ -30,12 +31,13 @@ type senhaInput struct {
 }
 
 type Handler struct {
-	service *Service
-	repo    *usuarios.Repo
+	service    *Service
+	repo       *usuarios.Repo
+	atividades *atividades.Service
 }
 
-func NewHandler(service *Service, repo *usuarios.Repo) *Handler {
-	return &Handler{service: service, repo: repo}
+func NewHandler(service *Service, repo *usuarios.Repo, atividadesService *atividades.Service) *Handler {
+	return &Handler{service: service, repo: repo, atividades: atividadesService}
 }
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
@@ -57,6 +59,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, http.StatusInternalServerError, "falha ao criar conta")
 		return
 	}
+	h.atividades.Registrar(r.Context(), u.ID, u.Nome, u.Email, atividades.TipoContaCriada, "Solicitou acesso: "+u.Nome, nil)
 	httputil.WriteJSON(w, http.StatusCreated, u)
 }
 
@@ -75,6 +78,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, http.StatusUnauthorized, "e-mail ou senha inválidos")
 		return
 	}
+	h.atividades.Registrar(r.Context(), u.ID, u.Nome, u.Email, atividades.TipoLogin, "entrou no sistema", nil)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"token": token, "usuario": u})
 }
 

@@ -2,10 +2,12 @@ package cnpj
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/go-playground/validator/v10"
 
+	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/atividades"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/auth"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/httputil"
 )
@@ -18,11 +20,12 @@ type consultarInput struct {
 }
 
 type Handler struct {
-	service *Service
+	service    *Service
+	atividades *atividades.Service
 }
 
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service *Service, atividadesService *atividades.Service) *Handler {
+	return &Handler{service: service, atividades: atividadesService}
 }
 
 func (h *Handler) Consultar(w http.ResponseWriter, r *http.Request) {
@@ -40,8 +43,9 @@ func (h *Handler) Consultar(w http.ResponseWriter, r *http.Request) {
 		fonte = "arcom"
 	}
 
+	claims, _ := auth.FromContext(r.Context())
 	uid := ""
-	if claims, ok := auth.FromContext(r.Context()); ok {
+	if claims != nil {
 		uid = claims.UID
 	}
 
@@ -49,6 +53,10 @@ func (h *Handler) Consultar(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		httputil.WriteError(w, http.StatusBadGateway, "falha ao consultar CNPJ: "+err.Error())
 		return
+	}
+	if claims != nil {
+		h.atividades.Registrar(r.Context(), claims.UID, claims.Nome, claims.Email, atividades.TipoConsulta,
+			fmt.Sprintf("%d CNPJ(s) consultado(s)", len(in.CNPJs)), nil)
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"resultados": resultado})
 }

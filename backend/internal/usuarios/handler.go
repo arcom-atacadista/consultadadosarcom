@@ -14,7 +14,7 @@ import (
 var validate = validator.New()
 
 type patchInput struct {
-	Status  *string `json:"status" validate:"omitempty,oneof=pendente aprovado"`
+	Status  *string `json:"status" validate:"omitempty,oneof=pendente aprovado negado"`
 	IsAdmin *bool   `json:"isAdmin"`
 }
 
@@ -53,7 +53,7 @@ func (h *Handler) atualizar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := validate.Struct(in); err != nil {
-		httputil.WriteError(w, http.StatusBadRequest, "status deve ser 'pendente' ou 'aprovado'")
+		httputil.WriteError(w, http.StatusBadRequest, "status deve ser 'pendente', 'aprovado' ou 'negado'")
 		return
 	}
 	if err := h.repo.Atualizar(r.Context(), id, in.Status, in.IsAdmin); err != nil {

@@ -14,6 +14,7 @@ import { ScoreBadge } from "@/components/prospeccao/ScoreBadge";
 import { PreCadastroDialog } from "@/components/prospeccao/PreCadastroDialog";
 import { FachadaMapaModal } from "@/components/prospeccao/FachadaMapaModal";
 import { IndicacaoPrint } from "@/components/prospeccao/IndicacaoPrint";
+import { SalvarListaDialog } from "@/components/prospeccao/SalvarListaDialog";
 
 export default function Prospeccao() {
   const [cidadesTexto, setCidadesTexto] = useState("");
@@ -30,6 +31,7 @@ export default function Prospeccao() {
   const [prospectPreCadastro, setProspectPreCadastro] = useState<Prospect | null>(null);
   const [prospectFachada, setProspectFachada] = useState<Prospect | null>(null);
   const [mostrarIndicacao, setMostrarIndicacao] = useState(false);
+  const [mostrarSalvarLista, setMostrarSalvarLista] = useState(false);
 
   function alternarCnae(valor: string) {
     setCnaes((atual) => (atual.includes(valor) ? atual.filter((c) => c !== valor) : [...atual, valor]));
@@ -95,12 +97,12 @@ export default function Prospeccao() {
     navigator.clipboard.writeText(paraAcao.map((p) => p.cnpj).join("\n"));
   }
 
-  async function salvarLista() {
-    const nome = window.prompt("Nome da lista:");
-    if (!nome) return;
+  async function salvarLista(nome: string, assessor: string) {
+    const ramosLabels = RAMOS_BUSCA.filter((r) => cnaes.includes(r.value)).map((r) => r.label);
     await api.post("/prospeccao/listas", {
       nome,
-      filtros: { cidades: parseCidades(cidadesTexto), cnaes },
+      assessor,
+      filtros: { cidades: parseCidades(cidadesTexto), cnaes, ramosLabels },
       itens: paraAcao.map((p) => p.cnpj),
     });
   }
@@ -177,7 +179,7 @@ export default function Prospeccao() {
               <Button variant="secondary" size="sm" onClick={copiarCNPJs}>
                 <Copy className="h-4 w-4" /> Copiar CNPJs
               </Button>
-              <Button variant="secondary" size="sm" onClick={salvarLista}>
+              <Button variant="secondary" size="sm" onClick={() => setMostrarSalvarLista(true)}>
                 <Star className="h-4 w-4" /> Salvar lista
               </Button>
               <Button size="sm" onClick={() => setMostrarIndicacao(true)}>
@@ -270,6 +272,12 @@ export default function Prospeccao() {
       <PreCadastroDialog prospect={prospectPreCadastro} onClose={() => setProspectPreCadastro(null)} />
       <FachadaMapaModal prospect={prospectFachada} onClose={() => setProspectFachada(null)} />
       {mostrarIndicacao && <IndicacaoPrint prospects={paraAcao} onClose={() => setMostrarIndicacao(false)} />}
+      <SalvarListaDialog
+        aberto={mostrarSalvarLista}
+        total={paraAcao.length}
+        onClose={() => setMostrarSalvarLista(false)}
+        onSalvar={salvarLista}
+      />
     </div>
   );
 }

@@ -3,6 +3,7 @@ package prospeccao
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -90,6 +91,35 @@ func (r *Repo) BuscarLista(ctx context.Context, id string) (*ListaProspeccao, er
 		return nil, err
 	}
 	return &l, nil
+}
+
+// maxListasConversao é o mesmo teto do app antigo (500 listas mais recentes)
+// pro relatório de Conversão.
+const maxListasConversao = 500
+
+// ListarListasPeriodo busca as listas mais recentes (teto de 500, igual ao
+// app antigo) e filtra por data de criação quando um corte é informado — a
+// mesma lógica de "Tudo / Últimos 30 dias / Últimos 90 dias" da Conversão.
+func (r *Repo) ListarListasPeriodo(ctx context.Context, dias int) ([]ListaProspeccao, error) {
+	q := r.db.WithContext(ctx).Order("criado_em desc").Limit(maxListasConversao)
+	if dias > 0 {
+		corte := time.Now().AddDate(0, 0, -dias)
+		q = q.Where("criado_em >= ?", corte)
+	}
+	var out []ListaProspeccao
+	err := q.Find(&out).Error
+	return out, err
+}
+
+// AtualizarConversao persiste o resultado de "Verificar conversão agora"
+// numa lista — igual ao listasCol.doc(l.id).update(...) do app antigo.
+func (r *Repo) AtualizarConversao(ctx context.Context, id string, convertidos, totalEmpresas int) error {
+	agora := time.Now()
+	return r.db.WithContext(ctx).Model(&ListaProspeccao{}).Where("id = ?", id).Updates(map[string]any{
+		"convertidos":    convertidos,
+		"total_empresas": totalEmpresas,
+		"verificado_em":  agora,
+	}).Error
 }
 
 func (r *Repo) DeletarLista(ctx context.Context, id string) error {

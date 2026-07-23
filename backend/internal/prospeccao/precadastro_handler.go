@@ -3,19 +3,23 @@ package prospeccao
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/atividades"
+	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/auth"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/httputil"
 )
 
 type PreCadastroHandler struct {
-	repo *Repo
+	repo       *Repo
+	atividades *atividades.Service
 }
 
-func NewPreCadastroHandler(repo *Repo) *PreCadastroHandler {
-	return &PreCadastroHandler{repo: repo}
+func NewPreCadastroHandler(repo *Repo, atividadesService *atividades.Service) *PreCadastroHandler {
+	return &PreCadastroHandler{repo: repo, atividades: atividadesService}
 }
 
 func (h *PreCadastroHandler) Routes() chi.Router {
@@ -54,6 +58,14 @@ func (h *PreCadastroHandler) criar(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, http.StatusInternalServerError, "falha ao criar pré-cadastro")
 		return
 	}
+	if claims, ok := auth.FromContext(r.Context()); ok {
+		nome := p.Razao
+		if nome == "" {
+			nome = in.CNPJ
+		}
+		h.atividades.Registrar(r.Context(), claims.UID, claims.Nome, claims.Email, atividades.TipoPreCadastro,
+			fmt.Sprintf("Pré-cadastrou %s", nome), nil)
+	}
 	httputil.WriteJSON(w, http.StatusCreated, p)
 }
 
@@ -89,6 +101,10 @@ func (h *PreCadastroHandler) atualizar(w http.ResponseWriter, r *http.Request) {
 		}
 		httputil.WriteError(w, http.StatusInternalServerError, "falha ao atualizar")
 		return
+	}
+	if claims, ok := auth.FromContext(r.Context()); ok {
+		h.atividades.Registrar(r.Context(), claims.UID, claims.Nome, claims.Email, atividades.TipoPreCadastro,
+			fmt.Sprintf("Atualizou pré-cadastro %s", id), nil)
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

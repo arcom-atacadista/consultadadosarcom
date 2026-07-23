@@ -10,6 +10,8 @@ import (
 
 	"github.com/joho/godotenv"
 
+	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/admin"
+	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/atividades"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/auth"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/cnpj"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/config"
@@ -45,6 +47,9 @@ func main() {
 	usuariosRepo := usuarios.NewRepo(gdb)
 	authService := auth.NewService(usuariosRepo, cfg.JWTSecret, cfg.SuperAdminEmail)
 
+	atividadesRepo := atividades.NewRepo(gdb)
+	atividadesService := atividades.NewService(atividadesRepo)
+
 	// Um único ArcomClient compartilhado — cnpj e prospeccao falam com a
 	// mesma API (mesmo token, mesma reautenticação em 401).
 	arcomClient := cnpj.NewArcomClient(cfg.ArcomAPIBaseURL, cfg.ArcomAPIKey)
@@ -55,6 +60,10 @@ func main() {
 	prospeccaoRepo := prospeccao.NewRepo(gdb)
 	buscador := prospeccao.NewBuscador(arcomClient)
 	prospeccaoService := prospeccao.NewService(buscador, prospeccaoRepo)
+	conversaoService := prospeccao.NewConversaoService(prospeccaoRepo, arcomClient)
+
+	presencaService := admin.NewPresencaService(rdb)
+	adminService := admin.NewService(atividadesRepo, usuariosRepo, presencaService)
 
 	geoClient := geo.NewClient(cfg.GeoapifyAPIKey)
 
@@ -70,14 +79,24 @@ func main() {
 
 	r := apihttp.NewRouter(apihttp.Deps{
 		JWTSecret:             cfg.JWTSecret,
-		AuthHandler:           auth.NewHandler(authService, usuariosRepo),
+		AuthHandler:           auth.NewHandler(authService, usuariosRepo, atividadesService),
 		UsuariosHandler:       usuarios.NewHandler(usuariosRepo),
-		CNPJHandler:           cnpj.NewHandler(cnpjService),
-		ProspeccaoHandler:     prospeccao.NewHandler(prospeccaoService, prospeccaoRepo, buscador),
-		PreCadastroHandler:    prospeccao.NewPreCadastroHandler(prospeccaoRepo),
+		CNPJHandler:           cnpj.NewHandler(cnpjService, atividadesService),
+		ProspeccaoHandler:     prospeccao.NewHandler(prospeccaoService, prospeccaoRepo, buscador, atividadesService),
+		PreCadastroHandler:    prospeccao.NewPreCadastroHandler(prospeccaoRepo, atividadesService),
+		ConversaoHandler:      prospeccao.NewConversaoHandler(conversaoService),
 		GeoHandler:            geo.NewHandler(geoClient, rdb),
 		IAHandler:             ia.NewHandler(insightService, rankingService, chatService),
 		EnriquecimentoHandler: enriquecimento.NewHandler(enriquecimentoService, trace360Client),
+		AtividadesHandler: atividades.NewHandler(atividadesService, func(ctx context.Context) (string, string, string, bool) {
+			claims, ok := auth.FromContext(ctx)
+			if !ok {
+				return "", "", "", false
+			}
+			return claims.UID, claims.Nome, claims.Email, true
+		}),
+		AdminHandler:    admin.NewHandler(adminService, atividadesRepo),
+		PresencaHandler: admin.NewPresencaHandler(presencaService),
 	})
 
 	slog.Info("subindo servidor", "port", cfg.Port)
@@ -87,9 +106,9 @@ func main() {
 }
 
 // montarEstatisticasFn compõe a ferramenta "estatisticas_do_site" do chat com
-// números reais (contas, consultas, prospecções). Atividade por usuário e
-// presença online chegam na Fase 7 (tabela atividades_log + Redis) — até lá,
-// reporta só o que já existe, nunca inventa.
+// números reais (contas, consultas, prospecções) — mesmo recorte do app
+// antigo pra essa ferramenta; atividade por usuário e presença online têm
+// visão própria no dashboard admin (internal/admin), não entram aqui.
 func montarEstatisticasFn(usuariosRepo *usuarios.Repo, cnpjRepo *cnpj.Repo, prospeccaoRepo *prospeccao.Repo) ia.EstatisticasFn {
 	return func(ctx context.Context) (string, error) {
 		total, pendentes, err := usuariosRepo.ContarPorStatus(ctx)

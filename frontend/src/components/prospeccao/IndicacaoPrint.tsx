@@ -27,6 +27,13 @@ export function IndicacaoPrint({ prospects, onClose }: { prospects: Prospect[]; 
       });
   }, [prospects]);
 
+  function imprimir() {
+    api.post("/atividades/pdf-indicacao", { cnpjs: prospects.map((p) => p.cnpj) }).catch(() => {
+      // best-effort — não bloqueia a impressão se o log de atividade falhar
+    });
+    window.print();
+  }
+
   function usarLocalizacao() {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition((pos) => {
@@ -69,7 +76,7 @@ export function IndicacaoPrint({ prospects, onClose }: { prospects: Prospect[]; 
           <Button variant="secondary" size="sm" onClick={usarLocalizacao}>
             <Navigation className="h-4 w-4" /> Usar minha localização
           </Button>
-          <Button size="sm" onClick={() => window.print()}>
+          <Button size="sm" onClick={imprimir}>
             <Printer className="h-4 w-4" /> Imprimir / Salvar PDF
           </Button>
           <Button variant="ghost" size="sm" onClick={onClose}>

@@ -21,12 +21,18 @@ func (PreCadastro) TableName() string { return "pre_cadastros" }
 // por baixo) contra colunas jsonb — sem precisar de gorm.io/datatypes, que
 // não está no allowlist (padroes/01).
 type ListaProspeccao struct {
-	ID       string    `gorm:"column:id;primaryKey" json:"id"`
-	UID      string    `gorm:"column:uid" json:"uid"`
-	Nome     string    `gorm:"column:nome" json:"nome"`
-	Filtros  any       `gorm:"column:filtros;serializer:json" json:"filtros"`
-	Itens    any       `gorm:"column:itens;serializer:json" json:"itens"`
-	CriadoEm time.Time `gorm:"column:criado_em;autoCreateTime" json:"criadoEm"`
+	ID            string     `gorm:"column:id;primaryKey" json:"id"`
+	UID           string     `gorm:"column:uid" json:"uid"`
+	Nome          string     `gorm:"column:nome" json:"nome"`
+	Assessor      string     `gorm:"column:assessor" json:"assessor"`
+	NomeUsuario   string     `gorm:"column:nome_usuario" json:"nomeUsuario"`
+	Email         string     `gorm:"column:email" json:"email"`
+	Filtros       any        `gorm:"column:filtros;serializer:json" json:"filtros"`
+	Itens         any        `gorm:"column:itens;serializer:json" json:"itens"`
+	Convertidos   *int       `gorm:"column:convertidos" json:"convertidos"`
+	TotalEmpresas *int       `gorm:"column:total_empresas" json:"totalEmpresas"`
+	VerificadoEm  *time.Time `gorm:"column:verificado_em" json:"verificadoEm"`
+	CriadoEm      time.Time  `gorm:"column:criado_em;autoCreateTime" json:"criadoEm"`
 }
 
 func (ListaProspeccao) TableName() string { return "listas_prospeccao" }

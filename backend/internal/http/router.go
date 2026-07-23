@@ -5,6 +5,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/admin"
+	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/atividades"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/auth"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/cnpj"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/enriquecimento"
@@ -23,9 +25,13 @@ type Deps struct {
 	CNPJHandler           *cnpj.Handler
 	ProspeccaoHandler     *prospeccao.Handler
 	PreCadastroHandler    *prospeccao.PreCadastroHandler
+	ConversaoHandler      *prospeccao.ConversaoHandler
 	GeoHandler            *geo.Handler
 	IAHandler             *ia.Handler
 	EnriquecimentoHandler *enriquecimento.Handler
+	AtividadesHandler     *atividades.Handler
+	AdminHandler          *admin.Handler
+	PresencaHandler       *admin.PresencaHandler
 }
 
 // NewRouter monta o router da aplicação. Novos recursos (cnpj, prospeccao,
@@ -81,6 +87,27 @@ func NewRouter(deps Deps) *chi.Mux {
 		api.Route("/enriquecimento", func(e chi.Router) {
 			e.Use(requireAuth, auth.RequireAprovado)
 			e.Mount("/", deps.EnriquecimentoHandler.Routes())
+		})
+
+		api.Route("/atividades", func(a chi.Router) {
+			a.Use(requireAuth, auth.RequireAprovado)
+			a.Mount("/", deps.AtividadesHandler.Routes())
+		})
+
+		api.Route("/presenca", func(p chi.Router) {
+			p.Use(requireAuth, auth.RequireAprovado)
+			p.Post("/", deps.PresencaHandler.Heartbeat)
+			p.Delete("/", deps.PresencaHandler.Remover)
+		})
+
+		api.Route("/conversao", func(c chi.Router) {
+			c.Use(requireAuth, auth.RequireAdmin)
+			c.Mount("/", deps.ConversaoHandler.Routes())
+		})
+
+		api.Route("/admin", func(a chi.Router) {
+			a.Use(requireAuth, auth.RequireAdmin)
+			a.Mount("/", deps.AdminHandler.Routes())
 		})
 	})
 

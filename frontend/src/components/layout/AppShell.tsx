@@ -2,8 +2,10 @@ import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { ChatWidget } from "@/components/ia/ChatWidget";
+import { usePresenca } from "@/hooks/usePresenca";
 
 export function AppShell() {
+  usePresenca();
   return (
     <div className="flex min-h-screen bg-surface">
       <div className="no-print contents">

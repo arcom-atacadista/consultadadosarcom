@@ -7,6 +7,19 @@ body {
   @apply bg-surface text-arcom-gray font-sans;
 }
 
+/* Acessibilidade (Fase 7): respeita quem pede menos movimento no SO —
+   praticamente zera duração/transição em vez de tentar listar toda animação. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* PDF de indicação (docs/migracao/08 §3): HTML de impressão + window.print(),
    sem lib de PDF (fora do allowlist). Só o .print-area aparece na impressão. */
 @media print {

@@ -11,7 +11,7 @@ export type Usuario = {
   id: string;
   email: string;
   nome: string;
-  status: "pendente" | "aprovado";
+  status: "pendente" | "aprovado" | "negado";
   isAdmin: boolean;
   criadoEm: string;
 };
@@ -87,6 +87,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   function logout() {
+    api.delete("/presenca").catch(() => {
+      // best-effort — não bloqueia o logout se a remoção de presença falhar
+    });
     limpar();
   }
 

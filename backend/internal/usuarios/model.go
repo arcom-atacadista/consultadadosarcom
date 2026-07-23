@@ -5,6 +5,7 @@ import "time"
 const (
 	StatusPendente = "pendente"
 	StatusAprovado = "aprovado"
+	StatusNegado   = "negado"
 )
 
 type Usuario struct {
