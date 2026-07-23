@@ -5,9 +5,13 @@ import { Topbar } from "./Topbar";
 export function AppShell() {
   return (
     <div className="flex min-h-screen bg-surface">
-      <Sidebar />
+      <div className="no-print contents">
+        <Sidebar />
+      </div>
       <div className="flex flex-1 flex-col">
-        <Topbar />
+        <div className="no-print contents">
+          <Topbar />
+        </div>
         <main className="flex-1 p-6">
           <Outlet />
         </main>

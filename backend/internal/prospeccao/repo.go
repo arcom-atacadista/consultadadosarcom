@@ -1,0 +1,111 @@
+package prospeccao
+
+import (
+	"context"
+	"errors"
+
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+)
+
+var ErrNaoEncontrado = errors.New("registro não encontrado")
+
+type Repo struct {
+	db *gorm.DB
+}
+
+func NewRepo(db *gorm.DB) *Repo {
+	return &Repo{db: db}
+}
+
+// ── Pré-cadastros (compartilhados entre todos os aprovados) ────────────────
+
+func (r *Repo) CriarPreCadastro(ctx context.Context, p *PreCadastro) error {
+	p.ID = uuid.NewString()
+	return r.db.WithContext(ctx).Create(p).Error
+}
+
+func (r *Repo) ListarPreCadastros(ctx context.Context) ([]PreCadastro, error) {
+	var out []PreCadastro
+	err := r.db.WithContext(ctx).Order("criado_em desc").Find(&out).Error
+	return out, err
+}
+
+func (r *Repo) AtualizarPreCadastro(ctx context.Context, id, status, notas string) error {
+	updates := map[string]any{}
+	if status != "" {
+		updates["status"] = status
+	}
+	if notas != "" {
+		updates["notas"] = notas
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+	res := r.db.WithContext(ctx).Model(&PreCadastro{}).Where("id = ?", id).Updates(updates)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNaoEncontrado
+	}
+	return nil
+}
+
+func (r *Repo) DeletarPreCadastro(ctx context.Context, id string) error {
+	res := r.db.WithContext(ctx).Where("id = ?", id).Delete(&PreCadastro{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNaoEncontrado
+	}
+	return nil
+}
+
+// ── Listas de prospecção salvas (por usuário) ───────────────────────────────
+
+func (r *Repo) CriarLista(ctx context.Context, l *ListaProspeccao) error {
+	l.ID = uuid.NewString()
+	return r.db.WithContext(ctx).Create(l).Error
+}
+
+func (r *Repo) ListarListas(ctx context.Context, uid string, admin bool) ([]ListaProspeccao, error) {
+	var out []ListaProspeccao
+	q := r.db.WithContext(ctx).Order("criado_em desc")
+	if !admin {
+		q = q.Where("uid = ?", uid)
+	}
+	err := q.Find(&out).Error
+	return out, err
+}
+
+func (r *Repo) BuscarLista(ctx context.Context, id string) (*ListaProspeccao, error) {
+	var l ListaProspeccao
+	err := r.db.WithContext(ctx).Where("id = ?", id).First(&l).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNaoEncontrado
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &l, nil
+}
+
+func (r *Repo) DeletarLista(ctx context.Context, id string) error {
+	res := r.db.WithContext(ctx).Where("id = ?", id).Delete(&ListaProspeccao{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNaoEncontrado
+	}
+	return nil
+}
+
+// ── Histórico de buscas (prospeccoes) ───────────────────────────────────────
+
+func (r *Repo) RegistrarBusca(ctx context.Context, uid string, filtros any, total int) error {
+	log := ProspeccaoLog{ID: uuid.NewString(), UID: uid, Filtros: filtros, Total: total}
+	return r.db.WithContext(ctx).Create(&log).Error
+}

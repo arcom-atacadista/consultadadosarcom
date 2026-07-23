@@ -7,16 +7,21 @@ import (
 
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/auth"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/cnpj"
+	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/geo"
+	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/prospeccao"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/usuarios"
 )
 
 // Deps são as dependências já montadas em main.go que o router precisa
 // para expor as rotas autenticadas/administrativas.
 type Deps struct {
-	JWTSecret       string
-	AuthHandler     *auth.Handler
-	UsuariosHandler *usuarios.Handler
-	CNPJHandler     *cnpj.Handler
+	JWTSecret          string
+	AuthHandler        *auth.Handler
+	UsuariosHandler    *usuarios.Handler
+	CNPJHandler        *cnpj.Handler
+	ProspeccaoHandler  *prospeccao.Handler
+	PreCadastroHandler *prospeccao.PreCadastroHandler
+	GeoHandler         *geo.Handler
 }
 
 // NewRouter monta o router da aplicação. Novos recursos (cnpj, prospeccao,
@@ -45,6 +50,21 @@ func NewRouter(deps Deps) *chi.Mux {
 		api.Route("/cnpj", func(c chi.Router) {
 			c.Use(requireAuth, auth.RequireAprovado)
 			c.Post("/consultar", deps.CNPJHandler.Consultar)
+		})
+
+		api.Route("/prospeccao", func(p chi.Router) {
+			p.Use(requireAuth, auth.RequireAprovado)
+			p.Mount("/", deps.ProspeccaoHandler.Routes())
+		})
+
+		api.Route("/precadastros", func(p chi.Router) {
+			p.Use(requireAuth, auth.RequireAprovado)
+			p.Mount("/", deps.PreCadastroHandler.Routes())
+		})
+
+		api.Route("/geo", func(g chi.Router) {
+			g.Use(requireAuth, auth.RequireAprovado)
+			g.Get("/geocode", deps.GeoHandler.Geocode)
 		})
 	})
 

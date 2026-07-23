@@ -11,7 +11,9 @@ import (
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/cnpj"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/config"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/db"
+	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/geo"
 	apihttp "github.com/arcom-atacadista/consultadadosarcom/backend/internal/http"
+	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/prospeccao"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/redis"
 	"github.com/arcom-atacadista/consultadadosarcom/backend/internal/usuarios"
 )
@@ -38,18 +40,26 @@ func main() {
 	usuariosRepo := usuarios.NewRepo(gdb)
 	authService := auth.NewService(usuariosRepo, cfg.JWTSecret, cfg.SuperAdminEmail)
 
-	cnpjService := cnpj.NewService(
-		cnpj.NewArcomClient(cfg.ArcomAPIBaseURL, cfg.ArcomAPIKey),
-		cnpj.NewBrasilAPIClient(),
-		cnpj.NewCache(rdb),
-		cnpj.NewRepo(gdb),
-	)
+	// Um único ArcomClient compartilhado — cnpj e prospeccao falam com a
+	// mesma API (mesmo token, mesma reautenticação em 401).
+	arcomClient := cnpj.NewArcomClient(cfg.ArcomAPIBaseURL, cfg.ArcomAPIKey)
+
+	cnpjService := cnpj.NewService(arcomClient, cnpj.NewBrasilAPIClient(), cnpj.NewCache(rdb), cnpj.NewRepo(gdb))
+
+	prospeccaoRepo := prospeccao.NewRepo(gdb)
+	buscador := prospeccao.NewBuscador(arcomClient)
+	prospeccaoService := prospeccao.NewService(buscador, prospeccaoRepo)
+
+	geoClient := geo.NewClient(cfg.GeoapifyAPIKey)
 
 	r := apihttp.NewRouter(apihttp.Deps{
-		JWTSecret:       cfg.JWTSecret,
-		AuthHandler:     auth.NewHandler(authService, usuariosRepo),
-		UsuariosHandler: usuarios.NewHandler(usuariosRepo),
-		CNPJHandler:     cnpj.NewHandler(cnpjService),
+		JWTSecret:          cfg.JWTSecret,
+		AuthHandler:        auth.NewHandler(authService, usuariosRepo),
+		UsuariosHandler:    usuarios.NewHandler(usuariosRepo),
+		CNPJHandler:        cnpj.NewHandler(cnpjService),
+		ProspeccaoHandler:  prospeccao.NewHandler(prospeccaoService, prospeccaoRepo, buscador),
+		PreCadastroHandler: prospeccao.NewPreCadastroHandler(prospeccaoRepo),
+		GeoHandler:         geo.NewHandler(geoClient, rdb),
 	})
 
 	slog.Info("subindo servidor", "port", cfg.Port)

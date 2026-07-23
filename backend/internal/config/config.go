@@ -14,6 +14,7 @@ type Config struct {
 	SuperAdminEmail string
 	ArcomAPIBaseURL string
 	ArcomAPIKey     string
+	GeoapifyAPIKey  string
 }
 
 func Load() Config {
@@ -25,6 +26,7 @@ func Load() Config {
 		SuperAdminEmail: os.Getenv("SUPER_ADMIN_EMAIL"),
 		ArcomAPIBaseURL: getEnv("ARCOM_API_BASE_URL", "https://consultacnpj.arcom.com.br"),
 		ArcomAPIKey:     os.Getenv("ARCOM_API_KEY"),
+		GeoapifyAPIKey:  os.Getenv("GEOAPIFY_API_KEY"),
 	}
 	if cfg.JWTSecret == "" {
 		slog.Warn("JWT_SECRET não definido no ambiente — login não vai funcionar")
@@ -34,6 +36,9 @@ func Load() Config {
 	}
 	if cfg.ArcomAPIKey == "" {
 		slog.Warn("ARCOM_API_KEY não definido — consulta de CNPJ pela fonte Arcom vai falhar (Brasil API continua funcionando)")
+	}
+	if cfg.GeoapifyAPIKey == "" {
+		slog.Warn("GEOAPIFY_API_KEY não definido — geocodificação (fachada/Street View) vai falhar")
 	}
 	return cfg
 }

@@ -33,6 +33,8 @@ services:
       # Fase 4 (consulta de CNPJ) — a chave real vem só do .env, sem fallback.
       ARCOM_API_BASE_URL: "${ARCOM_API_BASE_URL:-https://consultacnpj.arcom.com.br}"
       ARCOM_API_KEY: "${ARCOM_API_KEY:-}"
+      # Fase 5 (prospecção — geocode da fachada/Street View) — sem fallback.
+      GEOAPIFY_API_KEY: "${GEOAPIFY_API_KEY:-}"
     expose: ["3000"]       # só a rede interna acessa; o front faz o proxy
     depends_on:
       postgres: { condition: service_healthy }

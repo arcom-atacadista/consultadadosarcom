@@ -6,3 +6,21 @@
 body {
   @apply bg-surface text-arcom-gray font-sans;
 }
+
+/* PDF de indicação (docs/migracao/08 §3): HTML de impressão + window.print(),
+   sem lib de PDF (fora do allowlist). Só o .print-area aparece na impressão. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}
